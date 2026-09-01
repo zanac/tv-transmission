@@ -1,23 +1,37 @@
 #pragma once
 
-#define Uses_TWindow
+#define Uses_TDialog
 #define Uses_TInputLine
 #define Uses_TCheckBoxes
 #include <tvision/tv.h>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
 
-// Plain TWindow (default palette — matching the Settings dialog, which
-// the user liked as-is) with a couple of extras: it knows which torrent
-// it's showing (so an already-open details window can be reused instead
-// of duplicated) and handles its own "Apply"/"Close" buttons.
+// TDialog rather than TWindow — not a cosmetic choice: TWindow and
+// TDialog each have their OWN default getPalette() (cpBlueWindow/
+// cpCyanWindow/cpGrayWindow vs. cpGrayDialog/cpBlueDialog/cpCyanDialog,
+// see twindow.cpp/tdialog.cpp), and these assign different final colors
+// to the same slots (e.g. buttons come out red here under TWindow's
+// palette vs. green under TDialog's, for the exact same TButton code).
+// Since the Settings dialog (a TDialog) is the look the user wants
+// matched, this window needs to actually BE a TDialog, not just avoid
+// overriding colors — a same-looking TWindow would still diverge because
+// the two classes disagree on what a given palette index resolves to.
+// It runs non-modally (inserted into the desktop like any other window,
+// never execView()'d), so TDialog's Esc/Enter shortcuts are harmless
+// here: TDialog::handleEvent only acts on them while `state & sfModal`,
+// which is never set outside of execView().
+//
+// Also knows which torrent it's showing (so an already-open details
+// window can be reused instead of duplicated) and handles its own
+// "Apply"/"Close" buttons.
 //
 // Unlike the rest of this window's content (a snapshot taken when
 // opened), the speed limit controls are live: "Apply" sends a
 // torrent-set RPC call right away using torrentId_/client_.
-class TorrentDetailsWindow : public TWindow {
+class TorrentDetailsWindow : public TDialog {
 public:
-    TorrentDetailsWindow(const TRect& bounds, TStringView title, short number,
+    TorrentDetailsWindow(const TRect& bounds, TStringView title,
                           int torrentId, TransmissionClient& client);
 
     void handleEvent(TEvent& event) override;

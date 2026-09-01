@@ -38,10 +38,10 @@ void addLine(TWindow* win, int y, const char* text) {
 
 } // namespace
 
-TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView title, short number,
+TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView title,
                                             int torrentId, TransmissionClient& client)
-    : TWindowInit(&TWindow::initFrame),
-      TWindow(bounds, title, number),
+    : TWindowInit(&TDialog::initFrame),
+      TDialog(bounds, title),
       torrentId_(torrentId), client_(client) {}
 
 void TorrentDetailsWindow::applySpeedLimits() {
@@ -62,7 +62,7 @@ void TorrentDetailsWindow::applySpeedLimits() {
 }
 
 void TorrentDetailsWindow::handleEvent(TEvent& event) {
-    TWindow::handleEvent(event);
+    TDialog::handleEvent(event);
     if (event.what == evCommand && event.message.command == cmApplySpeedLimits) {
         applySpeedLimits();
         clearEvent(event);
@@ -83,7 +83,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
         tr(Str::WindowTitleDetails), shortName.c_str());
 
-    auto* win = new TorrentDetailsWindow(r, titleBuf, wnNoNumber, t.id, client);
+    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, client);
     win->options |= ofCentered;
 
     char buf[256];

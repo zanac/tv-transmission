@@ -203,16 +203,31 @@ src/
 
 Kept here for context, in case similar patterns come up again.
 
-**Details window and Settings dialog colors, reverted.** These went
-through a few iterations: the details window got fixed yellow-on-black
-colors, then yellow-on-blue; the Settings dialog got the same
-yellow-on-blue applied to match it. In the end, all-yellow-on-blue for
+**Details window and Settings dialog colors, reverted — then actually
+matched.** These went through a few iterations: the details window got
+fixed yellow-on-black colors, then yellow-on-blue; the Settings dialog
+got the same yellow-on-blue applied to match it. All-yellow-on-blue for
 every element (including buttons and checkboxes, which lose their
 distinct look when every color index resolves to the same fixed value)
 turned out flatter and less readable than tvision's own default
 palette — the one the Settings dialog had from the start, which the
-user liked. Both windows are now back to that default; there's no
-color override left in either.
+user liked — so both color overrides were removed. That still wasn't
+enough, though: with no override, the details window (a `TWindow`) and
+the Settings dialog (a `TDialog`) turned out visibly different anyway
+(e.g. red buttons vs. green) — verified directly, comparing
+`mapColor()` output for the same 20 color indices on a plain `TWindow`
+and a plain `TDialog`: all 20 diverged. `TWindow` and `TDialog` each
+ship their own default `getPalette()` (`cpBlueWindow`/`cpCyanWindow`/
+`cpGrayWindow` vs. `cpGrayDialog`/`cpBlueDialog`/`cpCyanDialog`, see
+tvision's `twindow.cpp`/`tdialog.cpp`), assigning different final
+colors to the same slots — "use the default palette" isn't one thing
+in tvision, it depends on which of these two base classes a window
+derives from. Fixed by making `TorrentDetailsWindow` inherit from
+`TDialog` instead of `TWindow`: same class as the Settings dialog, same
+default palette, verified to produce identical colors for all 20
+indices tested (it runs non-modally, inserted into the desktop like any
+other window rather than via `execView()`, so `TDialog`'s Esc/Enter
+shortcuts — which only act while modal — are harmless here).
 
 **"Honor global speed limits" label cut off in the details window.**
 `TCluster` (the base of `TCheckBoxes`) draws each item as a 5-column
