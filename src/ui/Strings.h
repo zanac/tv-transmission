@@ -32,14 +32,14 @@ enum class Str {
 
     WindowTitleDetails,
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,
-    LabelStatus, LabelError, LabelId,
+    LabelStatus, LabelError, LabelId, LabelAdded,
 
     TorrentStatusStopped, TorrentStatusCheckWait, TorrentStatusChecking,
     TorrentStatusDownloadWait, TorrentStatusDownloading, TorrentStatusSeedWait,
     TorrentStatusSeeding, TorrentStatusUnknown,
 
     HeaderName, HeaderDone, HeaderSize, HeaderDownload, HeaderUpload,
-    HeaderId, HeaderStatus,
+    HeaderId, HeaderStatus, HeaderAdded,
 
     // Command-line interface (src/cli/Cli.cpp)
     CliUsage,

@@ -14,14 +14,16 @@ HTTP and nlohmann/json for parsing.
 - Always maximized and locked: can't be moved, resized, zoomed or
   closed (it's the app's main view, kept as a raw pointer internally —
   see "Fixed bugs" below for why closing it used to crash the app)
-- Columns: name, % done, size, download rate, upload rate
+- Columns: name, % done, size, download rate, upload rate, date added,
+  status
 - Click a column header to sort by it; click again to reverse the
   direction (a `^`/`v` indicator shows the active column and direction)
 - Fixed colors (white text on blue background; the current row is black
   on white) regardless of the terminal's overall color scheme
 - Double-click a row to open a details window for that torrent (name,
-  size, %, rates, status, error if any) — these are ordinary, non-modal
-  windows, so you can have several open at once
+  size, %, rates, date added, status, error if any) — fixed colors here
+  too (yellow text on black); these are ordinary, non-modal windows, so
+  you can have several open at once
 
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
@@ -169,6 +171,18 @@ src/
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Column misalignment for very large torrents.** The size column always
+showed the value in MB with a fixed 8-character field (`%8.1fMB`). That
+field width silently assumed the number would never need more than 8
+digits — which breaks for a large enough torrent: one around 7 TB shown
+in MB needs 9 digits, one more than the field allowed, shifting every
+column after it (download/upload rate) by the overflow amount. Same
+root cause as the accented-name bug below: a fixed-width assumption that
+doesn't hold for unbounded input. Fixed with an adaptive-unit formatter
+(`formatSize()` in `TextUtil.h/.cpp`, shared with the CLI) that picks
+KB/MB/GB/TB/PB so the number itself stays short (one decimal, generally
+1-4 digits) regardless of how large the torrent is.
 
 **Column misalignment for names with accented letters.** Each row used
 to be built with printf's `%-30.30s`, which pads/truncates by *byte*

@@ -13,4 +13,5 @@ struct Torrent {
     double rateUpload = 0.0;    // bytes/s
     int status = 0;             // see the RPC's tr_torrent_activity enum
     std::string errorString;
+    int64_t addedDate = 0;      // unix timestamp (seconds), RPC field "addedDate"
 };

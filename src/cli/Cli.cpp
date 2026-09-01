@@ -31,17 +31,22 @@ void printTorrentTable(const std::vector<Torrent>& torrents) {
         std::printf("%s\n", tr(Str::CliListEmpty));
         return;
     }
-    std::printf("%-6s %-40s %6s %10s %10s %10s  %s\n",
+    std::printf("%-6s %-40s %6s %10s %10s %10s  %-16s %s\n",
         tr(Str::HeaderId), tr(Str::HeaderName), tr(Str::HeaderDone),
         tr(Str::HeaderSize), tr(Str::HeaderDownload), tr(Str::HeaderUpload),
-        tr(Str::HeaderStatus));
+        tr(Str::HeaderAdded), tr(Str::HeaderStatus));
     for (const auto& t : torrents) {
-        double mb = t.sizeBytes / (1024.0 * 1024.0);
         std::string name = padOrTruncateUtf8(t.name, 40);
-        std::printf("%-6d %s %5.1f%% %8.1fMB %7.0fKB/s %7.0fKB/s  %s\n",
-            t.id, name.c_str(), t.percentDone * 100.0, mb,
+        // formatSize() uses an adaptive unit (KB/MB/GB/TB/...) instead of
+        // always MB, so the number stays short regardless of how large
+        // the torrent is — see TextUtil.h for why a fixed unit breaks
+        // down (this is the same bug the TUI's list view had).
+        std::string size = formatSize(t.sizeBytes);
+        std::string added = formatUnixTimestamp(t.addedDate);
+        std::printf("%-6d %s %5.1f%% %10s %7.0fKB/s %7.0fKB/s  %-16s %s\n",
+            t.id, name.c_str(), t.percentDone * 100.0, size.c_str(),
             t.rateDownload / 1024.0, t.rateUpload / 1024.0,
-            trTorrentStatus(t.status));
+            added.c_str(), trTorrentStatus(t.status));
     }
 }
 

@@ -14,7 +14,7 @@
 // order in each row (see kNameW/kDoneW/etc. and buildHeaderText() in
 // TorrentListWindow.cpp) — also used to work out which header column
 // was clicked.
-enum class SortColumn { Name = 0, Done = 1, Size = 2, Down = 3, Up = 4 };
+enum class SortColumn { Name = 0, Done = 1, Size = 2, Down = 3, Up = 4, Added = 5, Status = 6 };
 
 // TListViewer that renders one row per torrent: name, %, down/up rate.
 class TorrentListViewer : public TListViewer {

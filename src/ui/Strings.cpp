@@ -78,13 +78,14 @@ const char* tr(Str id) {
 
         case Str::WindowTitleDetails: return it ? "Dettagli torrent" : "Torrent details";
         case Str::LabelName:      return it ? "Nome: %s"            : "Name: %s";
-        case Str::LabelSize:      return it ? "Dimensione: %.1f MB" : "Size: %.1f MB";
+        case Str::LabelSize:      return it ? "Dimensione: %s"      : "Size: %s";
         case Str::LabelCompleted: return it ? "Completato: %.1f%%" : "Completed: %.1f%%";
         case Str::LabelDownload:  return "Download: %.1f KB/s";
         case Str::LabelUpload:    return "Upload: %.1f KB/s";
         case Str::LabelStatus:    return it ? "Stato: %s"           : "Status: %s";
         case Str::LabelError:     return it ? "Errore: %s"          : "Error: %s";
         case Str::LabelId:        return "ID: %d";
+        case Str::LabelAdded:     return it ? "Aggiunto: %s"        : "Added: %s";
 
         case Str::TorrentStatusStopped:      return it ? "Fermo"                    : "Stopped";
         case Str::TorrentStatusCheckWait:    return it ? "In attesa di verifica"     : "Queued for check";
@@ -105,6 +106,7 @@ const char* tr(Str id) {
         case Str::HeaderUpload:   return "Upload";
         case Str::HeaderId:       return "ID";
         case Str::HeaderStatus:   return it ? "Stato" : "Status";
+        case Str::HeaderAdded:    return it ? "Aggiunto" : "Added";
 
         case Str::CliUsage:
             return it ?

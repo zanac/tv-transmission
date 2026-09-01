@@ -110,7 +110,8 @@ std::string TransmissionClient::call(const std::string& method,
 std::vector<Torrent> TransmissionClient::listTorrents() {
     std::vector<Torrent> result;
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
-                              "rateDownload","rateUpload","status","errorString"]})";
+                              "rateDownload","rateUpload","status","errorString",
+                              "addedDate"]})";
     std::string body = call("torrent-get", args);
     if (body.empty()) return result;
 
@@ -126,6 +127,7 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
             tor.rateUpload = t.value("rateUpload", 0.0);
             tor.status = t.value("status", 0);
             tor.errorString = t.value("errorString", "");
+            tor.addedDate = t.value("addedDate", (int64_t)0);
             result.push_back(std::move(tor));
         }
     } catch (const std::exception& e) {

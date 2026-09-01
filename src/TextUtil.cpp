@@ -1,5 +1,7 @@
 #include "TextUtil.h"
 #include <vector>
+#include <cstdio>
+#include <ctime>
 
 std::string padOrTruncateUtf8(const std::string& s, size_t width) {
     std::vector<size_t> charStarts;
@@ -20,4 +22,28 @@ std::string padOrTruncateUtf8(const std::string& s, size_t width) {
         return result;
     }
     return s.substr(0, charStarts[width]);
+}
+
+std::string formatSize(int64_t bytes) {
+    static const char* units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    constexpr int unitCount = 6;
+    double value = static_cast<double>(bytes);
+    int unitIndex = 0;
+    while (value >= 1024.0 && unitIndex < unitCount - 1) {
+        value /= 1024.0;
+        unitIndex++;
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.1f%s", value, units[unitIndex]);
+    return buf;
+}
+
+std::string formatUnixTimestamp(int64_t unixSeconds) {
+    if (unixSeconds <= 0) return "";
+    std::time_t t = static_cast<std::time_t>(unixSeconds);
+    std::tm tmValue{};
+    localtime_r(&t, &tmValue);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tmValue);
+    return buf;
 }

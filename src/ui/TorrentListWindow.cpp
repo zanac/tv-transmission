@@ -16,11 +16,27 @@ namespace {
 // Column widths shared between the data row (getText), the header
 // (TorrentListHeader) and click detection (columnAt), so they stay
 // aligned by construction rather than by eyeballing them.
-constexpr int kNameW  = 30; // name column
-constexpr int kDoneW  = 6;  // "100.0%" in full
-constexpr int kSizeW  = 10; // "58670.0MB" in full
-constexpr int kDownW  = 14; // "  D:     0KB/s" in full (spaces included)
-constexpr int kUpW    = 13; // " U:     0KB/s" in full (space included)
+constexpr int kNameW   = 30; // name column
+constexpr int kDoneW   = 6;  // "100.0%" in full
+constexpr int kSizeW   = 10; // formatSize() output (adaptive unit), right-aligned
+constexpr int kDownW   = 14; // "  D:     0KB/s" in full (spaces included)
+constexpr int kUpW     = 13; // " U:     0KB/s" in full (space included)
+constexpr int kAddedW  = 17; // "YYYY-MM-DD HH:MM" (16 chars) + 1
+constexpr int kStatusW = 23; // longest status string across both languages + 1
+                              // ("In attesa di verifica"/"In attesa di download" = 22 chars)
+
+// Right-aligns a (plain ASCII) string to exactly `width` columns,
+// padding with leading spaces. Unlike padOrTruncateUtf8 (used for the
+// name column, left-aligned), this never truncates: a still-too-long
+// string is left as-is rather than having digits silently cut off,
+// which would turn a large-but-correct number into a smaller, wrong
+// one. All values placed through this (formatSize()'s output,
+// timestamps) are kept short by construction, so overflow here would
+// only happen at values far beyond anything a real torrent produces.
+std::string rightAlign(const std::string& s, size_t width) {
+    if (s.size() >= width) return s;
+    return std::string(width - s.size(), ' ') + s;
+}
 
 // [start,end) range of terminal columns occupied by each column of the
 // header/row, in the same order as SortColumn. Built once from the
@@ -35,7 +51,9 @@ std::vector<ColumnRange> columnRanges() {
     ranges.push_back({pos, pos + kDoneW, SortColumn::Done}); pos += kDoneW + 1; // +1 separator space
     ranges.push_back({pos, pos + kSizeW, SortColumn::Size}); pos += kSizeW;     // no space before Down
     ranges.push_back({pos, pos + kDownW, SortColumn::Down}); pos += kDownW;     // no space before Up
-    ranges.push_back({pos, pos + kUpW,   SortColumn::Up});
+    ranges.push_back({pos, pos + kUpW,   SortColumn::Up});   pos += kUpW + 1;   // +1 separator space
+    ranges.push_back({pos, pos + kAddedW, SortColumn::Added}); pos += kAddedW + 1; // +1 separator space
+    ranges.push_back({pos, pos + kStatusW, SortColumn::Status});
     return ranges;
 }
 
@@ -50,11 +68,13 @@ int columnAt(int x) {
 // Base label for each column, indexed by SortColumn.
 const char* baseLabel(SortColumn col) {
     switch (col) {
-        case SortColumn::Name: return tr(Str::HeaderName);
-        case SortColumn::Done: return tr(Str::HeaderDone);
-        case SortColumn::Size: return tr(Str::HeaderSize);
-        case SortColumn::Down: return tr(Str::HeaderDownload);
-        case SortColumn::Up:   return tr(Str::HeaderUpload);
+        case SortColumn::Name:   return tr(Str::HeaderName);
+        case SortColumn::Done:   return tr(Str::HeaderDone);
+        case SortColumn::Size:   return tr(Str::HeaderSize);
+        case SortColumn::Down:   return tr(Str::HeaderDownload);
+        case SortColumn::Up:     return tr(Str::HeaderUpload);
+        case SortColumn::Added:  return tr(Str::HeaderAdded);
+        case SortColumn::Status: return tr(Str::HeaderStatus);
     }
     return "";
 }
@@ -71,13 +91,15 @@ std::string buildHeaderText(SortColumn sortColumn, bool ascending) {
         if (col == sortColumn) s += ascending ? " ^" : " v";
         return s;
     };
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "%-*s %*s %*s%*s%*s",
+    char buf[192];
+    std::snprintf(buf, sizeof(buf), "%-*s %*s %*s%*s%*s %*s %*s",
         kNameW, label(SortColumn::Name).c_str(),
         kDoneW, label(SortColumn::Done).c_str(),
         kSizeW, label(SortColumn::Size).c_str(),
         kDownW, label(SortColumn::Down).c_str(),
-        kUpW,   label(SortColumn::Up).c_str());
+        kUpW,   label(SortColumn::Up).c_str(),
+        kAddedW, label(SortColumn::Added).c_str(),
+        kStatusW, label(SortColumn::Status).c_str());
     return buf;
 }
 
@@ -171,11 +193,13 @@ void TorrentListViewer::applySort() {
             const Torrent& x = sortAscending_ ? a : b;
             const Torrent& y = sortAscending_ ? b : a;
             switch (sortColumn_) {
-                case SortColumn::Name: return x.name < y.name;
-                case SortColumn::Done: return x.percentDone < y.percentDone;
-                case SortColumn::Size: return x.sizeBytes < y.sizeBytes;
-                case SortColumn::Down: return x.rateDownload < y.rateDownload;
-                case SortColumn::Up:   return x.rateUpload < y.rateUpload;
+                case SortColumn::Name:   return x.name < y.name;
+                case SortColumn::Done:   return x.percentDone < y.percentDone;
+                case SortColumn::Size:   return x.sizeBytes < y.sizeBytes;
+                case SortColumn::Down:   return x.rateDownload < y.rateDownload;
+                case SortColumn::Up:     return x.rateUpload < y.rateUpload;
+                case SortColumn::Added:  return x.addedDate < y.addedDate;
+                case SortColumn::Status: return x.status < y.status;
             }
             return false;
         });
@@ -187,12 +211,15 @@ void TorrentListViewer::getText(char* dest, short item, short maxLen) {
         return;
     }
     const Torrent& t = torrents_[item];
-    double mb = t.sizeBytes / (1024.0 * 1024.0);
     std::string name = padOrTruncateUtf8(t.name, kNameW);
+    std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
+    std::string addedStr = rightAlign(formatUnixTimestamp(t.addedDate), kAddedW);
+    std::string statusStr = padOrTruncateUtf8(trTorrentStatus(t.status), kStatusW);
     std::snprintf(dest, maxLen,
-        "%s %5.1f%% %8.1fMB  D:%6.0fKB/s U:%6.0fKB/s",
-        name.c_str(), t.percentDone * 100.0, mb,
-        t.rateDownload / 1024.0, t.rateUpload / 1024.0);
+        "%s %5.1f%% %s  D:%6.0fKB/s U:%6.0fKB/s %s %s",
+        name.c_str(), t.percentDone * 100.0, sizeStr.c_str(),
+        t.rateDownload / 1024.0, t.rateUpload / 1024.0,
+        addedStr.c_str(), statusStr.c_str());
 }
 
 TColorAttr TorrentListViewer::mapColor(uchar index) {
