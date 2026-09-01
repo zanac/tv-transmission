@@ -139,7 +139,14 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     // are separate Transmission flags — see the comment on
     // Torrent::honorsSessionLimits in Torrent.h for why one can't be
     // inferred from the other.
-    win->limitCheckboxes = new TCheckBoxes(TRect(2, 13, 30, 16),
+    //
+    // Width: TCluster draws each item as "[ ] " (occupying 5 columns)
+    // followed by its label (see drawMultiBox() in tvision's
+    // tcluster.cpp) — the rect must be at least 5 + the longest label's
+    // length, or the label gets silently cut off. "Honor global speed
+    // limits" is 25 characters, so 5+25=30 is the bare minimum; this
+    // uses 36 for some breathing room.
+    win->limitCheckboxes = new TCheckBoxes(TRect(2, 13, 38, 16),
         new TSItem(tr(Str::CheckLimitDownload),
         new TSItem(tr(Str::CheckLimitUpload),
         new TSItem(tr(Str::CheckHonorGlobalLimits), nullptr))));
@@ -148,19 +155,19 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->limitCheckboxes->setData(&checked);
     win->insert(win->limitCheckboxes);
 
-    win->downloadLimitField = new TInputLine(TRect(32, 13, 42, 14), 8);
+    win->downloadLimitField = new TInputLine(TRect(40, 13, 50, 14), 8);
     std::vector<char> downloadBuf(9, 0);
     std::snprintf(downloadBuf.data(), downloadBuf.size(), "%d", t.downloadLimit);
     win->downloadLimitField->setData(downloadBuf.data());
     win->insert(win->downloadLimitField);
-    win->insert(new TStaticText(TRect(43, 13, 48, 14), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(51, 13, 56, 14), tr(Str::UnitKBs)));
 
-    win->uploadLimitField = new TInputLine(TRect(32, 14, 42, 15), 8);
+    win->uploadLimitField = new TInputLine(TRect(40, 14, 50, 15), 8);
     std::vector<char> uploadBuf(9, 0);
     std::snprintf(uploadBuf.data(), uploadBuf.size(), "%d", t.uploadLimit);
     win->uploadLimitField->setData(uploadBuf.data());
     win->insert(win->uploadLimitField);
-    win->insert(new TStaticText(TRect(43, 14, 48, 15), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(51, 14, 56, 15), tr(Str::UnitKBs)));
 
     win->insert(new TButton(TRect(14, 17, 24, 19), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
     win->insert(new TButton(TRect(28, 17, 38, 19), tr(Str::ButtonClose), cmCloseDetails, bfNormal));

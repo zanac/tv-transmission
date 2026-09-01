@@ -58,6 +58,8 @@ HTTP and nlohmann/json for parsing.
   written straight to the Transmission daemon itself (`session-get` /
   `session-set`), not stored in this app's own settings file; these are
   the defaults any torrent without its own override (above) follows
+- Fixed colors (yellow text on blue background), matching the torrent
+  details window
 
 **Window management**
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
@@ -202,6 +204,16 @@ src/
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**"Honor global speed limits" label cut off in the details window.**
+`TCluster` (the base of `TCheckBoxes`) draws each item as a 5-column
+"[ ] " prefix followed by the label, so the rect needs to be at least 5
+plus the longest label's length — the checkbox rect was sized for the
+two short labels ("Limit download"/"Limit upload") from before this
+third, longer checkbox existed, and was never widened when it was
+added, so "Honor global speed limits" got cut to "Honor global speed
+limi". Fixed by widening the rect (with room to spare) and moving the
+KB/s input fields further right to match.
 
 **"Honor global speed limits" wasn't user-controllable.** The first fix
 for the per-torrent override always sent Transmission's
