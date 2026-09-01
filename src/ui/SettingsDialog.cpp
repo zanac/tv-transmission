@@ -4,6 +4,8 @@
 #define Uses_TButton
 #define Uses_TStaticText
 #define Uses_TSItem
+#define Uses_TValidator
+#define Uses_TRangeValidator
 #include <tvision/tv.h>
 
 #include <cstdio>
@@ -38,8 +40,15 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
 
     fields.refreshInterval = addField(dlg, 2, tr(Str::LabelRefreshSeconds),
         std::to_string(current.refreshIntervalSeconds), 10);
+    // TRangeValidator filters non-digit keystrokes as they're typed (see
+    // isValidInput() in tvision's tvalidat.cpp) and blocks confirming the
+    // dialog with an out-of-range value (shows its own "Value not in the
+    // range X to Y" messageBox) — real validation, not just parsing
+    // whatever ends up in the field after the fact.
+    fields.refreshInterval->setValidator(new TRangeValidator(1, 86400)); // up to 24h
     fields.host = addField(dlg, 4, tr(Str::LabelHost), current.host, 128);
     fields.port = addField(dlg, 6, tr(Str::LabelPort), std::to_string(current.port), 10);
+    fields.port->setValidator(new TRangeValidator(1, 65535)); // valid TCP port range
     fields.user = addField(dlg, 8, tr(Str::LabelUser), current.user, 128);
     fields.password = addField(dlg, 10, tr(Str::LabelPassword), current.password, 128);
 
@@ -66,6 +75,7 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
     std::vector<char> downBuf(9, 0);
     std::snprintf(downBuf.data(), downBuf.size(), "%d", sessionLimits.downloadLimit);
     fields.globalDownloadLimit->setData(downBuf.data());
+    fields.globalDownloadLimit->setValidator(new TRangeValidator(0, 1000000)); // KB/s, ~1GB/s cap
     dlg->insert(fields.globalDownloadLimit);
     dlg->insert(new TStaticText(TRect(39, 17, 44, 18), tr(Str::UnitKBs)));
 
@@ -73,6 +83,7 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
     std::vector<char> upBuf(9, 0);
     std::snprintf(upBuf.data(), upBuf.size(), "%d", sessionLimits.uploadLimit);
     fields.globalUploadLimit->setData(upBuf.data());
+    fields.globalUploadLimit->setValidator(new TRangeValidator(0, 1000000));
     dlg->insert(fields.globalUploadLimit);
     dlg->insert(new TStaticText(TRect(39, 18, 44, 19), tr(Str::UnitKBs)));
 

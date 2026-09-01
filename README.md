@@ -59,6 +59,14 @@ HTTP and nlohmann/json for parsing.
   `session-set`), not stored in this app's own settings file; these are
   the defaults any torrent without its own override (above) follows
 
+**Input validation**
+- Every numeric field (refresh interval, RPC port, global and
+  per-torrent KB/s limits) uses tvision's `TRangeValidator`: non-digit
+  keystrokes are rejected as you type, and confirming with an
+  out-of-range value shows an error instead of silently accepting it.
+  Refresh interval: 1-86400 seconds; port: 1-65535; speed limits:
+  0-1,000,000 KB/s
+
 **Window management**
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
   dialog (Alt+0) listing every open window, letting you jump to one

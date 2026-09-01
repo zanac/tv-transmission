@@ -6,6 +6,8 @@
 #define Uses_TButton
 #define Uses_TSItem
 #define Uses_TEvent
+#define Uses_TValidator
+#define Uses_TRangeValidator
 #include <tvision/tv.h>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +47,14 @@ TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView titl
       torrentId_(torrentId), client_(client) {}
 
 void TorrentDetailsWindow::applySpeedLimits() {
+    // Unlike a modal dialog closed via execView() (where an attached
+    // TValidator blocks cmOK automatically), this window's "Apply"
+    // button is handled directly by us — so the validator's range check
+    // needs to be triggered explicitly here. valid(cmOK) both runs it
+    // and shows the validator's own error messageBox if it fails.
+    if (!downloadLimitField->valid(cmOK) || !uploadLimitField->valid(cmOK))
+        return;
+
     ushort checked = 0;
     limitCheckboxes->getData(&checked);
     bool downloadLimited = (checked & 0x01) != 0;
@@ -148,6 +158,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::vector<char> downloadBuf(9, 0);
     std::snprintf(downloadBuf.data(), downloadBuf.size(), "%d", t.downloadLimit);
     win->downloadLimitField->setData(downloadBuf.data());
+    win->downloadLimitField->setValidator(new TRangeValidator(0, 1000000)); // KB/s, ~1GB/s cap
     win->insert(win->downloadLimitField);
     win->insert(new TStaticText(TRect(51, 13, 56, 14), tr(Str::UnitKBs)));
 
@@ -155,6 +166,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::vector<char> uploadBuf(9, 0);
     std::snprintf(uploadBuf.data(), uploadBuf.size(), "%d", t.uploadLimit);
     win->uploadLimitField->setData(uploadBuf.data());
+    win->uploadLimitField->setValidator(new TRangeValidator(0, 1000000));
     win->insert(win->uploadLimitField);
     win->insert(new TStaticText(TRect(51, 14, 56, 15), tr(Str::UnitKBs)));
 
