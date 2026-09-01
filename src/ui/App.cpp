@@ -81,7 +81,13 @@ void App::newTorrentListWindow() {
     // TorrentListWindow's constructor): this is the main window, meant
     // to always stay maximized.
     TRect r = deskTop->getExtent();
-    listWindow_ = new TorrentListWindow(r, client_);
+    listWindow_ = new TorrentListWindow(r, client_,
+        settings_.sortColumn, settings_.sortAscending,
+        [this](SortColumn col, bool asc) {
+            settings_.sortColumn = col;
+            settings_.sortAscending = asc;
+            saveSettings(settings_);
+        });
     deskTop->insert(listWindow_);
 }
 
@@ -98,8 +104,13 @@ void App::showAddTorrentDialog() {
 }
 
 void App::showSettingsDialog() {
+    // Live RPC call: the global speed limits aren't part of settings_ /
+    // settings.json, they live on the Transmission daemon itself (see
+    // TransmissionClient::getSessionLimits()).
+    SessionLimits sessionLimits = client_.getSessionLimits();
+
     SettingsDialogFields fields;
-    if (auto* dlg = createSettingsDialog(settings_, fields)) {
+    if (auto* dlg = createSettingsDialog(settings_, sessionLimits, fields)) {
         if (execView(dlg) == cmOK) {
             settings_ = settingsDialogResult(fields, settings_);
             applySettings();
@@ -112,6 +123,8 @@ void App::showSettingsDialog() {
             // restarted — but from this point on restarting *works*:
             // the config file now holds the chosen language.
             if (listWindow_) listWindow_->retranslate();
+
+            client_.setSessionLimits(settingsDialogSessionLimits(fields));
         }
         destroy(dlg);
     }

@@ -3,6 +3,17 @@
 #include <vector>
 #include "Torrent.h"
 
+// Global (session-wide) speed limit state, as reported/set by
+// session-get / session-set. When *Limited is false, that direction is
+// unlimited (or governed only by per-torrent overrides, see
+// Torrent::downloadLimited/uploadLimited); *Limit is in KB/s.
+struct SessionLimits {
+    bool downloadLimited = false;
+    int downloadLimit = 0;  // KB/s
+    bool uploadLimited = false;
+    int uploadLimit = 0;    // KB/s
+};
+
 // Minimal client for Transmission's JSON RPC (transmission-daemon).
 // Handles the session handshake (X-Transmission-Session-Id header) and
 // the base methods: torrent-get, torrent-add, torrent-start, torrent-stop.
@@ -23,6 +34,20 @@ public:
     bool startTorrent(int id);
     bool stopTorrent(int id);
     bool removeTorrent(int id, bool deleteLocalData);
+
+    // Sets (or clears) a per-torrent speed limit override. Passing
+    // downloadLimited=false/uploadLimited=false switches that direction
+    // back to following the session's global limit; the corresponding
+    // *LimitKBs value is only sent/meaningful when its *Limited flag is
+    // true.
+    bool setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
+                                bool uploadLimited, int uploadLimitKBs);
+
+    // Reads the session's global speed limits (session-get).
+    SessionLimits getSessionLimits();
+
+    // Sets the session's global speed limits (session-set).
+    bool setSessionLimits(const SessionLimits& limits);
 
     // Reconfigures endpoint/credentials (e.g. from the settings window).
     // Invalidates the current session: it will be renegotiated on the

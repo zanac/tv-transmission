@@ -30,8 +30,9 @@ TInputLine* addField(TDialog* dlg, int y, const char* label,
 
 } // namespace
 
-TDialog* createSettingsDialog(const AppSettings& current, SettingsDialogFields& fields) {
-    TRect r(0, 0, 60, 18);
+TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& sessionLimits,
+                               SettingsDialogFields& fields) {
+    TRect r(0, 0, 60, 23);
     auto* dlg = new TDialog(r, tr(Str::DialogTitleSettings));
     dlg->options |= ofCentered;
 
@@ -50,8 +51,33 @@ TDialog* createSettingsDialog(const AppSettings& current, SettingsDialogFields& 
     fields.language->setData(&selectedLanguage);
     dlg->insert(fields.language);
 
-    dlg->insert(new TButton(TRect(20, 15, 30, 17), tr(Str::ButtonOK), cmOK, bfDefault));
-    dlg->insert(new TButton(TRect(32, 15, 42, 17), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    // --- Global (session-wide) speed limits ---
+    dlg->insert(new TStaticText(TRect(2, 16, 50, 17), tr(Str::LabelGlobalSpeedSection)));
+
+    fields.globalLimitCheckboxes = new TCheckBoxes(TRect(2, 17, 26, 19),
+        new TSItem(tr(Str::CheckGlobalLimitDownload),
+        new TSItem(tr(Str::CheckGlobalLimitUpload), nullptr)));
+    ushort globalChecked = (sessionLimits.downloadLimited ? 0x01 : 0) |
+                           (sessionLimits.uploadLimited ? 0x02 : 0);
+    fields.globalLimitCheckboxes->setData(&globalChecked);
+    dlg->insert(fields.globalLimitCheckboxes);
+
+    fields.globalDownloadLimit = new TInputLine(TRect(28, 17, 38, 18), 8);
+    std::vector<char> downBuf(9, 0);
+    std::snprintf(downBuf.data(), downBuf.size(), "%d", sessionLimits.downloadLimit);
+    fields.globalDownloadLimit->setData(downBuf.data());
+    dlg->insert(fields.globalDownloadLimit);
+    dlg->insert(new TStaticText(TRect(39, 17, 44, 18), tr(Str::UnitKBs)));
+
+    fields.globalUploadLimit = new TInputLine(TRect(28, 18, 38, 19), 8);
+    std::vector<char> upBuf(9, 0);
+    std::snprintf(upBuf.data(), upBuf.size(), "%d", sessionLimits.uploadLimit);
+    fields.globalUploadLimit->setData(upBuf.data());
+    dlg->insert(fields.globalUploadLimit);
+    dlg->insert(new TStaticText(TRect(39, 18, 44, 19), tr(Str::UnitKBs)));
+
+    dlg->insert(new TButton(TRect(20, 20, 30, 22), tr(Str::ButtonOK), cmOK, bfDefault));
+    dlg->insert(new TButton(TRect(32, 20, 42, 22), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;
@@ -90,4 +116,24 @@ AppSettings settingsDialogResult(const SettingsDialogFields& fields, const AppSe
     }
 
     return result;
+}
+
+SessionLimits settingsDialogSessionLimits(const SettingsDialogFields& fields) {
+    SessionLimits limits;
+    if (fields.globalLimitCheckboxes) {
+        ushort checked = 0;
+        fields.globalLimitCheckboxes->getData(&checked);
+        limits.downloadLimited = (checked & 0x01) != 0;
+        limits.uploadLimited = (checked & 0x02) != 0;
+    }
+    char buf[32];
+    if (fields.globalDownloadLimit) {
+        fields.globalDownloadLimit->getData(buf);
+        limits.downloadLimit = std::atoi(buf);
+    }
+    if (fields.globalUploadLimit) {
+        fields.globalUploadLimit->getData(buf);
+        limits.uploadLimit = std::atoi(buf);
+    }
+    return limits;
 }

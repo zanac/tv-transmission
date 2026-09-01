@@ -17,13 +17,23 @@ HTTP and nlohmann/json for parsing.
 - Columns: name, % done, size, download rate, upload rate, date added,
   status
 - Click a column header to sort by it; click again to reverse the
-  direction (a `^`/`v` indicator shows the active column and direction)
+  direction (a `^`/`v` indicator shows the active column and direction);
+  the chosen column and direction are saved and restored on the next launch
 - Fixed colors (white text on blue background; the current row is black
   on white) regardless of the terminal's overall color scheme
 - Double-click a row to open a details window for that torrent (name,
-  size, %, rates, date added, status, error if any) — fixed colors here
-  too (yellow text on black); these are ordinary, non-modal windows, so
-  you can have several open at once
+  size, %, rates, date added, status, error if any, plus a speed-limit
+  override — see below) — fixed colors here too (yellow text on black);
+  these are ordinary, non-modal windows, so you can have several open
+  at once
+
+**Per-torrent speed limit override**
+- In a torrent's details window: two checkboxes ("Limit download" /
+  "Limit upload"), each with a KB/s field. Checked applies that limit to
+  just this torrent; unchecked makes it follow the session's global
+  limit again (see below)
+- "Apply" sends the change immediately (`torrent-set` RPC); "Close"
+  closes the window without changing anything
 
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
@@ -34,8 +44,12 @@ HTTP and nlohmann/json for parsing.
 
 **Settings (F9)**
 - Refresh interval (seconds), host, port, RPC username/password,
-  interface language — applied immediately and saved to disk
-- See "Configuration file" below for where and how
+  interface language — applied immediately and saved to disk (see
+  "Configuration file" below for where and how)
+- Global (session-wide) download/upload speed limits — read from and
+  written straight to the Transmission daemon itself (`session-get` /
+  `session-set`), not stored in this app's own settings file; these are
+  the defaults any torrent without its own override (above) follows
 
 **Window management**
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
@@ -85,8 +99,8 @@ via the RPC client's last-error state, and exits non-zero on failure.
 
 ## Configuration file
 
-Settings (host, port, user, password, refresh interval, language) are
-stored in:
+Settings (host, port, user, password, refresh interval, language, and
+the torrent list's last sort column/direction) are stored in:
 
 ```
 $XDG_CONFIG_HOME/tv-transmission/settings.json
@@ -94,8 +108,14 @@ $XDG_CONFIG_HOME/tv-transmission/settings.json
 
 or `~/.config/tv-transmission/settings.json` if `XDG_CONFIG_HOME` isn't
 set. The file is read at startup and rewritten every time you confirm
-the Settings dialog (or, from the CLI, whenever you'd change them from
-the TUI — the CLI itself is read-only with respect to this file).
+the Settings dialog, or click a column header to sort by it (or, from
+the CLI, whenever you'd change them from the TUI — the CLI itself is
+read-only with respect to this file).
+
+Global and per-torrent speed limits are **not** in this file — they
+live on the Transmission daemon itself and are read/written through the
+RPC (`session-get`/`session-set`, `torrent-set`), so they're shared with
+any other client talking to the same daemon.
 
 **About the password:** the file is written with `0600` permissions
 (only the current user can read it), but the RPC password is stored in
@@ -167,6 +187,9 @@ src/
 - Changing the language relabels every window/dialog immediately
   *except* the menu bar and status bar, which only pick up the new
   language on the next app restart (see "Internationalization" above).
+- Speed limits (global and per-torrent) are only exposed in the TUI so
+  far — the CLI has no equivalent of the Settings dialog's or details
+  window's speed-limit controls.
 
 ## Fixed bugs
 

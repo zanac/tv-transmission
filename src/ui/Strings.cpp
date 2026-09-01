@@ -87,6 +87,28 @@ const char* tr(Str id) {
         case Str::LabelId:        return "ID: %d";
         case Str::LabelAdded:     return it ? "Aggiunto: %s"        : "Added: %s";
 
+        case Str::LabelSpeedLimitSection:
+            return it ? "Limite di velocità per questo torrent:" : "Speed limit for this torrent:";
+        case Str::CheckLimitDownload: return it ? "Limita download" : "Limit download";
+        case Str::CheckLimitUpload:   return it ? "Limita upload"   : "Limit upload";
+        case Str::UnitKBs:            return "KB/s";
+        case Str::ButtonApply:        return it ? "Applica" : "Apply";
+        // Distinct from MenuWindowClose on purpose: same reason as
+        // DialogTitleWindowList above (menu labels carry ~x~ hotkey
+        // markup that a TButton here doesn't need and would show as
+        // literal tildes if reused verbatim... actually TButton DOES
+        // interpret ~x~, but keeping a separate plain string here avoids
+        // any accidental coupling between this window's button and the
+        // Window menu's Close item, which apply to different things
+        // (this torrent's window vs. "whichever window is active").
+        case Str::ButtonClose:        return it ? "Chiudi" : "Close";
+
+        case Str::LabelGlobalSpeedSection:
+            return it ? "Limite di velocità globale (tutti i torrent):"
+                      : "Global speed limit (all torrents):";
+        case Str::CheckGlobalLimitDownload: return it ? "Limita download" : "Limit download";
+        case Str::CheckGlobalLimitUpload:   return it ? "Limita upload"   : "Limit upload";
+
         case Str::TorrentStatusStopped:      return it ? "Fermo"                    : "Stopped";
         case Str::TorrentStatusCheckWait:    return it ? "In attesa di verifica"     : "Queued for check";
         case Str::TorrentStatusChecking:     return it ? "Verifica in corso"         : "Checking";

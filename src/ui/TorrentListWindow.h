@@ -6,20 +6,22 @@
 #define Uses_TEvent
 #include <tvision/tv.h>
 
+#include <functional>
 #include <vector>
+#include "../AppSettings.h"
 #include "../rpc/TransmissionClient.h"
 #include "../rpc/Torrent.h"
 
-// Column used to sort the list; the numeric value matches the column
-// order in each row (see kNameW/kDoneW/etc. and buildHeaderText() in
-// TorrentListWindow.cpp) — also used to work out which header column
-// was clicked.
-enum class SortColumn { Name = 0, Done = 1, Size = 2, Down = 3, Up = 4, Added = 5, Status = 6 };
+// Called whenever the user changes the sort column/direction (header
+// click), so the caller can persist it (see App::newTorrentListWindow()).
+using SortChangedCallback = std::function<void(SortColumn, bool)>;
 
 // TListViewer that renders one row per torrent: name, %, down/up rate.
 class TorrentListViewer : public TListViewer {
 public:
-    TorrentListViewer(const TRect& r, TScrollBar* vScrollBar);
+    TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
+                       SortColumn initialSort, bool initialAscending,
+                       SortChangedCallback onSortChanged);
 
     void setTorrents(std::vector<Torrent> torrents);
     const Torrent* selectedTorrent() const;
@@ -30,7 +32,8 @@ public:
     // Header column click: if it's already the active sort column, flips
     // direction; otherwise sorts by the new column (ascending). The
     // criterion is re-applied automatically on every refresh (see
-    // setTorrents()), so it stays in effect over time.
+    // setTorrents()), so it stays in effect over time. Also invokes
+    // onSortChanged so it can be persisted.
     void toggleSort(SortColumn column);
     SortColumn sortColumn() const { return sortColumn_; }
     bool sortAscending() const { return sortAscending_; }
@@ -49,13 +52,16 @@ private:
     void applySort(); // re-sorts torrents_ according to sortColumn_/sortAscending_
 
     std::vector<Torrent> torrents_;
-    SortColumn sortColumn_ = SortColumn::Name;
-    bool sortAscending_ = true;
+    SortColumn sortColumn_;
+    bool sortAscending_;
+    SortChangedCallback onSortChanged_;
 };
 
 class TorrentListWindow : public TWindow {
 public:
-    TorrentListWindow(const TRect& bounds, TransmissionClient& client);
+    TorrentListWindow(const TRect& bounds, TransmissionClient& client,
+                       SortColumn initialSort, bool initialAscending,
+                       SortChangedCallback onSortChanged);
 
     void handleEvent(TEvent& event) override; // catches the double-click
 

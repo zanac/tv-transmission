@@ -50,6 +50,9 @@ AppSettings loadSettings() {
         settings.password = j.value("password", settings.password);
         int lang = j.value("language", static_cast<int>(settings.language));
         settings.language = static_cast<Language>(lang);
+        int sortCol = j.value("sortColumn", static_cast<int>(settings.sortColumn));
+        settings.sortColumn = static_cast<SortColumn>(sortCol);
+        settings.sortAscending = j.value("sortAscending", settings.sortAscending);
     } catch (const std::exception&) {
         // Corrupted/malformed file: better to fall back to defaults than
         // to block the app from starting.
@@ -69,6 +72,8 @@ bool saveSettings(const AppSettings& settings) {
     j["user"] = settings.user;
     j["password"] = settings.password;
     j["language"] = static_cast<int>(settings.language);
+    j["sortColumn"] = static_cast<int>(settings.sortColumn);
+    j["sortAscending"] = settings.sortAscending;
 
     std::string path = configFilePath();
     std::ofstream out(path, std::ios::trunc);

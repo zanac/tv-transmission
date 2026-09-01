@@ -3,8 +3,10 @@
 #define Uses_TDialog
 #define Uses_TInputLine
 #define Uses_TRadioButtons
+#define Uses_TCheckBoxes
 #include <tvision/tv.h>
 #include "../AppSettings.h"
+#include "../rpc/TransmissionClient.h"
 
 // Direct pointers to the Settings dialog's input fields.
 //
@@ -26,13 +28,26 @@ struct SettingsDialogFields {
     TInputLine* user = nullptr;
     TInputLine* password = nullptr;
     TRadioButtons* language = nullptr; // index 0 = English, 1 = Italian
+
+    // Global (session-wide) speed limits, live on the Transmission
+    // daemon rather than in our own settings.json — see
+    // TransmissionClient::getSessionLimits()/setSessionLimits().
+    TCheckBoxes* globalLimitCheckboxes = nullptr; // bit 0 = download, bit 1 = upload
+    TInputLine* globalDownloadLimit = nullptr;
+    TInputLine* globalUploadLimit = nullptr;
 };
 
-// Creates the "Settings" dialog pre-filled with `current`'s values, and
+// Creates the "Settings" dialog pre-filled with `current`'s values and
+// `sessionLimits` (fetched via TransmissionClient::getSessionLimits()
+// before calling this — a live RPC call, not part of `current`), and
 // populates `fields` with pointers to each individual field.
-TDialog* createSettingsDialog(const AppSettings& current, SettingsDialogFields& fields);
+TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& sessionLimits,
+                               SettingsDialogFields& fields);
 
 // Call after execView() == cmOK, BEFORE destroy(dialog) (otherwise the
 // pointers in `fields` are no longer valid). If the refresh interval or
 // port aren't numeric (or are <= 0), keeps the previous value.
 AppSettings settingsDialogResult(const SettingsDialogFields& fields, const AppSettings& current);
+
+// Same idea, for the global speed limit fields.
+SessionLimits settingsDialogSessionLimits(const SettingsDialogFields& fields);

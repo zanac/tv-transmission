@@ -14,4 +14,13 @@ struct Torrent {
     int status = 0;             // see the RPC's tr_torrent_activity enum
     std::string errorString;
     int64_t addedDate = 0;      // unix timestamp (seconds), RPC field "addedDate"
+
+    // Per-torrent speed limit override. When *Limited is false, the
+    // torrent uses the session's default/global limit (see
+    // TransmissionClient::getSessionLimits()); *Limit is in KB/s and is
+    // only meaningful while the matching *Limited flag is true.
+    bool downloadLimited = false;
+    int downloadLimit = 0;      // KB/s
+    bool uploadLimited = false;
+    int uploadLimit = 0;        // KB/s
 };

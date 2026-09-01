@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #define Uses_TProgram
@@ -144,8 +145,12 @@ private:
     TorrentListViewer* listViewer_;
 };
 
-TorrentListViewer::TorrentListViewer(const TRect& r, TScrollBar* vScrollBar)
-    : TListViewer(r, 1, nullptr, vScrollBar) {
+TorrentListViewer::TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
+                                      SortColumn initialSort, bool initialAscending,
+                                      SortChangedCallback onSortChanged)
+    : TListViewer(r, 1, nullptr, vScrollBar),
+      sortColumn_(initialSort), sortAscending_(initialAscending),
+      onSortChanged_(std::move(onSortChanged)) {
     setRange(0);
 }
 
@@ -180,6 +185,7 @@ void TorrentListViewer::toggleSort(SortColumn column) {
     else { sortColumn_ = column; sortAscending_ = true; }
     applySort();
     drawView();
+    if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
 }
 
 void TorrentListViewer::applySort() {
@@ -236,7 +242,9 @@ TColorAttr TorrentListViewer::mapColor(uchar index) {
     }
 }
 
-TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client)
+TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
+                                      SortColumn initialSort, bool initialAscending,
+                                      SortChangedCallback onSortChanged)
     : TWindowInit(&TWindow::initFrame),
       TWindow(bounds, tr(Str::WindowTitleTorrentList), wnNoNumber),
       client_(client) {
@@ -268,7 +276,8 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
     TScrollBar* vScroll = new TScrollBar(scrollRect);
     insert(vScroll);
 
-    listViewer_ = new TorrentListViewer(listRect, vScroll);
+    listViewer_ = new TorrentListViewer(listRect, vScroll, initialSort, initialAscending,
+                                         std::move(onSortChanged));
     insert(listViewer_);
 
     insert(new TorrentListHeader(headerRect, listViewer_));
@@ -300,7 +309,7 @@ void TorrentListWindow::handleEvent(TEvent& event) {
 
 void TorrentListWindow::openDetailsForSelected() {
     if (const Torrent* t = listViewer_->selectedTorrent()) {
-        if (auto* win = createTorrentDetailsWindow(*t))
+        if (auto* win = createTorrentDetailsWindow(*t, client_))
             TProgram::application->insertWindow(win);
     }
 }

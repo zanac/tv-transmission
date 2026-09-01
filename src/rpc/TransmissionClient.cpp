@@ -111,7 +111,8 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
     std::vector<Torrent> result;
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
                               "rateDownload","rateUpload","status","errorString",
-                              "addedDate"]})";
+                              "addedDate","downloadLimited","downloadLimit",
+                              "uploadLimited","uploadLimit"]})";
     std::string body = call("torrent-get", args);
     if (body.empty()) return result;
 
@@ -128,6 +129,10 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
             tor.status = t.value("status", 0);
             tor.errorString = t.value("errorString", "");
             tor.addedDate = t.value("addedDate", (int64_t)0);
+            tor.downloadLimited = t.value("downloadLimited", false);
+            tor.downloadLimit = t.value("downloadLimit", 0);
+            tor.uploadLimited = t.value("uploadLimited", false);
+            tor.uploadLimit = t.value("uploadLimit", 0);
             result.push_back(std::move(tor));
         }
     } catch (const std::exception& e) {
@@ -173,4 +178,43 @@ void TransmissionClient::setCredentials(std::string user, std::string password) 
     user_ = std::move(user);
     password_ = std::move(password);
     sessionId_.clear();
+}
+
+bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
+                                                bool uploadLimited, int uploadLimitKBs) {
+    json args = {
+        {"ids", json::array({id})},
+        {"downloadLimited", downloadLimited},
+        {"downloadLimit", downloadLimitKBs},
+        {"uploadLimited", uploadLimited},
+        {"uploadLimit", uploadLimitKBs},
+    };
+    return !call("torrent-set", args.dump()).empty();
+}
+
+SessionLimits TransmissionClient::getSessionLimits() {
+    SessionLimits limits;
+    std::string body = call("session-get", "{}");
+    if (body.empty()) return limits;
+    try {
+        json j = json::parse(body);
+        auto& a = j["arguments"];
+        limits.downloadLimited = a.value("speed-limit-down-enabled", false);
+        limits.downloadLimit = a.value("speed-limit-down", 0);
+        limits.uploadLimited = a.value("speed-limit-up-enabled", false);
+        limits.uploadLimit = a.value("speed-limit-up", 0);
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+    }
+    return limits;
+}
+
+bool TransmissionClient::setSessionLimits(const SessionLimits& limits) {
+    json args = {
+        {"speed-limit-down-enabled", limits.downloadLimited},
+        {"speed-limit-down", limits.downloadLimit},
+        {"speed-limit-up-enabled", limits.uploadLimited},
+        {"speed-limit-up", limits.uploadLimit},
+    };
+    return !call("session-set", args.dump()).empty();
 }

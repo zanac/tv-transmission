@@ -33,6 +33,10 @@ enum class Str {
     WindowTitleDetails,
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,
     LabelStatus, LabelError, LabelId, LabelAdded,
+    LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
+    ButtonApply, ButtonClose,
+
+    LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,
 
     TorrentStatusStopped, TorrentStatusCheckWait, TorrentStatusChecking,
     TorrentStatusDownloadWait, TorrentStatusDownloading, TorrentStatusSeedWait,
