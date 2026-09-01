@@ -12,22 +12,6 @@
 
 namespace {
 
-// Same fixed-color technique as TorrentDetailsWindow (see the comment
-// on TorrentDetailsWindow::mapColor() in TorrentDetailsWindow.cpp): the
-// user found the default tvision dialog palette (blue/cyan/green mix)
-// inconsistent with the details window's blue-background/yellow-text
-// look and asked for this dialog to match it.
-class ThemedSettingsDialog : public TDialog {
-public:
-    ThemedSettingsDialog(const TRect& r, TStringView title)
-        : TWindowInit(&TDialog::initFrame), TDialog(r, title) {}
-
-    TColorAttr mapColor(uchar index) override {
-        (void)index;
-        return TColorAttr(0x1E); // fg=yellow(0xE), bg=blue(0x1)
-    }
-};
-
 TInputLine* addField(TDialog* dlg, int y, const char* label,
                       const std::string& initialValue, int maxLen) {
     dlg->insert(new TStaticText(TRect(2, y, 24, y + 1), label));
@@ -49,7 +33,7 @@ TInputLine* addField(TDialog* dlg, int y, const char* label,
 TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& sessionLimits,
                                SettingsDialogFields& fields) {
     TRect r(0, 0, 60, 23);
-    auto* dlg = new ThemedSettingsDialog(r, tr(Str::DialogTitleSettings));
+    auto* dlg = new TDialog(r, tr(Str::DialogTitleSettings));
     dlg->options |= ofCentered;
 
     fields.refreshInterval = addField(dlg, 2, tr(Str::LabelRefreshSeconds),

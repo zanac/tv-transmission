@@ -44,17 +44,6 @@ TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView titl
       TWindow(bounds, title, number),
       torrentId_(torrentId), client_(client) {}
 
-TColorAttr TorrentDetailsWindow::mapColor(uchar index) {
-    // Same technique as TorrentListViewer::mapColor() (see the comment
-    // there): bypasses the palette/owner-chain lookup entirely, so
-    // every color request — from this window's own frame as well as
-    // from its TStaticText children, whose own palette resolution ends
-    // up calling this via owner->mapColor() — gets the same fixed
-    // color, regardless of the index tvision asked for.
-    (void)index;
-    return TColorAttr(0x1E); // fg=yellow(0xE), bg=blue(0x1)
-}
-
 void TorrentDetailsWindow::applySpeedLimits() {
     ushort checked = 0;
     limitCheckboxes->getData(&checked);

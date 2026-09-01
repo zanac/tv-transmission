@@ -24,11 +24,11 @@ HTTP and nlohmann/json for parsing.
 - Double-click a row to open a details window for that torrent — window
   title includes the start of the torrent's name, so several open ones
   are distinguishable at a glance; name, size, %, rates, date added,
-  status, error if any, plus a speed-limit override — see below (fixed
-  colors here too: yellow text on blue background); these are ordinary,
-  non-modal windows, so you can have several open at once, and
-  double-clicking a torrent that already has one open brings it to the
-  front instead of opening a duplicate
+  status, error if any, plus a speed-limit override — see below; these
+  are ordinary, non-modal windows using tvision's default palette (same
+  look as the Settings dialog), so you can have several open at once,
+  and double-clicking a torrent that already has one open brings it to
+  the front instead of opening a duplicate
 
 **Per-torrent speed limit override**
 - In a torrent's details window, three independent checkboxes:
@@ -58,8 +58,6 @@ HTTP and nlohmann/json for parsing.
   written straight to the Transmission daemon itself (`session-get` /
   `session-set`), not stored in this app's own settings file; these are
   the defaults any torrent without its own override (above) follows
-- Fixed colors (yellow text on blue background), matching the torrent
-  details window
 
 **Window management**
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
@@ -204,6 +202,17 @@ src/
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Details window and Settings dialog colors, reverted.** These went
+through a few iterations: the details window got fixed yellow-on-black
+colors, then yellow-on-blue; the Settings dialog got the same
+yellow-on-blue applied to match it. In the end, all-yellow-on-blue for
+every element (including buttons and checkboxes, which lose their
+distinct look when every color index resolves to the same fixed value)
+turned out flatter and less readable than tvision's own default
+palette — the one the Settings dialog had from the start, which the
+user liked. Both windows are now back to that default; there's no
+color override left in either.
 
 **"Honor global speed limits" label cut off in the details window.**
 `TCluster` (the base of `TCheckBoxes`) draws each item as a 5-column

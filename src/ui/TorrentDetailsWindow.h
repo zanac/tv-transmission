@@ -7,12 +7,10 @@
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
 
-// TWindow with fixed colors (yellow text on black), independent of the
-// app's overall theme. Overriding mapColor() here means every child
-// view (the TStaticText labels) picks it up too: their own color
-// requests eventually bubble up to this window's mapColor() through the
-// owner chain (see TorrentListViewer::mapColor() in TorrentListWindow.h
-// for the same technique, used there for the main list).
+// Plain TWindow (default palette — matching the Settings dialog, which
+// the user liked as-is) with a couple of extras: it knows which torrent
+// it's showing (so an already-open details window can be reused instead
+// of duplicated) and handles its own "Apply"/"Close" buttons.
 //
 // Unlike the rest of this window's content (a snapshot taken when
 // opened), the speed limit controls are live: "Apply" sends a
@@ -22,7 +20,6 @@ public:
     TorrentDetailsWindow(const TRect& bounds, TStringView title, short number,
                           int torrentId, TransmissionClient& client);
 
-    TColorAttr mapColor(uchar index) override;
     void handleEvent(TEvent& event) override;
 
     // So the caller (TorrentListWindow) can find an already-open details
