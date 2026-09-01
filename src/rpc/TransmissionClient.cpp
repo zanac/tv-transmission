@@ -182,25 +182,15 @@ void TransmissionClient::setCredentials(std::string user, std::string password) 
 }
 
 bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
-                                                bool uploadLimited, int uploadLimitKBs) {
+                                                bool uploadLimited, int uploadLimitKBs,
+                                                bool honorsSessionLimits) {
     json args = {
         {"ids", json::array({id})},
         {"downloadLimited", downloadLimited},
         {"downloadLimit", downloadLimitKBs},
         {"uploadLimited", uploadLimited},
         {"uploadLimit", uploadLimitKBs},
-        // Without this, unchecking the per-torrent override (downloadLimited/
-        // uploadLimited = false) does NOT make the torrent follow the
-        // session's global limit — Transmission has a separate
-        // "honorsSessionLimits" flag that, if left false (e.g. set by an
-        // earlier client, or never set to true), makes the torrent run
-        // completely unrestricted regardless of downloadLimited/uploadLimited
-        // or the global session limit. Since this app's UI never exposes
-        // "deliberately ignore the global limit and also have no own limit"
-        // as a separate choice, always forcing this to true here is what
-        // makes "no override" in the UI actually mean "use the global
-        // limit" rather than "unlimited".
-        {"honorsSessionLimits", true},
+        {"honorsSessionLimits", honorsSessionLimits},
     };
     return !call("torrent-set", args.dump()).empty();
 }

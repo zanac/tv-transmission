@@ -35,16 +35,17 @@ public:
     bool stopTorrent(int id);
     bool removeTorrent(int id, bool deleteLocalData);
 
-    // Sets (or clears) a per-torrent speed limit override. Passing
-    // downloadLimited=false/uploadLimited=false switches that direction
-    // back to following the session's global limit; the corresponding
-    // *LimitKBs value is only sent/meaningful when its *Limited flag is
-    // true. Always also sets Transmission's "honorsSessionLimits" flag to
-    // true, which is what actually makes "no override" mean "use the
-    // global limit" rather than "run unrestricted" — see the comment in
-    // the .cpp file and in Torrent.h.
+    // Sets (or clears) a per-torrent speed limit override, and whether
+    // the torrent honors the session's global limit at all.
+    // downloadLimited=false/uploadLimited=false means "no limit of its
+    // own for that direction" — whether it then follows the global
+    // limit or runs unrestricted depends on honorsSessionLimits, a
+    // separate Transmission flag (see the comment on Torrent::
+    // honorsSessionLimits in Torrent.h): true follows the global limit,
+    // false ignores it regardless of downloadLimited/uploadLimited.
     bool setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
-                                bool uploadLimited, int uploadLimitKBs);
+                                bool uploadLimited, int uploadLimitKBs,
+                                bool honorsSessionLimits);
 
     // Reads the session's global speed limits (session-get).
     SessionLimits getSessionLimits();

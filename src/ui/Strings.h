@@ -34,6 +34,7 @@ enum class Str {
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,
     LabelStatus, LabelError, LabelId, LabelAdded,
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
+    CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
 
     LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,

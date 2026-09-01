@@ -33,3 +33,11 @@ std::string formatSize(int64_t bytes);
 // in local time. Returns an empty string for 0 (Transmission uses 0 to
 // mean "unknown"/"not set").
 std::string formatUnixTimestamp(int64_t unixSeconds);
+
+// Truncates a UTF-8 string to at most `maxWidth` terminal columns
+// (counting codepoints, same reasoning as padOrTruncateUtf8() above),
+// appending "..." when it actually gets cut short. Unlike
+// padOrTruncateUtf8(), never pads a shorter string — meant for titles
+// and labels, where trailing spaces would be wrong, not for fixed-width
+// table columns.
+std::string truncateUtf8(const std::string& s, size_t maxWidth);

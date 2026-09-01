@@ -21,17 +21,25 @@ HTTP and nlohmann/json for parsing.
   the chosen column and direction are saved and restored on the next launch
 - Fixed colors (white text on blue background; the current row is black
   on white) regardless of the terminal's overall color scheme
-- Double-click a row to open a details window for that torrent (name,
-  size, %, rates, date added, status, error if any, plus a speed-limit
-  override — see below) — fixed colors here too (yellow text on black);
-  these are ordinary, non-modal windows, so you can have several open
-  at once
+- Double-click a row to open a details window for that torrent — window
+  title includes the start of the torrent's name, so several open ones
+  are distinguishable at a glance; name, size, %, rates, date added,
+  status, error if any, plus a speed-limit override — see below (fixed
+  colors here too: yellow text on blue background); these are ordinary,
+  non-modal windows, so you can have several open at once, and
+  double-clicking a torrent that already has one open brings it to the
+  front instead of opening a duplicate
 
 **Per-torrent speed limit override**
-- In a torrent's details window: two checkboxes ("Limit download" /
-  "Limit upload"), each with a KB/s field. Checked applies that limit to
-  just this torrent; unchecked makes it follow the session's global
-  limit again (see below)
+- In a torrent's details window, three independent checkboxes:
+  - "Limit download" / "Limit upload", each with a KB/s field — caps
+    just this torrent's speed in that direction
+  - "Honor global speed limits" — whether this torrent follows the
+    session's global limit (see below) at all
+  - These are genuinely independent in Transmission: a torrent can have
+    no speed limit of its own and still ignore the global limit if it
+    doesn't "honor" it, so unchecking the first two doesn't by itself
+    mean "use the global limit" — the third checkbox is what controls that
 - "Apply" sends the change immediately (`torrent-set` RPC); "Close"
   closes the window without changing anything
 
@@ -195,20 +203,21 @@ src/
 
 Kept here for context, in case similar patterns come up again.
 
-**Removing a per-torrent speed limit override didn't actually restore
-the global limit.** Transmission has a separate, easy-to-miss flag —
-`honorsSessionLimits` — distinct from `downloadLimited`/`uploadLimited`.
-Clearing the per-torrent override (setting those two to false) only
-means "this torrent has no limit of its own"; whether it then falls
-back to the *global* session limit or runs completely unrestricted
-depends on `honorsSessionLimits`, which we weren't touching at all. If
-it had ever ended up false (however that happens on a given daemon),
-"remove the override" silently meant "unlimited" instead of "use the
-global limit". Fixed by always sending `honorsSessionLimits: true`
-whenever `setTorrentSpeedLimits()` is called — this app's UI has no
-control for deliberately wanting "no override AND ignore the global
-limit", so forcing it true is what makes "override off" actually mean
-what the checkbox says.
+**"Honor global speed limits" wasn't user-controllable.** The first fix
+for the per-torrent override always sent Transmission's
+`honorsSessionLimits` flag as `true` whenever speed limits were
+applied, reasoning that the UI had no control for it and this was the
+closer-to-correct default. That removed a real, useful choice:
+`honorsSessionLimits` — distinct from `downloadLimited`/`uploadLimited`
+— decides whether a torrent respects the session's global limit *at
+all*, independently of whether it has its own per-torrent limit; a
+torrent can have no override of its own and still ignore the global
+limit entirely if this is false. Simply clearing the per-torrent
+override (setting `downloadLimited`/`uploadLimited` to false) does not
+by itself mean "use the global limit" — that's what this flag is for.
+Fixed by exposing it as its own checkbox ("Honor global speed limits")
+in the details window, alongside the two limit overrides, instead of
+hardcoding it to `true`.
 
 **The "Close" button in the torrent details window did nothing.**
 `TButton::press()` sends its command with `event.message.infoPtr` set

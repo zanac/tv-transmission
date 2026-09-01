@@ -52,7 +52,7 @@ TColorAttr TorrentDetailsWindow::mapColor(uchar index) {
     // up calling this via owner->mapColor() — gets the same fixed
     // color, regardless of the index tvision asked for.
     (void)index;
-    return TColorAttr(0x0E); // fg=yellow(0xE), bg=black(0x0)
+    return TColorAttr(0x1E); // fg=yellow(0xE), bg=blue(0x1)
 }
 
 void TorrentDetailsWindow::applySpeedLimits() {
@@ -60,6 +60,7 @@ void TorrentDetailsWindow::applySpeedLimits() {
     limitCheckboxes->getData(&checked);
     bool downloadLimited = (checked & 0x01) != 0;
     bool uploadLimited = (checked & 0x02) != 0;
+    bool honorsSessionLimits = (checked & 0x04) != 0;
 
     char buf[32];
     downloadLimitField->getData(buf);
@@ -68,7 +69,7 @@ void TorrentDetailsWindow::applySpeedLimits() {
     int uploadLimit = std::atoi(buf);
 
     client_.setTorrentSpeedLimits(torrentId_, downloadLimited, downloadLimit,
-                                   uploadLimited, uploadLimit);
+                                   uploadLimited, uploadLimit, honorsSessionLimits);
 }
 
 void TorrentDetailsWindow::handleEvent(TEvent& event) {
@@ -83,9 +84,17 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
 }
 
 TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client) {
-    TRect r(0, 0, 58, 19);
-    auto* win = new TorrentDetailsWindow(r, tr(Str::WindowTitleDetails), wnNoNumber,
-                                          t.id, client);
+    TRect r(0, 0, 58, 20);
+
+    // Title includes the start of the torrent's name, so several open
+    // details windows (see the "Window list" dialog) are distinguishable
+    // at a glance instead of all reading "Torrent details".
+    char titleBuf[128];
+    std::string shortName = truncateUtf8(t.name, 30);
+    std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
+        tr(Str::WindowTitleDetails), shortName.c_str());
+
+    auto* win = new TorrentDetailsWindow(r, titleBuf, wnNoNumber, t.id, client);
     win->options |= ofCentered;
 
     char buf[256];
@@ -124,29 +133,37 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     // --- Per-torrent speed limit override ---
     addLine(win, 12, tr(Str::LabelSpeedLimitSection));
 
-    win->limitCheckboxes = new TCheckBoxes(TRect(2, 13, 26, 15),
+    // Three independent checkboxes, NOT two + an implied third state:
+    // "limit download/upload" (this torrent's own cap) and "honor global
+    // speed limits" (whether it follows the session-wide limit at all)
+    // are separate Transmission flags — see the comment on
+    // Torrent::honorsSessionLimits in Torrent.h for why one can't be
+    // inferred from the other.
+    win->limitCheckboxes = new TCheckBoxes(TRect(2, 13, 30, 16),
         new TSItem(tr(Str::CheckLimitDownload),
-        new TSItem(tr(Str::CheckLimitUpload), nullptr)));
-    ushort checked = (t.downloadLimited ? 0x01 : 0) | (t.uploadLimited ? 0x02 : 0);
+        new TSItem(tr(Str::CheckLimitUpload),
+        new TSItem(tr(Str::CheckHonorGlobalLimits), nullptr))));
+    ushort checked = (t.downloadLimited ? 0x01 : 0) | (t.uploadLimited ? 0x02 : 0) |
+                     (t.honorsSessionLimits ? 0x04 : 0);
     win->limitCheckboxes->setData(&checked);
     win->insert(win->limitCheckboxes);
 
-    win->downloadLimitField = new TInputLine(TRect(28, 13, 38, 14), 8);
+    win->downloadLimitField = new TInputLine(TRect(32, 13, 42, 14), 8);
     std::vector<char> downloadBuf(9, 0);
     std::snprintf(downloadBuf.data(), downloadBuf.size(), "%d", t.downloadLimit);
     win->downloadLimitField->setData(downloadBuf.data());
     win->insert(win->downloadLimitField);
-    win->insert(new TStaticText(TRect(39, 13, 44, 14), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(43, 13, 48, 14), tr(Str::UnitKBs)));
 
-    win->uploadLimitField = new TInputLine(TRect(28, 14, 38, 15), 8);
+    win->uploadLimitField = new TInputLine(TRect(32, 14, 42, 15), 8);
     std::vector<char> uploadBuf(9, 0);
     std::snprintf(uploadBuf.data(), uploadBuf.size(), "%d", t.uploadLimit);
     win->uploadLimitField->setData(uploadBuf.data());
     win->insert(win->uploadLimitField);
-    win->insert(new TStaticText(TRect(39, 14, 44, 15), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(43, 14, 48, 15), tr(Str::UnitKBs)));
 
-    win->insert(new TButton(TRect(14, 16, 24, 18), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
-    win->insert(new TButton(TRect(28, 16, 38, 18), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
+    win->insert(new TButton(TRect(14, 17, 24, 19), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
+    win->insert(new TButton(TRect(28, 17, 38, 19), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
 
     return win;
 }

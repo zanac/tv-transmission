@@ -3,7 +3,11 @@
 #include <cstdio>
 #include <ctime>
 
-std::string padOrTruncateUtf8(const std::string& s, size_t width) {
+namespace {
+
+// Byte offset of each codepoint in `s`. Shared by padOrTruncateUtf8()
+// and truncateUtf8() so both agree on where a character boundary falls.
+std::vector<size_t> codepointStarts(const std::string& s) {
     std::vector<size_t> charStarts;
     for (size_t i = 0; i < s.size(); ) {
         charStarts.push_back(i);
@@ -16,12 +20,26 @@ std::string padOrTruncateUtf8(const std::string& s, size_t width) {
         if (i + len > s.size()) len = s.size() - i; // truncated sequence: don't overrun
         i += len;
     }
+    return charStarts;
+}
+
+} // namespace
+
+std::string padOrTruncateUtf8(const std::string& s, size_t width) {
+    std::vector<size_t> charStarts = codepointStarts(s);
     if (charStarts.size() <= width) {
         std::string result = s;
         result.append(width - charStarts.size(), ' ');
         return result;
     }
     return s.substr(0, charStarts[width]);
+}
+
+std::string truncateUtf8(const std::string& s, size_t maxWidth) {
+    std::vector<size_t> charStarts = codepointStarts(s);
+    if (charStarts.size() <= maxWidth) return s;
+    if (maxWidth <= 3) return s.substr(0, charStarts[maxWidth]); // too small for "..."
+    return s.substr(0, charStarts[maxWidth - 3]) + "...";
 }
 
 std::string formatSize(int64_t bytes) {

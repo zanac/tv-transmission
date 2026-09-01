@@ -92,6 +92,8 @@ const char* tr(Str id) {
         case Str::CheckLimitDownload: return it ? "Limita download" : "Limit download";
         case Str::CheckLimitUpload:   return it ? "Limita upload"   : "Limit upload";
         case Str::UnitKBs:            return "KB/s";
+        case Str::CheckHonorGlobalLimits:
+            return it ? "Rispetta i limiti globali" : "Honor global speed limits";
         case Str::ButtonApply:        return it ? "Applica" : "Apply";
         // Distinct from MenuWindowClose on purpose: same reason as
         // DialogTitleWindowList above (menu labels carry ~x~ hotkey
