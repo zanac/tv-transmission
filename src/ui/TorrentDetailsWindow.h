@@ -25,6 +25,10 @@ public:
     TColorAttr mapColor(uchar index) override;
     void handleEvent(TEvent& event) override;
 
+    // So the caller (TorrentListWindow) can find an already-open details
+    // window for a given torrent instead of opening a duplicate.
+    int torrentId() const { return torrentId_; }
+
     // Set by createTorrentDetailsWindow() once the controls are built.
     TCheckBoxes* limitCheckboxes = nullptr;
     TInputLine* downloadLimitField = nullptr;

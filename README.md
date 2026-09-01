@@ -195,6 +195,39 @@ src/
 
 Kept here for context, in case similar patterns come up again.
 
+**Removing a per-torrent speed limit override didn't actually restore
+the global limit.** Transmission has a separate, easy-to-miss flag —
+`honorsSessionLimits` — distinct from `downloadLimited`/`uploadLimited`.
+Clearing the per-torrent override (setting those two to false) only
+means "this torrent has no limit of its own"; whether it then falls
+back to the *global* session limit or runs completely unrestricted
+depends on `honorsSessionLimits`, which we weren't touching at all. If
+it had ever ended up false (however that happens on a given daemon),
+"remove the override" silently meant "unlimited" instead of "use the
+global limit". Fixed by always sending `honorsSessionLimits: true`
+whenever `setTorrentSpeedLimits()` is called — this app's UI has no
+control for deliberately wanting "no override AND ignore the global
+limit", so forcing it true is what makes "override off" actually mean
+what the checkbox says.
+
+**The "Close" button in the torrent details window did nothing.**
+`TButton::press()` sends its command with `event.message.infoPtr` set
+to the button itself (see tvision's `tbutton.cpp`), but
+`TWindow::handleEvent`'s own `cmClose` handling only reacts when
+`infoPtr` is `0` or the window itself — a `cmClose` sent by a button
+inside the window doesn't match either, so it was silently dropped.
+Fixed by using a dedicated command for the button and calling
+`close()` directly in this window's own `handleEvent()`, sidestepping
+that check (this is the same `close()` `TWindow::handleEvent` would
+have called anyway, had the check passed).
+
+**Double-clicking a torrent that already had an open details window
+opened a second one.** Fixed by searching the desktop's open windows
+for an existing `TorrentDetailsWindow` with the same torrent id before
+creating a new one (same `deskTop->last`/`next` traversal already used
+for the "Window list" dialog); if found, it's brought to the front
+(`select()`) instead.
+
 **Column misalignment for very large torrents.** The size column always
 showed the value in MB with a fixed 8-character field (`%8.1fMB`). That
 field width silently assumed the number would never need more than 8

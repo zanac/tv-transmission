@@ -112,7 +112,7 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
                               "rateDownload","rateUpload","status","errorString",
                               "addedDate","downloadLimited","downloadLimit",
-                              "uploadLimited","uploadLimit"]})";
+                              "uploadLimited","uploadLimit","honorsSessionLimits"]})";
     std::string body = call("torrent-get", args);
     if (body.empty()) return result;
 
@@ -133,6 +133,7 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
             tor.downloadLimit = t.value("downloadLimit", 0);
             tor.uploadLimited = t.value("uploadLimited", false);
             tor.uploadLimit = t.value("uploadLimit", 0);
+            tor.honorsSessionLimits = t.value("honorsSessionLimits", true);
             result.push_back(std::move(tor));
         }
     } catch (const std::exception& e) {
@@ -188,6 +189,18 @@ bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int
         {"downloadLimit", downloadLimitKBs},
         {"uploadLimited", uploadLimited},
         {"uploadLimit", uploadLimitKBs},
+        // Without this, unchecking the per-torrent override (downloadLimited/
+        // uploadLimited = false) does NOT make the torrent follow the
+        // session's global limit — Transmission has a separate
+        // "honorsSessionLimits" flag that, if left false (e.g. set by an
+        // earlier client, or never set to true), makes the torrent run
+        // completely unrestricted regardless of downloadLimited/uploadLimited
+        // or the global session limit. Since this app's UI never exposes
+        // "deliberately ignore the global limit and also have no own limit"
+        // as a separate choice, always forcing this to true here is what
+        // makes "no override" in the UI actually mean "use the global
+        // limit" rather than "unlimited".
+        {"honorsSessionLimits", true},
     };
     return !call("torrent-set", args.dump()).empty();
 }

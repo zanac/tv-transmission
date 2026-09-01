@@ -19,6 +19,15 @@ namespace {
 // ever ambiguous within the single handleEvent that reacts to it.
 constexpr ushort cmApplySpeedLimits = 200;
 
+// NOT cmClose: TButton::press() sets event.message.infoPtr to the
+// button itself (see tbutton.cpp), but TWindow::handleEvent only acts
+// on cmClose when infoPtr is 0 or the window itself — a button-sent
+// cmClose is silently ignored by the base class. Using a dedicated
+// command and calling close() directly (below) sidesteps that check
+// entirely; it's the same close() TWindow::handleEvent would have
+// called anyway.
+constexpr ushort cmCloseDetails = 201;
+
 // TStaticText already copies the text internally (newStr + delete[] in
 // its destructor), so passing it the temporary buffer is enough: there's
 // no need (and it would leak memory) to duplicate it here.
@@ -66,6 +75,9 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
     TWindow::handleEvent(event);
     if (event.what == evCommand && event.message.command == cmApplySpeedLimits) {
         applySpeedLimits();
+        clearEvent(event);
+    } else if (event.what == evCommand && event.message.command == cmCloseDetails) {
+        close();
         clearEvent(event);
     }
 }
@@ -134,7 +146,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->insert(new TStaticText(TRect(39, 14, 44, 15), tr(Str::UnitKBs)));
 
     win->insert(new TButton(TRect(14, 16, 24, 18), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
-    win->insert(new TButton(TRect(28, 16, 38, 18), tr(Str::ButtonClose), cmClose, bfNormal));
+    win->insert(new TButton(TRect(28, 16, 38, 18), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
 
     return win;
 }

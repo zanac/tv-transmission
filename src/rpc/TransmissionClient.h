@@ -39,7 +39,10 @@ public:
     // downloadLimited=false/uploadLimited=false switches that direction
     // back to following the session's global limit; the corresponding
     // *LimitKBs value is only sent/meaningful when its *Limited flag is
-    // true.
+    // true. Always also sets Transmission's "honorsSessionLimits" flag to
+    // true, which is what actually makes "no override" mean "use the
+    // global limit" rather than "run unrestricted" — see the comment in
+    // the .cpp file and in Torrent.h.
     bool setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
                                 bool uploadLimited, int uploadLimitKBs);
 

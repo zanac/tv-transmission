@@ -9,6 +9,7 @@
 #include <vector>
 
 #define Uses_TProgram
+#define Uses_TDeskTop
 #define Uses_TDrawBuffer
 #include <tvision/tv.h>
 
@@ -308,10 +309,30 @@ void TorrentListWindow::handleEvent(TEvent& event) {
 }
 
 void TorrentListWindow::openDetailsForSelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent()) {
-        if (auto* win = createTorrentDetailsWindow(*t, client_))
-            TProgram::application->insertWindow(win);
+    const Torrent* t = listViewer_->selectedTorrent();
+    if (!t) return;
+
+    // Look for an already-open details window for this same torrent id
+    // before creating a new one — same deskTop->last/next traversal
+    // already used for the "Window list" dialog (see App.cpp). Order
+    // doesn't matter here either: we're searching for a specific id, not
+    // relying on position.
+    TDeskTop* deskTop = TProgram::deskTop;
+    if (deskTop->last) {
+        TView* p = deskTop->last;
+        do {
+            p = p->next;
+            if (auto* existing = dynamic_cast<TorrentDetailsWindow*>(p)) {
+                if (existing->torrentId() == t->id) {
+                    existing->select(); // bring the existing one to front instead
+                    return;
+                }
+            }
+        } while (p != deskTop->last);
     }
+
+    if (auto* win = createTorrentDetailsWindow(*t, client_))
+        TProgram::application->insertWindow(win);
 }
 
 void TorrentListWindow::refresh() {
