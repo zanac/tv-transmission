@@ -1,7 +1,6 @@
 #include "App.h"
 #include "TorrentListWindow.h"
 #include "AddTorrentDialog.h"
-#include "FileBrowserDialog.h"
 #include "SettingsDialog.h"
 #include "WindowListDialog.h"
 #include "BandwidthStatusLine.h"
@@ -16,6 +15,7 @@
 #define Uses_TStatusItem
 #define Uses_TKeys
 #define Uses_TEvent
+#define Uses_TFileDialog
 #include <tvision/tv.h>
 
 #include <cstdio>
@@ -39,7 +39,6 @@ TMenuBar* App::initMenuBar(TRect r) {
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
-            *new TMenuItem(tr(Str::MenuAddFromFile), cmAddTorrentFromFile, kbNoKey) +
             *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
             *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
@@ -100,41 +99,54 @@ void App::newTorrentListWindow() {
     deskTop->insert(listWindow_);
 }
 
-void App::showAddTorrentDialog() {
+void App::showAddTorrentDialog(const std::string& initialValue) {
     TInputLine* urlField = nullptr;
-    if (auto* dlg = createAddTorrentDialog(urlField)) {
-        if (execView(dlg) == cmOK) {
-            std::string url = addTorrentDialogResult(urlField);
-            if (!url.empty())
-                client_.addTorrent(url);
-        }
-        destroy(dlg);
-    }
-}
+    auto* dlg = createAddTorrentDialog(urlField, initialValue);
+    if (!dlg) return;
+    ushort result = execView(dlg);
+    std::string url = (result == cmOK) ? addTorrentDialogResult(urlField) : "";
+    destroy(dlg);
 
-void App::showAddTorrentFromFileDialog() {
-    // execView() called directly on `this` (App) — one level of dialog
-    // nesting, same as every other dialog in this app. Deliberately NOT
-    // opened from inside showAddTorrentDialog()'s own dialog (a "Browse"
-    // button there was the first attempt): nesting a second modal dialog
-    // on top of an already-open one rendered with garbled colors and
-    // corrupted-looking text, readable as fragments of both the
-    // underlying torrent list and the browser bleeding into each other.
-    // That happened with tvision's own TFileDialog AND with this app's
-    // own hand-built FileBrowserDialog, which rules out either widget's
-    // own implementation as the cause — it's specifically the two-
-    // levels-deep nesting (combined with this app's fully custom
-    // TorrentListViewer::draw() underneath) that breaks. Keeping every
-    // dialog exactly one level deep, as tvision's own examples always
-    // do, avoids it entirely.
-    const char* home = std::getenv("HOME");
-    if (auto* dlg = createFileBrowserDialog(home ? home : "/")) {
-        if (execView(dlg) == cmOK) {
-            std::string path = fileBrowserDialogResult(dlg);
-            if (!path.empty())
-                client_.addTorrent(path);
+    if (result == cmOK) {
+        if (!url.empty()) client_.addTorrent(url);
+        return;
+    }
+
+    if (result == cmYes) {
+        // Browse was clicked. The "Add torrent" dialog above is already
+        // destroyed at this point — deliberately, before opening
+        // TFileDialog: nesting TFileDialog *inside* an already-open
+        // dialog (as a "Browse" button used to do) rendered with wrong
+        // colors and garbled text (fragments of both dialogs bleeding
+        // into each other, readable in a screenshot the user sent).
+        // Rebuilding a whole separate custom directory-browser dialog
+        // to sidestep that turned out to be unnecessary once the real
+        // cause was found: it wasn't TFileDialog's fault specifically
+        // (the same custom replacement showed the identical corruption)
+        // — it was two dialogs being modal at once. Closing this one
+        // first, THEN opening TFileDialog directly from `this` (one
+        // level of nesting, exactly like every other dialog in this
+        // app, including "Add torrent" itself), avoids that entirely —
+        // simpler than maintaining a hand-built browser.
+        auto* fileDlg = new TFileDialog("*.torrent", tr(Str::DialogTitleBrowseTorrent),
+            tr(Str::LabelAddTorrentUrl), fdOpenButton, 0);
+        ushort fileResult = execView(fileDlg);
+        std::string chosenPath;
+        // The "Open" button's command is cmFileOpen, not cmOK (checked
+        // in tvision's tfildlg.cpp) — only double-clicking a file in the
+        // list re-emits as cmOK. Either one is a real selection; cmCancel
+        // is the only "nothing chosen" case.
+        if (fileResult == cmFileOpen || fileResult == cmOK) {
+            char buf[1024] = {0};
+            fileDlg->getFileName(buf);
+            chosenPath = buf;
         }
-        destroy(dlg);
+        destroy(fileDlg);
+
+        // Reopen with whatever was picked pre-filled — Browse fills the
+        // field, it doesn't add the torrent by itself; the user still
+        // confirms (or edits further, or cancels) from here.
+        showAddTorrentDialog(chosenPath);
     }
 }
 
@@ -231,10 +243,6 @@ void App::handleEvent(TEvent& event) {
     switch (event.message.command) {
         case cmAddTorrent:
             showAddTorrentDialog();
-            clearEvent(event);
-            break;
-        case cmAddTorrentFromFile:
-            showAddTorrentFromFileDialog();
             clearEvent(event);
             break;
         case cmStartTorrent:

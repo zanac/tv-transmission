@@ -8,7 +8,6 @@ add_executable(tv-transmission
     ui/App.cpp
     ui/TorrentListWindow.cpp
     ui/AddTorrentDialog.cpp
-    ui/FileBrowserDialog.cpp
     ui/SettingsDialog.cpp
     ui/WindowListDialog.cpp
     ui/BandwidthStatusLine.cpp

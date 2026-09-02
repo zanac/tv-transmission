@@ -15,7 +15,7 @@ Language currentLanguage();
 
 // Identifier for every translatable piece of UI text.
 enum class Str {
-    MenuTorrent, MenuAdd, MenuAddFromFile, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
+    MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
     MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails,
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
