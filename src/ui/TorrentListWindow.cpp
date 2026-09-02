@@ -3,6 +3,7 @@
 #include "Strings.h"
 #include "../TextUtil.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <utility>
@@ -21,11 +22,14 @@
 
 namespace {
 
-// Column widths shared between the data row (getText), the header
+// Column widths shared between the data row (drawRow), the header
 // (TorrentListHeader) and click detection (columnAt), so they stay
 // aligned by construction rather than by eyeballing them.
-constexpr int kNameW   = 30; // name column
-constexpr int kDoneW   = 6;  // "100.0%" in full
+constexpr int kNameW     = 30; // name column
+constexpr int kBarInnerW = 16; // filled/empty blocks inside the brackets
+// "[" + kBarInnerW blocks + "]" + " NNN%" (5 chars: space + up to 3
+// digits, right-aligned + '%') = 1 + 16 + 1 + 5 = 23.
+constexpr int kProgressW = 1 + kBarInnerW + 1 + 5;
 constexpr int kSizeW   = 10; // formatSize() output (adaptive unit), right-aligned
 constexpr int kDownW   = 14; // "  D:     0KB/s" in full (spaces included)
 constexpr int kUpW     = 13; // " U:     0KB/s" in full (space included)
@@ -46,6 +50,53 @@ std::string rightAlign(const std::string& s, size_t width) {
     return std::string(width - s.size(), ' ') + s;
 }
 
+// Builds "[███████░░░░░░░░░]  42%" — the block characters (U+2588 full
+// block / U+2591 light shade) are a near-universal convention for
+// filled/empty progress in any UTF-8 terminal; the count of each is
+// exactly proportional to percentDone, so the bar visibly fills up as
+// the torrent approaches 100%.
+std::string buildProgressBar(double percentDone) {
+    int filled = static_cast<int>(std::lround(percentDone * kBarInnerW));
+    if (filled < 0) filled = 0;
+    if (filled > kBarInnerW) filled = kBarInnerW;
+    std::string bar = "[";
+    for (int i = 0; i < filled; i++) bar += "\u2588";
+    for (int i = 0; i < kBarInnerW - filled; i++) bar += "\u2591";
+    bar += "]";
+    char pct[8];
+    std::snprintf(pct, sizeof(pct), " %3.0f%%", percentDone * 100.0);
+    bar += pct;
+    return bar;
+}
+
+// tr_torrent_activity values (Transmission RPC): 0=stopped,
+// 1=check-wait, 2=checking, 3=download-wait, 4=downloading,
+// 5=seed-wait, 6=seeding.
+//
+// A row's color reflects the torrent's status at a glance, distinct
+// from the focused-row highlight (always black-on-white, handled
+// separately in draw() below, regardless of status) — an error takes
+// priority over the status-based color since it's the most actionable
+// state to notice.
+TColorAttr statusRowColor(const Torrent& t) {
+    if (!t.errorString.empty()) return TColorAttr(0x1C); // error: light red on blue
+    switch (t.status) {
+        case 4: return TColorAttr(0x1B); // downloading: light cyan on blue
+        case 6: return TColorAttr(0x1A); // seeding: light green on blue
+        case 0: return TColorAttr(0x17); // stopped: light gray on blue (dimmer)
+        case 1: case 2: case 3: case 5:
+                return TColorAttr(0x1E); // checking/queued: yellow on blue
+        default: return TColorAttr(0x1F); // fallback: white on blue
+    }
+}
+
+// Same fg/bg as `base`, with the bold style bit added — used for the
+// name segment only, so it stands out from the rest of an otherwise
+// same-colored row.
+TColorAttr bold(TColorAttr base) {
+    return TColorAttr(base.getForeground(), base.getBackground(), base.getStyle() | slBold);
+}
+
 // [start,end) range of terminal columns occupied by each column of the
 // header/row, in the same order as SortColumn. Built once from the
 // kNameW/etc. constants above, so clicking and drawing always use the
@@ -56,7 +107,7 @@ std::vector<ColumnRange> columnRanges() {
     std::vector<ColumnRange> ranges;
     int pos = 0;
     ranges.push_back({pos, pos + kNameW, SortColumn::Name}); pos += kNameW + 1; // +1 separator space
-    ranges.push_back({pos, pos + kDoneW, SortColumn::Done}); pos += kDoneW + 1; // +1 separator space
+    ranges.push_back({pos, pos + kProgressW, SortColumn::Done}); pos += kProgressW + 1; // +1 separator space
     ranges.push_back({pos, pos + kSizeW, SortColumn::Size}); pos += kSizeW;     // no space before Down
     ranges.push_back({pos, pos + kDownW, SortColumn::Down}); pos += kDownW;     // no space before Up
     ranges.push_back({pos, pos + kUpW,   SortColumn::Up});   pos += kUpW + 1;   // +1 separator space
@@ -87,7 +138,7 @@ const char* baseLabel(SortColumn col) {
     return "";
 }
 
-// Header row with the exact same widths as getText(), plus a ^/v
+// Header row with the exact same widths as drawRow(), plus a ^/v
 // indicator on the column currently used for sorting.
 // Note: unlike windows/dialogs that get rebuilt every time they're
 // shown, this header does not update itself if the language changes at
@@ -102,7 +153,7 @@ std::string buildHeaderText(SortColumn sortColumn, bool ascending) {
     char buf[192];
     std::snprintf(buf, sizeof(buf), "%-*s %*s %*s%*s%*s %*s %*s",
         kNameW, label(SortColumn::Name).c_str(),
-        kDoneW, label(SortColumn::Done).c_str(),
+        kProgressW, label(SortColumn::Done).c_str(),
         kSizeW, label(SortColumn::Size).c_str(),
         kDownW, label(SortColumn::Down).c_str(),
         kUpW,   label(SortColumn::Up).c_str(),
@@ -227,27 +278,63 @@ void TorrentListViewer::getText(char* dest, short item, short maxLen) {
     }
     const Torrent& t = torrents_[item];
     std::string name = padOrTruncateUtf8(t.name, kNameW);
+    std::string bar = buildProgressBar(t.percentDone);
     std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
     std::string addedStr = rightAlign(formatUnixTimestamp(t.addedDate), kAddedW);
     std::string statusStr = padOrTruncateUtf8(trTorrentStatus(t.status), kStatusW);
     std::snprintf(dest, maxLen,
-        "%s %5.1f%% %s  D:%6.0fKB/s U:%6.0fKB/s %s %s",
-        name.c_str(), t.percentDone * 100.0, sizeStr.c_str(),
+        "%s %s %s  D:%6.0fKB/s U:%6.0fKB/s %s %s",
+        name.c_str(), bar.c_str(), sizeStr.c_str(),
         t.rateDownload / 1024.0, t.rateUpload / 1024.0,
         addedStr.c_str(), statusStr.c_str());
 }
 
-TColorAttr TorrentListViewer::mapColor(uchar index) {
-    // mapColor() (unlike getColor()/getPalette(), which alone wouldn't
-    // be enough here — see the comment in TorrentListWindow.h) is
-    // virtual and gets called on the real `this` even when the caller is
-    // TListViewer's inherited draw() — so this override is reached
-    // correctly. It bypasses the owner's palette chain entirely: fixed
-    // colors independent of the app's theme.
-    switch (index) {
-        case 1: case 2: return TColorAttr(0x1F); // normal rows: white on blue
-        case 3: case 4: return TColorAttr(0xF0); // current row: black on white
-        default: return TListViewer::mapColor(index);
+void TorrentListViewer::draw() {
+    // Full custom rendering instead of relying on TListViewer's
+    // inherited draw() (which paints an entire row with one color from
+    // a single getColor() call) — see the comment on this override's
+    // declaration in TorrentListWindow.h for why: a bold name plus a
+    // status-dependent color within the *same* row isn't expressible
+    // that way. Built directly here rather than by formatting one
+    // string (as getText() still does, kept for any other internal use
+    // TListViewer might make of it) because each segment needs its own
+    // TColorAttr — moveStr() positions text at an absolute column, so
+    // segments are placed one after another by tracking `x`.
+    TDrawBuffer b;
+    for (short i = 0; i < size.y; i++) {
+        short item = topItem + i;
+        bool isFocusedRow = (item == focused);
+        TColorAttr rowColor = isFocusedRow ? TColorAttr(0xF0) // current row: black on white
+                            : (item >= 0 && item < (int)torrents_.size())
+                                ? statusRowColor(torrents_[item])
+                                : TColorAttr(0x1F);
+        b.moveChar(0, ' ', rowColor, size.x);
+
+        if (item >= 0 && item < (int)torrents_.size()) {
+            const Torrent& t = torrents_[item];
+            std::string name = padOrTruncateUtf8(t.name, kNameW);
+            std::string bar = buildProgressBar(t.percentDone);
+            std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
+            std::string addedStr = rightAlign(formatUnixTimestamp(t.addedDate), kAddedW);
+            std::string statusStr = padOrTruncateUtf8(trTorrentStatus(t.status), kStatusW);
+            char rateBuf[48];
+            std::snprintf(rateBuf, sizeof(rateBuf), "  D:%6.0fKB/s U:%6.0fKB/s",
+                t.rateDownload / 1024.0, t.rateUpload / 1024.0);
+
+            int x = 0;
+            x += b.moveStr(x, name.c_str(), bold(rowColor)); // only the name is bold
+            x += b.moveStr(x, " ", rowColor);
+            x += b.moveStr(x, bar.c_str(), rowColor);
+            x += b.moveStr(x, " ", rowColor);
+            x += b.moveStr(x, sizeStr.c_str(), rowColor);
+            x += b.moveStr(x, rateBuf, rowColor);
+            x += b.moveStr(x, " ", rowColor);
+            x += b.moveStr(x, addedStr.c_str(), rowColor);
+            x += b.moveStr(x, " ", rowColor);
+            x += b.moveStr(x, statusStr.c_str(), rowColor);
+        }
+
+        writeLine(0, i, size.x, 1, b);
     }
 }
 

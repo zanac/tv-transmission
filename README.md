@@ -14,13 +14,18 @@ HTTP and nlohmann/json for parsing.
 - Always maximized and locked: can't be moved, resized, zoomed or
   closed (it's the app's main view, kept as a raw pointer internally —
   see "Fixed bugs" below for why closing it used to crash the app)
-- Columns: name, % done, size, download rate, upload rate, date added,
-  status
+- Columns: name (bold), progress bar, size, download rate, upload
+  rate, date added, status
 - Click a column header to sort by it; click again to reverse the
   direction (a `^`/`v` indicator shows the active column and direction);
   the chosen column and direction are saved and restored on the next launch
-- Fixed colors (white text on blue background; the current row is black
-  on white) regardless of the terminal's overall color scheme
+- Progress bar fills up with block characters (`[████░░░░] 42%`) as the
+  torrent approaches 100%, instead of a plain percentage number
+- Text color reflects the torrent's status at a glance: cyan while
+  downloading, green while seeding, gray while stopped, yellow while
+  checking/queued, red if it has an error — all on the same blue
+  background as before; the currently selected row stays black-on-white
+  regardless of status, so it's always clear what's selected
 - Double-click a row to open a details window for that torrent — window
   title includes the start of the torrent's name, so several open ones
   are distinguishable at a glance; name, size, %, rates, date added,
@@ -279,6 +284,10 @@ packaging/
 
 ## Known limitations
 
+- The torrent list's progress bar uses Unicode block characters
+  (`█`/`░`), which need a UTF-8-capable terminal to render correctly —
+  chosen deliberately over an ASCII-only bar for a nicer look, on the
+  assumption that's the overwhelmingly common case today.
 - RPC password on disk is obfuscated, not really encrypted — see
   "Configuration file" above for exactly what that does and doesn't
   protect against.
@@ -320,6 +329,21 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Torrent list rendering, rewritten for a bolder name and per-status
+color.** Previously the list relied on `TListViewer`'s inherited
+`draw()`, which paints an entire row with a single `TColorAttr` from
+one `getColor()`/`mapColor()` call (that's how the earlier "always
+blue" look was done). A bold name plus a status-dependent color within
+the *same* row isn't expressible that way — both the color and the
+weight need to vary within one row, not just between focused and
+unfocused. Fixed by overriding `draw()` completely: each row is now
+built as several `TDrawBuffer` segments (name, progress bar, size,
+rates, added, status), each with its own `TColorAttr`, placed one after
+another by tracking the column position (`TDrawBuffer::moveStr()`
+writes at an absolute column and returns the width consumed). The old
+`mapColor()` override is gone — nothing calls it anymore now that
+`draw()` doesn't go through the inherited path.
 
 **Password stored in plain text.** Fixed by obfuscating it (XOR with a
 machine+user-derived key, base64-encoded) before writing settings.json

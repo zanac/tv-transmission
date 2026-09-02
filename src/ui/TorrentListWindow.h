@@ -54,13 +54,21 @@ public:
     void updateCommandStates();
     void focusItem(short item) override; // calls updateCommandStates()
 
-    // Fixed colors (white on blue; current row black on white),
-    // independent of the app's overall theme. mapColor() is virtual on
-    // TView, unlike getColor()/getPalette() which alone wouldn't be
-    // enough here (TListViewer::draw() calls getColor(), which is not
-    // virtual, but that in turn calls mapColor() on the real `this` —
-    // so this override is still reached correctly).
-    TColorAttr mapColor(uchar index) override;
+    // Full custom row rendering: bold torrent name, a filled/empty block
+    // progress bar, and a text color that depends on the torrent's
+    // status (downloading/seeding/stopped/queued/error), not just
+    // focused-vs-not. This can't be done by returning fixed colors from
+    // mapColor() (the previous approach, used for the earlier "always
+    // blue" look): TListViewer's inherited draw() paints an entire row
+    // with a single TColorAttr from one getColor() call, so per-torrent
+    // status color and a bold-vs-normal name within the *same* row are
+    // both outside what it can express. Overriding draw() completely
+    // sidesteps that: each row is built here as several TDrawBuffer
+    // segments (name, bar, size, rates, added, status), each with its
+    // own TColorAttr — still with a fixed palette (independent of the
+    // app's theme, same reasoning as before), just no longer a single
+    // color per row.
+    void draw() override;
 
     void handleEvent(TEvent& event) override; // right-click context menu
 
