@@ -301,8 +301,9 @@ bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int
     return !call("torrent-set", args.dump()).empty();
 }
 
-SessionLimits TransmissionClient::getSessionLimits() {
+SessionLimits TransmissionClient::getSessionLimits(bool* ok) {
     SessionLimits limits;
+    if (ok) *ok = false;
     std::string body = call("session-get", "{}");
     if (body.empty()) return limits;
     try {
@@ -312,6 +313,7 @@ SessionLimits TransmissionClient::getSessionLimits() {
         limits.downloadLimit = a.value("speed-limit-down", 0);
         limits.uploadLimited = a.value("speed-limit-up-enabled", false);
         limits.uploadLimit = a.value("speed-limit-up", 0);
+        if (ok) *ok = true;
     } catch (const std::exception& e) {
         lastError_ = std::string("JSON parse error: ") + e.what();
     }

@@ -112,8 +112,13 @@ void App::showAddTorrentDialog() {
 void App::showSettingsDialog() {
     // Live RPC call: the global speed limits aren't part of settings_ /
     // settings.json, they live on the Transmission daemon itself (see
-    // TransmissionClient::getSessionLimits()).
-    SessionLimits sessionLimits = client_.getSessionLimits();
+    // TransmissionClient::getSessionLimits()). This uses whichever
+    // connection settings are active *before* this dialog changes them —
+    // if that connection doesn't work (e.g. this is the first time
+    // host/user/password are being set up), the fetch fails and
+    // `sessionLimitsFetched` says so.
+    bool sessionLimitsFetched = false;
+    SessionLimits sessionLimits = client_.getSessionLimits(&sessionLimitsFetched);
 
     SettingsDialogFields fields;
     if (auto* dlg = createSettingsDialog(settings_, sessionLimits, fields)) {
@@ -130,7 +135,19 @@ void App::showSettingsDialog() {
             // the config file now holds the chosen language.
             if (listWindow_) listWindow_->retranslate();
 
-            client_.setSessionLimits(settingsDialogSessionLimits(fields));
+            // Only pushed back if the fetch above actually succeeded.
+            // Otherwise the dialog's speed-limit fields were showing
+            // meaningless defaults (0/disabled) rather than this
+            // server's real state — most commonly on the very first
+            // time host/user/password are configured, when the *old*
+            // connection couldn't reach anything yet. Sending those
+            // defaults to the newly-configured connection (now
+            // reachable, thanks to applySettings() above) would
+            // silently wipe out real limits already set there, even
+            // though the user never touched the speed-limit fields.
+            if (sessionLimitsFetched) {
+                client_.setSessionLimits(settingsDialogSessionLimits(fields));
+            }
         }
         destroy(dlg);
     }

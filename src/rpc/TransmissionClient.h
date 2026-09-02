@@ -78,7 +78,16 @@ public:
                                 bool honorsSessionLimits);
 
     // Reads the session's global speed limits (session-get).
-    SessionLimits getSessionLimits();
+    // Fetches global (session-wide) speed limits. `ok`, if given, is set
+    // to whether the fetch actually succeeded — callers that intend to
+    // write these values back afterwards (see setSessionLimits()) need
+    // this: on failure this still returns a default-constructed
+    // SessionLimits (all disabled/zero), which is indistinguishable from
+    // "the server genuinely has no limits set" unless the caller checks
+    // `ok`. Sending that default back as if it were the real fetched
+    // state would silently wipe out any real limits already configured
+    // on the server.
+    SessionLimits getSessionLimits(bool* ok = nullptr);
 
     // Sets the session's global speed limits (session-set).
     bool setSessionLimits(const SessionLimits& limits);

@@ -1,13 +1,14 @@
 #include "AddTorrentDialog.h"
+#include "FileBrowserDialog.h"
 #include "Strings.h"
 
 #define Uses_TButton
 #define Uses_TStaticText
-#define Uses_TFileDialog
 #define Uses_TEvent
 #include <tvision/tv.h>
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace {
@@ -37,23 +38,26 @@ private:
         // is that `this` (the Add-torrent dialog itself, a TGroup) is
         // what execView() is called on here, instead of the top-level
         // TApplication, since this dialog is what needs to stay open
-        // underneath while the file dialog runs on top of it.
-        auto* fileDlg = new TFileDialog("*.torrent", tr(Str::DialogTitleBrowseTorrent),
-            tr(Str::LabelAddTorrentUrl), fdOpenButton | fdHelpButton, 0);
-        ushort result = execView(fileDlg);
-        // The "Open" button's command is cmFileOpen, not cmOK (checked
-        // in tvision's tfildlg.cpp) — only double-clicking a file in the
-        // list re-emits as cmOK. Either one is a real selection; cmCancel
-        // (Esc, or the Cancel button) is the only "nothing chosen" case.
-        if (result == cmFileOpen || result == cmOK) {
-            char buf[1024] = {0};
-            fileDlg->getFileName(buf);
+        // underneath while the browser runs on top of it.
+        //
+        // A custom browser (see FileBrowserDialog.h) rather than
+        // tvision's own TFileDialog: nesting TFileDialog inside this
+        // already-modal dialog rendered with wrong (jarring red)
+        // colors — most likely a palette-resolution quirk specific to
+        // two levels of dialog nesting, which even tvision's own
+        // "tvedit" example never does (it opens TFileDialog directly
+        // from the application, one level deep). Side-stepped by not
+        // using TFileDialog at all here.
+        const char* home = std::getenv("HOME");
+        auto* browseDlg = createFileBrowserDialog(home ? home : "/");
+        if (execView(browseDlg) == cmOK) {
+            std::string path = fileBrowserDialogResult(browseDlg);
             std::vector<char> data(513, 0);
-            std::snprintf(data.data(), data.size(), "%s", buf);
+            std::snprintf(data.data(), data.size(), "%s", path.c_str());
             urlField_->setData(data.data());
             urlField_->drawView();
         }
-        TObject::destroy(fileDlg);
+        TObject::destroy(browseDlg);
     }
 
     TInputLine* urlField_;
