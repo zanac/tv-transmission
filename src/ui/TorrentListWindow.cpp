@@ -11,7 +11,13 @@
 #define Uses_TProgram
 #define Uses_TDeskTop
 #define Uses_TDrawBuffer
+#define Uses_TMenuItem
+#define Uses_TMenu
+#define Uses_TMenuPopup
+#define Uses_MsgBox
+#define Uses_TKeys
 #include <tvision/tv.h>
+#include "App.h"
 
 namespace {
 
@@ -161,6 +167,8 @@ void TorrentListViewer::setTorrents(std::vector<Torrent> torrents) {
                  // user's chosen criterion is re-applied here
     setRange((short)torrents_.size());
     if (focused >= range && range > 0) focusItem(range - 1);
+    updateCommandStates(); // the still-focused torrent's state may have
+                           // changed even when its index didn't
     drawView();
 }
 
@@ -243,6 +251,124 @@ TColorAttr TorrentListViewer::mapColor(uchar index) {
     }
 }
 
+namespace {
+
+// tr_torrent_activity values (Transmission RPC): 0=stopped,
+// 1=check-wait, 2=checking, 3=download-wait, 4=downloading,
+// 5=seed-wait, 6=seeding. "Queued" here means 1/3/5: already started
+// (waiting for its turn), as opposed to genuinely stopped (0).
+bool isStopped(const Torrent& t) { return t.status == 0; }
+bool isQueued(const Torrent& t) { return t.status == 1 || t.status == 3 || t.status == 5; }
+
+void setCmd(TView* v, ushort cmd, bool enable) {
+    if (enable) v->enableCommand(cmd);
+    else v->disableCommand(cmd);
+}
+
+// `fmt` is one of our own tr() strings with a single "%s" placeholder;
+// `value` is a plain argument to it, not itself interpreted as a format
+// string, so a torrent name containing a literal '%' can't cause any
+// issue here (unlike passing it directly to printf as the format).
+std::string formatMessage(const char* fmt, const std::string& value) {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), fmt, value.c_str());
+    return buf;
+}
+
+} // namespace
+
+void TorrentListViewer::updateCommandStates() {
+    const Torrent* t = selectedTorrent();
+    if (!t) {
+        // Nothing selected (e.g. empty list): no per-torrent action
+        // makes sense.
+        setCmd(this, cmStartTorrent, false);
+        setCmd(this, cmStopTorrent, false);
+        setCmd(this, cmRemoveTorrent, false);
+        setCmd(this, cmDeleteTorrentWithData, false);
+        setCmd(this, cmVerifyTorrent, false);
+        setCmd(this, cmReannounceTorrent, false);
+        setCmd(this, cmStartNowTorrent, false);
+        setCmd(this, cmShowDetails, false);
+        return;
+    }
+    bool stopped = isStopped(*t);
+    bool queued = isQueued(*t);
+    bool active = !stopped;
+
+    setCmd(this, cmStartTorrent, stopped);           // already running/queued: nothing to start
+    setCmd(this, cmStopTorrent, active);              // already stopped: nothing to stop
+    setCmd(this, cmRemoveTorrent, true);              // always possible
+    setCmd(this, cmDeleteTorrentWithData, true);       // always possible
+    setCmd(this, cmVerifyTorrent, true);               // Transmission allows this in any state
+    setCmd(this, cmReannounceTorrent, active);         // only meaningful while talking to trackers
+    setCmd(this, cmStartNowTorrent, stopped || queued); // only useful if not already transferring
+    setCmd(this, cmShowDetails, true);                 // always possible
+}
+
+void TorrentListViewer::focusItem(short item) {
+    TListViewer::focusItem(item);
+    updateCommandStates();
+}
+
+void TorrentListViewer::handleEvent(TEvent& event) {
+    TListViewer::handleEvent(event);
+    if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0) {
+        TPoint where = event.mouse.where; // already in global/screen coordinates
+        TPoint local = makeLocal(where);
+        // Same formula TListViewer::handleEvent() itself uses for
+        // left-click selection (see tlstview.cpp): with numCols == 1
+        // (our case) each item is exactly one row, so the clicked
+        // index is simply topItem + the local y offset.
+        short row = topItem + local.y;
+        if (row >= 0 && row < range) {
+            focusItemNum(row); // also runs updateCommandStates() via the override above
+            showContextMenu(where);
+        }
+        clearEvent(event);
+    }
+}
+
+void TorrentListViewer::showContextMenu(TPoint where) {
+    // TMenuBox/TMenuPopup size themselves from their content and anchor
+    // at bounds.a, expanding toward bounds.b — a small bounds.b here
+    // (rather than a comfortably large one) would make it anchor
+    // backwards from the click point instead of growing rightward/
+    // downward from it (see getRect() in tvision's tmenubox.cpp).
+    TRect r(where.x, where.y, where.x + 40, where.y + 10);
+    TMenu* menu = new TMenu(
+        *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey)
+    );
+    auto* popup = new TMenuPopup(r, menu);
+    // execView() (inherited from TProgram/TApplication) inserts the
+    // popup, runs its own event loop until a choice is made or it's
+    // dismissed, then removes it — the same mechanism tvision's own
+    // pull-down submenus use internally (see newSubView()/execView() in
+    // tmnuview.cpp) and the same one this app already uses for its own
+    // modal dialogs (see App.cpp's execView(dlg) calls).
+    ushort chosen = TProgram::application->execView(popup);
+    TObject::destroy(popup);
+    if (chosen != 0 && commandEnabled(chosen)) {
+        // Re-emit exactly as a button or menu item would (see
+        // TButton::press() in tbutton.cpp): this is the same command
+        // value App::handleEvent already dispatches for the Torrent
+        // menu and the status bar, so it reaches the same handling
+        // without duplicating it here.
+        TEvent e;
+        e.what = evCommand;
+        e.message.command = chosen;
+        e.message.infoPtr = this;
+        putEvent(e);
+    }
+}
+
 TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                                       SortColumn initialSort, bool initialAscending,
                                       SortChangedCallback onSortChanged)
@@ -303,12 +429,12 @@ void TorrentListWindow::handleEvent(TEvent& event) {
     if (event.what == evBroadcast &&
         event.message.command == cmListItemSelected &&
         event.message.infoPtr == listViewer_) {
-        openDetailsForSelected();
+        showDetailsForSelected();
         clearEvent(event);
     }
 }
 
-void TorrentListWindow::openDetailsForSelected() {
+void TorrentListWindow::showDetailsForSelected() {
     const Torrent* t = listViewer_->selectedTorrent();
     if (!t) return;
 
@@ -353,8 +479,38 @@ void TorrentListWindow::stopSelected() {
 }
 
 void TorrentListWindow::removeSelected() {
+    const Torrent* t = listViewer_->selectedTorrent();
+    if (!t) return;
+    std::string msg = formatMessage(tr(Str::ConfirmRemoveTorrent), t->name);
+    if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
+    client_.removeTorrent(t->id, /*deleteLocalData=*/false);
+    refresh();
+}
+
+void TorrentListWindow::deleteWithDataSelected() {
+    const Torrent* t = listViewer_->selectedTorrent();
+    if (!t) return;
+    std::string msg = formatMessage(tr(Str::ConfirmDeleteTorrentWithData), t->name);
+    if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
+    client_.removeTorrent(t->id, /*deleteLocalData=*/true);
+    refresh();
+}
+
+void TorrentListWindow::startNowSelected() {
     if (const Torrent* t = listViewer_->selectedTorrent())
-        client_.removeTorrent(t->id, /*deleteLocalData=*/false);
+        client_.startTorrentNow(t->id);
+    refresh();
+}
+
+void TorrentListWindow::verifySelected() {
+    if (const Torrent* t = listViewer_->selectedTorrent())
+        client_.verifyTorrent(t->id);
+    refresh();
+}
+
+void TorrentListWindow::reannounceSelected() {
+    if (const Torrent* t = listViewer_->selectedTorrent())
+        client_.reannounceTorrent(t->id);
     refresh();
 }
 

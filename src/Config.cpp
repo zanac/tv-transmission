@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "Obfuscation.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <cstdlib>
@@ -47,7 +48,7 @@ AppSettings loadSettings() {
         settings.host = j.value("host", settings.host);
         settings.port = j.value("port", settings.port);
         settings.user = j.value("user", settings.user);
-        settings.password = j.value("password", settings.password);
+        settings.password = deobfuscatePassword(j.value("password", std::string()));
         int lang = j.value("language", static_cast<int>(settings.language));
         settings.language = static_cast<Language>(lang);
         int sortCol = j.value("sortColumn", static_cast<int>(settings.sortColumn));
@@ -70,7 +71,7 @@ bool saveSettings(const AppSettings& settings) {
     j["host"] = settings.host;
     j["port"] = settings.port;
     j["user"] = settings.user;
-    j["password"] = settings.password;
+    j["password"] = obfuscatePassword(settings.password);
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
     j["sortAscending"] = settings.sortAscending;
@@ -82,8 +83,10 @@ bool saveSettings(const AppSettings& settings) {
     out.close();
     if (!out) return false;
 
-    // Contains the RPC password in plain text: restrict permissions to
-    // read/write for the current user only.
+    // The RPC password is obfuscated (see Obfuscation.h) rather than
+    // stored in plain text, but that's not real encryption — 0600
+    // permissions (only the current user can read the file) remain the
+    // actual protection here, so keep them regardless.
     chmod(path.c_str(), 0600);
 
     return true;

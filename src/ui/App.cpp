@@ -40,6 +40,12 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
             *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
+            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
             newLine() +
@@ -191,6 +197,26 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmRemoveTorrent:
             if (listWindow_) listWindow_->removeSelected();
+            clearEvent(event);
+            break;
+        case cmDeleteTorrentWithData:
+            if (listWindow_) listWindow_->deleteWithDataSelected();
+            clearEvent(event);
+            break;
+        case cmStartNowTorrent:
+            if (listWindow_) listWindow_->startNowSelected();
+            clearEvent(event);
+            break;
+        case cmVerifyTorrent:
+            if (listWindow_) listWindow_->verifySelected();
+            clearEvent(event);
+            break;
+        case cmReannounceTorrent:
+            if (listWindow_) listWindow_->reannounceSelected();
+            clearEvent(event);
+            break;
+        case cmShowDetails:
+            if (listWindow_) listWindow_->showDetailsForSelected();
             clearEvent(event);
             break;
         case cmSettings:

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TV Transmission
+GenericName=Transmission TUI Client
+Comment=Terminal UI and CLI client for Transmission (transmission-daemon)
+Exec=tv-transmission
+Icon=tv-transmission
+Terminal=true
+Categories=Network;FileTransfer;

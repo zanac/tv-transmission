@@ -22,6 +22,18 @@ const char* tr(Str id) {
         case Str::MenuRemove:    return it ? "~R~imuovi"       : "~R~emove";
         case Str::MenuSettings:  return it ? "~I~mpostazioni..." : "S~e~ttings...";
         case Str::MenuQuit:      return it ? "~E~sci"          : "~Q~uit";
+        case Str::MenuVerify:      return it ? "~V~erifica"              : "~V~erify";
+        case Str::MenuReannounce:  return it ? "Ricontatta tra~c~ker"    : "Reannoun~c~e";
+        case Str::MenuStartNow:    return it ? "Avvia s~u~bito"          : "Start ~N~ow";
+        case Str::MenuShowDetails: return it ? "~D~ettagli"              : "~D~etails";
+        case Str::MenuDeleteWithData:
+            return it ? "Elimina (con ~f~ile)" : "Delete (~w~ith files)";
+        case Str::ConfirmRemoveTorrent:
+            return it ? "Rimuovere '%s' dalla lista? I file su disco resteranno."
+                      : "Remove '%s' from the list? Files on disk will be kept.";
+        case Str::ConfirmDeleteTorrentWithData:
+            return it ? "Eliminare '%s' E i suoi file su disco? L'operazione non si puo' annullare."
+                      : "Delete '%s' AND its files on disk? This cannot be undone.";
 
         // Standard tvision window-management menu: we just label items
         // that send tvision's own standard commands (cmZoom, cmNext,
@@ -104,6 +116,28 @@ const char* tr(Str id) {
         // Window menu's Close item, which apply to different things
         // (this torrent's window vs. "whichever window is active").
         case Str::ButtonClose:        return it ? "Chiudi" : "Close";
+        case Str::ButtonTrackers:     return it ? "Tracker..." : "Trackers...";
+        case Str::ButtonRefresh:      return it ? "Aggiorna" : "Refresh";
+
+        case Str::WindowTitleTrackerList:   return it ? "Tracker: %s" : "Trackers: %s";
+        case Str::WindowTitleTrackerDetail: return it ? "Dettagli tracker" : "Tracker details";
+        case Str::HeaderTrackerHost:  return it ? "Tracker" : "Tracker";
+        case Str::HeaderTier:         return "Tier";
+        case Str::HeaderSeeders:      return it ? "Seeders" : "Seeders";
+        case Str::HeaderLeechers:     return it ? "Leechers" : "Leechers";
+        case Str::HeaderDownloaded:   return it ? "Scaricati" : "Downloaded";
+        case Str::HeaderTrackerStatus: return it ? "Stato" : "Status";
+        case Str::TrackerStatusOk:    return "OK";
+        case Str::TrackerStatusError: return it ? "Errore" : "Error";
+        case Str::ValueNotAvailable:  return "N/A";
+        case Str::LabelTrackerHost:      return it ? "Tracker: %s" : "Tracker: %s";
+        case Str::LabelTrackerTier:      return it ? "Tier: %d" : "Tier: %d";
+        case Str::LabelTrackerSeeders:   return it ? "Seeders: %s" : "Seeders: %s";
+        case Str::LabelTrackerLeechers:  return it ? "Leechers: %s" : "Leechers: %s";
+        case Str::LabelTrackerDownloaded: return it ? "Scaricati: %s" : "Downloaded: %s";
+        case Str::LabelTrackerLastAnnounce: return it ? "Ultimo annuncio: %s" : "Last announce: %s";
+        case Str::LabelTrackerNextAnnounce: return it ? "Prossimo annuncio: %s" : "Next announce: %s";
+        case Str::LabelTrackerResult:    return it ? "Risultato: %s" : "Result: %s";
 
         case Str::LabelGlobalSpeedSection:
             return it ? "Limite di velocità globale (tutti i torrent):"

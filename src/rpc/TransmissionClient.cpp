@@ -169,6 +169,51 @@ bool TransmissionClient::removeTorrent(int id, bool deleteLocalData) {
     return !call("torrent-remove", args.dump()).empty();
 }
 
+bool TransmissionClient::startTorrentNow(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("torrent-start-now", args.dump()).empty();
+}
+
+bool TransmissionClient::verifyTorrent(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("torrent-verify", args.dump()).empty();
+}
+
+bool TransmissionClient::reannounceTorrent(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("torrent-reannounce", args.dump()).empty();
+}
+
+std::vector<TrackerStat> TransmissionClient::getTrackerStats(int torrentId) {
+    std::vector<TrackerStat> result;
+    json args = {{"ids", json::array({torrentId})}, {"fields", json::array({"trackerStats"})}};
+    std::string body = call("torrent-get", args.dump());
+    if (body.empty()) return result;
+
+    try {
+        json j = json::parse(body);
+        auto& torrents = j["arguments"]["torrents"];
+        if (torrents.empty()) return result;
+        for (auto& s : torrents[0]["trackerStats"]) {
+            TrackerStat t;
+            t.host = s.value("host", "");
+            t.tier = s.value("tier", 0);
+            t.seederCount = s.value("seederCount", -1);
+            t.leecherCount = s.value("leecherCount", -1);
+            t.downloadCount = s.value("downloadCount", -1);
+            t.lastAnnounceSucceeded = s.value("lastAnnounceSucceeded", false);
+            t.hasAnnounced = s.value("hasAnnounced", false);
+            t.lastAnnounceResult = s.value("lastAnnounceResult", "");
+            t.lastAnnounceTime = s.value("lastAnnounceTime", (int64_t)0);
+            t.nextAnnounceTime = s.value("nextAnnounceTime", (int64_t)0);
+            result.push_back(std::move(t));
+        }
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+    }
+    return result;
+}
+
 void TransmissionClient::setEndpoint(std::string host, int port) {
     host_ = std::move(host);
     port_ = port;

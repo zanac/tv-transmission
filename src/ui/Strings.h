@@ -16,6 +16,9 @@ Language currentLanguage();
 // Identifier for every translatable piece of UI text.
 enum class Str {
     MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
+    MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails,
+    MenuDeleteWithData,
+    ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     DialogTitleWindowList,
@@ -36,6 +39,15 @@ enum class Str {
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
     CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
+    ButtonTrackers, ButtonRefresh,
+
+    WindowTitleTrackerList, WindowTitleTrackerDetail,
+    HeaderTrackerHost, HeaderTier, HeaderSeeders, HeaderLeechers,
+    HeaderDownloaded, HeaderTrackerStatus,
+    TrackerStatusOk, TrackerStatusError, ValueNotAvailable,
+    LabelTrackerHost, LabelTrackerTier, LabelTrackerSeeders,
+    LabelTrackerLeechers, LabelTrackerDownloaded,
+    LabelTrackerLastAnnounce, LabelTrackerNextAnnounce, LabelTrackerResult,
 
     LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,
 

@@ -1,6 +1,7 @@
 add_executable(tv-transmission
     main.cpp
     Config.cpp
+    Obfuscation.cpp
     TextUtil.cpp
     cli/Cli.cpp
     rpc/TransmissionClient.cpp
@@ -11,6 +12,8 @@ add_executable(tv-transmission
     ui/WindowListDialog.cpp
     ui/BandwidthStatusLine.cpp
     ui/TorrentDetailsWindow.cpp
+    ui/TrackerListWindow.cpp
+    ui/TrackerDetailWindow.cpp
     ui/Strings.cpp
 )
 

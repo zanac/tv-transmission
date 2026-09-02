@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "Strings.h"
+#include "PasswordInputLine.h"
 
 #define Uses_TButton
 #define Uses_TStaticText
@@ -15,9 +16,12 @@
 namespace {
 
 TInputLine* addField(TDialog* dlg, int y, const char* label,
-                      const std::string& initialValue, int maxLen) {
+                      const std::string& initialValue, int maxLen,
+                      bool masked = false) {
     dlg->insert(new TStaticText(TRect(2, y, 24, y + 1), label));
-    auto* input = new TInputLine(TRect(24, y, 50, y + 1), maxLen);
+    TInputLine* input = masked
+        ? static_cast<TInputLine*>(new PasswordInputLine(TRect(24, y, 50, y + 1), maxLen))
+        : new TInputLine(TRect(24, y, 50, y + 1), maxLen);
 
     // setData() does memcpy(data, rec, maxLen) on the buffer passed in:
     // it must be at least maxLen readable bytes long, so no direct
@@ -50,7 +54,7 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
     fields.port = addField(dlg, 6, tr(Str::LabelPort), std::to_string(current.port), 10);
     fields.port->setValidator(new TRangeValidator(1, 65535)); // valid TCP port range
     fields.user = addField(dlg, 8, tr(Str::LabelUser), current.user, 128);
-    fields.password = addField(dlg, 10, tr(Str::LabelPassword), current.password, 128);
+    fields.password = addField(dlg, 10, tr(Str::LabelPassword), current.password, 128, /*masked=*/true);
 
     dlg->insert(new TStaticText(TRect(2, 12, 24, 13), tr(Str::LabelLanguage)));
     fields.language = new TRadioButtons(TRect(24, 12, 50, 14),

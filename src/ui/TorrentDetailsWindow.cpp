@@ -1,4 +1,5 @@
 #include "TorrentDetailsWindow.h"
+#include "TrackerListWindow.h"
 #include "Strings.h"
 #include "../TextUtil.h"
 
@@ -8,6 +9,7 @@
 #define Uses_TEvent
 #define Uses_TValidator
 #define Uses_TRangeValidator
+#define Uses_TProgram
 #include <tvision/tv.h>
 #include <cstdio>
 #include <cstdlib>
@@ -29,6 +31,7 @@ constexpr ushort cmApplySpeedLimits = 200;
 // entirely; it's the same close() TWindow::handleEvent would have
 // called anyway.
 constexpr ushort cmCloseDetails = 201;
+constexpr ushort cmShowTrackers = 202;
 
 // TStaticText already copies the text internally (newStr + delete[] in
 // its destructor), so passing it the temporary buffer is enough: there's
@@ -41,10 +44,16 @@ void addLine(TWindow* win, int y, const char* text) {
 } // namespace
 
 TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView title,
-                                            int torrentId, TransmissionClient& client)
+                                            int torrentId, const std::string& torrentName,
+                                            TransmissionClient& client)
     : TWindowInit(&TDialog::initFrame),
       TDialog(bounds, title),
-      torrentId_(torrentId), client_(client) {}
+      torrentId_(torrentId), torrentName_(torrentName), client_(client) {}
+
+void TorrentDetailsWindow::showTrackers() {
+    if (auto* win = createTrackerListWindow(torrentId_, torrentName_, client_))
+        TProgram::application->insertWindow(win);
+}
 
 void TorrentDetailsWindow::applySpeedLimits() {
     // Unlike a modal dialog closed via execView() (where an attached
@@ -79,6 +88,9 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
     } else if (event.what == evCommand && event.message.command == cmCloseDetails) {
         close();
         clearEvent(event);
+    } else if (event.what == evCommand && event.message.command == cmShowTrackers) {
+        showTrackers();
+        clearEvent(event);
     }
 }
 
@@ -93,7 +105,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
         tr(Str::WindowTitleDetails), shortName.c_str());
 
-    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, client);
+    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client);
     win->options |= ofCentered;
 
     char buf[256];
@@ -172,6 +184,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
 
     win->insert(new TButton(TRect(14, 17, 24, 19), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
     win->insert(new TButton(TRect(28, 17, 38, 19), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
+    win->insert(new TButton(TRect(42, 17, 54, 19), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
 
     return win;
 }

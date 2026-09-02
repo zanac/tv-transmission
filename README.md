@@ -43,10 +43,46 @@ HTTP and nlohmann/json for parsing.
 - "Apply" sends the change immediately (`torrent-set` RPC); "Close"
   closes the window without changing anything
 
+**Tracker details**
+- A "Trackers..." button in the torrent details window opens a
+  separate, non-modal table listing every tracker for that torrent:
+  host, tier, seeders, leechers, downloaded count, and a short status
+  (OK/Error). Turbo Vision has no tab control, so this is a dedicated
+  window rather than a second tab on the details dialog (see
+  `TrackerListWindow`)
+- This data (`trackerStats`, part of `torrent-get`) isn't fetched as
+  part of the regular list refresh; it's requested only when this
+  window is opened, and again only when you press its own "Refresh"
+  button (no auto-refresh)
+- Double-click a tracker row for a small window with that tracker's
+  full status: last/next announce time and the complete error or
+  success message, which don't fit in a table row
+
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
 - Start / stop the selected torrent (F5 / F6)
-- Remove the selected torrent (F8)
+- Remove the selected torrent (F8) — keeps its files on disk
+- Delete the selected torrent **and its files on disk** — a separate,
+  clearly distinct action from Remove, reachable from the Torrent menu
+  and the right-click context menu (no default keyboard shortcut, given
+  how destructive it is)
+- Both Remove and Delete-with-files ask for confirmation first
+  (`messageBox`, showing the torrent's name) before doing anything —
+  Delete's confirmation spells out that the operation can't be undone
+- Right-click a row for a context menu: Start, Start Now, Stop, Verify,
+  Reannounce, Remove, Delete (with files), Details — right-clicking
+  also selects that row first, even if it wasn't already focused
+- Start Now (bypasses the download queue), Verify (rechecks local data
+  against piece hashes), and Reannounce (asks trackers for more peers
+  right away) — also reachable from the Torrent menu, not just the
+  context menu
+- Every one of these actions is enabled or disabled based on the
+  selected torrent's current state (e.g. Start is disabled while
+  already running, Stop is disabled while stopped, Reannounce only
+  makes sense while active) — and this is a single shared state, so
+  disabling an action grays it out everywhere it appears at once (the
+  Torrent menu, the status bar, and the context menu) rather than each
+  needing to be kept in sync separately
 - A status bar shows the combined download/upload rate across all
   torrents, refreshed on every UI tick (no extra RPC calls)
 
@@ -134,10 +170,18 @@ RPC (`session-get`/`session-set`, `torrent-set`), so they're shared with
 any other client talking to the same daemon.
 
 **About the password:** the file is written with `0600` permissions
-(only the current user can read it), but the RPC password is stored in
-**plain text** — there's no encryption. Keep that in mind if you reuse
-that password elsewhere, and be aware that any CLI command run under
-your user account can read it just as the TUI does.
+(only the current user can read it) — that's the actual protection.
+On top of that, the RPC password is obfuscated (XORed with a key
+derived from `/etc/machine-id` + `$HOME`, then base64-encoded) rather
+than stored in plain text, so it doesn't show up in clear if you `cat`
+the file, paste it into a support ticket, or someone glances at your
+screen. **This is not real encryption**: the key is derived entirely
+from data anyone with the same local access already has, so it's
+reversible by design, not resistant to a determined local attacker —
+real protection would mean an OS-level secret store (e.g. libsecret),
+not implemented here because it needs a keyring daemon that typically
+isn't available on the headless/SSH-managed servers this app is often
+used from.
 
 ## Building
 
@@ -165,6 +209,40 @@ subdirectory) without `external/tvision` present yet stops with an
 explicit error pointing at step 1 above — that's the intended check,
 not a bug.
 
+## Packaging as an AppImage
+
+A self-contained, portable Linux binary — download it, `chmod +x`, run,
+no installation or matching system libraries required (chosen over
+Flatpak: this is a terminal tool, and Flatpak's sandboxing model adds
+friction — explicit filesystem permissions, launching via `flatpak run`
+— that doesn't fit a program meant to be invoked directly from a shell).
+
+```
+./packaging/appimage/build-appimage.sh
+```
+
+On first run this downloads `linuxdeploy` and `appimagetool` (cached
+under `packaging/appimage/tools/`, gitignored — not something to commit
+to the repo), builds the project in Release mode, bundles the binary
+together with its shared library dependencies (libcurl, libncursesw,
+libgpm, and libcurl's own dependency tree — `libc`, `libstdc++`,
+`libgcc_s`, `libm` and a few other core system libraries are assumed
+present on any target and deliberately left out), and produces:
+
+```
+build/TvTransmission-x86_64.AppImage
+```
+
+which runs the TUI with no arguments, or the CLI with any (see
+"Command-line interface" above) — same as the plain binary. The
+`.desktop` file bundled inside sets `Terminal=true`, so double-clicking
+the AppImage from a file manager opens a terminal rather than doing
+nothing (this is a terminal app, not a windowed one).
+
+`packaging/appimage/tv-transmission.png` is a placeholder icon —
+replace it with a real one if you want (any size works; `linuxdeploy`
+handles the icon theme directories).
+
 ## Project layout
 
 ```
@@ -173,30 +251,37 @@ src/
   main.cpp                  Entry point: loads settings, dispatches to CLI or TUI
   AppSettings.h              Settings struct + Language enum
   Config.h/.cpp              Load/save settings.json
+  Obfuscation.h/.cpp          Password obfuscation for settings.json (not real encryption)
   TextUtil.h/.cpp             Shared UTF-8-safe pad/truncate helper
   cli/
     Cli.h/.cpp                Command-line interface
   rpc/
     Torrent.h                 Torrent data struct
+    Tracker.h                 Per-tracker stats struct (trackerStats)
     TransmissionClient.h/.cpp  Minimal Transmission RPC client (libcurl + nlohmann/json)
   ui/
     App.h/.cpp                 TApplication subclass: menu bar, status bar, event dispatch
     Strings.h/.cpp              Translation strings (English/Italian)
-    TorrentListWindow.h/.cpp    Main window: list, header, sorting, colors
+    TorrentListWindow.h/.cpp    Main window: list, header, sorting, colors, context menu
     TorrentDetailsWindow.h/.cpp Per-torrent details window
+    TrackerListWindow.h/.cpp    Per-torrent tracker table (opened from the details window)
+    TrackerDetailWindow.h/.cpp  Full status for a single tracker (double-click a row)
     AddTorrentDialog.h/.cpp     "Add torrent" dialog
     SettingsDialog.h/.cpp       "Settings" dialog
     WindowListDialog.h/.cpp     "Window list" dialog
     BandwidthStatusLine.h/.cpp  Status bar with a runtime-updatable item
+packaging/
+  appimage/
+    build-appimage.sh          Builds build/TvTransmission-x86_64.AppImage
+    tv-transmission.desktop     Desktop entry (Terminal=true)
+    tv-transmission.png         Placeholder icon
 ```
 
 ## Known limitations
 
-- The password field in the Settings dialog isn't masked (tvision has
-  no built-in flag for `TInputLine`; it would need a dedicated
-  subclass that substitutes typed characters with `*`).
-- RPC password saved in plain text on disk (0600 permissions, no
-  encryption) — see "Configuration file" above.
+- RPC password on disk is obfuscated, not really encrypted — see
+  "Configuration file" above for exactly what that does and doesn't
+  protect against.
 - No network-error UI: `TransmissionClient::lastError()` exists but
   isn't yet surfaced anywhere in the TUI (a `messageBox` or a status
   area would be the natural place).
@@ -206,10 +291,56 @@ src/
 - Speed limits (global and per-torrent) are only exposed in the TUI so
   far — the CLI has no equivalent of the Settings dialog's or details
   window's speed-limit controls.
+- The CLI's `remove --delete-data` does not ask for confirmation (unlike
+  the TUI's Remove/Delete actions) — intentional, so it stays usable in
+  scripts, but worth keeping in mind since it's the one place this app
+  deletes files without a prompt.
+
+## Possible future additions
+
+Transmission's RPC exposes more than this client currently uses. Not
+implemented yet, but straightforward to add along the same lines as the
+actions above:
+
+- **Queue reordering** — move a torrent to the top/bottom of the
+  download queue, or up/down one position (`queue-move-top`/`-up`/
+  `-down`/`-bottom`)
+- **Change download location** for an already-added torrent
+  (`torrent-set-location`)
+- **Rename a file or folder** inside a torrent (`torrent-rename-path`)
+- **Per-torrent seed ratio limit**, distinct from a speed limit
+  (`seedRatioLimit`/`seedRatioMode` in `torrent-set`)
+- **Per-torrent bandwidth priority** (high/normal/low), distinct from
+  the absolute KB/s limit already implemented (`bandwidthPriority`)
+- **Incoming port test** (`port-test`) and **blocklist update**
+  (`blocklist-update`) — session-level, would fit in the Settings dialog
+- **Free disk space** for a given path (`free-space`) — useful before
+  adding a large torrent
 
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Password stored in plain text.** Fixed by obfuscating it (XOR with a
+machine+user-derived key, base64-encoded) before writing settings.json
+— see "Configuration file" above for exactly what this does and
+doesn't protect against (short version: not real encryption, but the
+password no longer shows up in clear in the file). No migration from
+older config files with a plain-text password: the field is now always
+assumed to be in the obfuscated format, so a pre-existing plain-text
+password won't be read back correctly — delete `settings.json` (or
+just re-enter the password in the Settings dialog once) after updating.
+
+**Password field had no masking.** tvision's `TInputLine` has no
+built-in flag for this (checked: nothing in `dialogs.h`/`tinputli.cpp`
+resembles one). Fixed with `PasswordInputLine`, a subclass that
+temporarily swaps the (public) `data` member for a same-length string
+of asterisks only for the duration of the base class's own `draw()`
+call, then restores the real value immediately after — every other
+method (`getData`/`setData`/the validator/`handleEvent`) keeps
+operating on the real, unmasked value as normal. Reuses `TInputLine::
+draw()`'s own scrolling/selection-highlight logic entirely instead of
+reimplementing it.
 
 **Details window and Settings dialog colors, reverted — then actually
 matched.** These went through a few iterations: the details window got

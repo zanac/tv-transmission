@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "Torrent.h"
+#include "Tracker.h"
 
 // Global (session-wide) speed limit state, as reported/set by
 // session-get / session-set. When *Limited is false, that direction is
@@ -34,6 +35,26 @@ public:
     bool startTorrent(int id);
     bool stopTorrent(int id);
     bool removeTorrent(int id, bool deleteLocalData);
+
+    // Bypasses the queue and starts immediately, even if the download
+    // queue is full (torrent-start-now).
+    bool startTorrentNow(int id);
+
+    // Re-checks the torrent's local data against the piece hashes
+    // (torrent-verify). Safe to call regardless of the torrent's current
+    // state; Transmission queues the check itself.
+    bool verifyTorrent(int id);
+
+    // Asks the torrent's trackers for more peers right away
+    // (torrent-reannounce), instead of waiting for the next scheduled
+    // announce.
+    bool reannounceTorrent(int id);
+
+    // Fetches per-tracker stats for a single torrent (torrent-get with
+    // the "trackerStats" field). Fetched on demand, not part of the
+    // regular list refresh — this data isn't needed until the user
+    // actually opens the tracker details window.
+    std::vector<TrackerStat> getTrackerStats(int torrentId);
 
     // Sets (or clears) a per-torrent speed limit override, and whether
     // the torrent honors the session's global limit at all.

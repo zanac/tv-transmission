@@ -4,6 +4,7 @@
 #define Uses_TInputLine
 #define Uses_TCheckBoxes
 #include <tvision/tv.h>
+#include <string>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
 
@@ -32,7 +33,8 @@
 class TorrentDetailsWindow : public TDialog {
 public:
     TorrentDetailsWindow(const TRect& bounds, TStringView title,
-                          int torrentId, TransmissionClient& client);
+                          int torrentId, const std::string& torrentName,
+                          TransmissionClient& client);
 
     void handleEvent(TEvent& event) override;
 
@@ -47,8 +49,10 @@ public:
 
 private:
     void applySpeedLimits();
+    void showTrackers();
 
     int torrentId_;
+    std::string torrentName_;
     TransmissionClient& client_;
 };
 
