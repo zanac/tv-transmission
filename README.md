@@ -410,7 +410,10 @@ opened a second one.** Fixed by searching the desktop's open windows
 for an existing `TorrentDetailsWindow` with the same torrent id before
 creating a new one (same `deskTop->last`/`next` traversal already used
 for the "Window list" dialog); if found, it's brought to the front
-(`select()`) instead.
+(`select()`) instead. Clicking "Trackers..." for a torrent that already
+had its tracker list open had the same problem, fixed the same way
+(`TrackerListWindow::torrentId()`, checked in
+`TorrentDetailsWindow::showTrackers()`).
 
 **Column misalignment for very large torrents.** The size column always
 showed the value in MB with a fixed 8-character field (`%8.1fMB`). That

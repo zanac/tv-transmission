@@ -44,6 +44,10 @@ public:
 
     void handleEvent(TEvent& event) override;
 
+    // So the caller (TorrentDetailsWindow) can find an already-open
+    // tracker list for this torrent instead of opening a duplicate.
+    int torrentId() const { return torrentId_; }
+
 private:
     void refresh();
     void showDetailForSelected();

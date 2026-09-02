@@ -10,6 +10,7 @@
 #define Uses_TValidator
 #define Uses_TRangeValidator
 #define Uses_TProgram
+#define Uses_TDeskTop
 #include <tvision/tv.h>
 #include <cstdio>
 #include <cstdlib>
@@ -51,6 +52,24 @@ TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView titl
       torrentId_(torrentId), torrentName_(torrentName), client_(client) {}
 
 void TorrentDetailsWindow::showTrackers() {
+    // Same deskTop->last/next traversal already used for the "Window
+    // list" dialog and for reusing an already-open TorrentDetailsWindow
+    // (see TorrentListWindow::showDetailsForSelected()) — order doesn't
+    // matter here either, we're searching for a specific torrent id.
+    TDeskTop* deskTop = TProgram::deskTop;
+    if (deskTop->last) {
+        TView* p = deskTop->last;
+        do {
+            p = p->next;
+            if (auto* existing = dynamic_cast<TrackerListWindow*>(p)) {
+                if (existing->torrentId() == torrentId_) {
+                    existing->select(); // bring the existing one to front instead
+                    return;
+                }
+            }
+        } while (p != deskTop->last);
+    }
+
     if (auto* win = createTrackerListWindow(torrentId_, torrentName_, client_))
         TProgram::application->insertWindow(win);
 }
