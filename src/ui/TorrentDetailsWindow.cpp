@@ -125,7 +125,7 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
 }
 
 TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client) {
-    TRect r(0, 0, 68, 27);
+    TRect r(0, 0, 68, 25);
 
     // Title includes the start of the torrent's name, so several open
     // details windows (see the "Window list" dialog) are distinguishable
@@ -161,14 +161,20 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         addLineLR(win, y++, left, nullptr);
     }
 
+    // Paired here rather than left on its own line at the bottom (where
+    // there's nothing short enough nearby to share a row with) — see
+    // the comment above createTorrentDetailsWindow's closing brace for
+    // the other change that came out of the same "too tall" report.
+    char idBuf[32];
+    std::snprintf(idBuf, sizeof(idBuf), tr(Str::LabelId), t.id);
+    addLineLR(win, y++,
+        t.isPrivate ? tr(Str::LabelPrivacyPrivate) : tr(Str::LabelPrivacyPublic), idBuf);
+
     if (!t.downloadDir.empty()) {
         std::string dir = truncateUtf8(t.downloadDir, 56);
         std::snprintf(left, sizeof(left), tr(Str::LabelLocation), dir.c_str());
         addLine(win, y++, left);
     }
-
-    addLineLR(win, y++,
-        t.isPrivate ? tr(Str::LabelPrivacyPrivate) : tr(Str::LabelPrivacyPublic), nullptr);
 
     if (!t.magnetLink.empty()) {
         // Truncated on purpose: shown as a visual reference (matching
@@ -181,8 +187,6 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         std::snprintf(left, sizeof(left), tr(Str::LabelMagnet), magnet.c_str());
         addLine(win, y++, left);
     }
-
-    y++; // blank separator
 
     // Same formula Transmission's own official GTK/Qt clients use for
     // "Availability": bytes already had (valid or not-yet-hash-checked)
@@ -231,9 +235,6 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::snprintf(right, sizeof(right), tr(Str::LabelTimeSeeding), formatDuration(t.secondsSeeding).c_str());
     addLineLR(win, y++, left, right);
 
-    std::snprintf(left, sizeof(left), tr(Str::LabelId), t.id);
-    addLineLR(win, y++, left, nullptr);
-
     if (!t.errorString.empty()) {
         std::snprintf(left, sizeof(left), tr(Str::LabelError), t.errorString.c_str());
         addLine(win, y++, left);
@@ -243,7 +244,9 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     y++; // blank separator
     addLine(win, y, tr(Str::LabelSpeedLimitSection));
     int checkboxesY = y + 1;
-    y += 4; // 3 rows for the cluster + 1 blank after
+    y += 3; // 3 rows for the cluster — the gap before the buttons is
+            // handled separately below, deliberately not folded into
+            // this +3 (see the comment there for why)
 
     // Three independent checkboxes, NOT two + an implied third state:
     // "limit download/upload" (this torrent's own cap) and "honor global
@@ -283,6 +286,17 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->insert(win->uploadLimitField);
     win->insert(new TStaticText(TRect(51, checkboxesY + 1, 56, checkboxesY + 2), tr(Str::UnitKBs)));
 
+    // The gap here is 2 rows, not 1: TCluster's own drawMultiBox() loops
+    // "i <= size.y" (off-by-one in tvision itself, not fixable from
+    // here) rather than "i < size.y", so it paints one extra row right
+    // below its declared bounds — blank of text, but still filled with
+    // its highlighted background color. A single blank row of margin
+    // here would actually be that phantom colored row, making the
+    // buttons look stuck directly to the checkbox box with no visible
+    // separation (exactly what was reported) instead of the real gap
+    // the row count suggests. Two rows guarantees one of them is
+    // genuinely blank.
+    y += 2;
     win->insert(new TButton(TRect(16, y, 26, y + 2), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
     win->insert(new TButton(TRect(30, y, 40, y + 2), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
     win->insert(new TButton(TRect(44, y, 56, y + 2), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
