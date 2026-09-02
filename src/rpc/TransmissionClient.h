@@ -56,6 +56,15 @@ public:
     // actually opens the tracker details window.
     std::vector<TrackerStat> getTrackerStats(int torrentId);
 
+    // Fetches the extended fields shown in the torrent details window
+    // (location, privacy, magnet link, piece info, all-time transfer
+    // totals, ratio, activity/elapsed-time fields) for a single torrent.
+    // Also on demand, for the same reason as getTrackerStats(): these
+    // aren't part of listTorrents()'s lightweight fields, so opening
+    // details always does one extra request rather than the periodic
+    // refresh always carrying fields it rarely needs.
+    Torrent getTorrentDetails(int torrentId);
+
     // Sets (or clears) a per-torrent speed limit override, and whether
     // the torrent honors the session's global limit at all.
     // downloadLimited=false/uploadLimited=false means "no limit of its

@@ -99,6 +99,25 @@ const char* tr(Str id) {
         case Str::LabelId:        return "ID: %d";
         case Str::LabelAdded:     return it ? "Aggiunto: %s"        : "Added: %s";
 
+        case Str::LabelLocation:      return it ? "Posizione: %s"  : "Location: %s";
+        case Str::LabelPrivacyPublic:  return it ? "Privacy: torrent pubblico" : "Privacy: public torrent";
+        case Str::LabelPrivacyPrivate: return it ? "Privacy: torrent privato"  : "Privacy: private torrent";
+        case Str::LabelMagnet:        return it ? "Magnet: %s"      : "Magnet: %s";
+        case Str::LabelPieces:        return it ? "Sezioni: %lld da %s" : "Pieces: %lld of %s";
+
+        case Str::SectionTransfer:  return it ? "Trasferimento:" : "Transfer:";
+        case Str::LabelAvailable:      return it ? "Disponibile: %.1f%%" : "Available: %.1f%%";
+        case Str::LabelDownloadedTotal: return it ? "Scaricato: %s"       : "Downloaded: %s";
+        case Str::LabelUploadedTotal:  return it ? "Inviato: %s (Ratio: %.2f)" : "Uploaded: %s (Ratio: %.2f)";
+        case Str::LabelAverageSpeed:   return it ? "Velocità media: %s"  : "Average speed: %s";
+
+        case Str::SectionActivity:   return it ? "Attività:" : "Activity:";
+        case Str::LabelLastActivity:   return it ? "Ultima attività: %s" : "Last activity: %s";
+
+        case Str::SectionTimeElapsed: return it ? "Tempo trascorso:" : "Time elapsed:";
+        case Str::LabelTimeDownloading: return it ? "In download: %s" : "Downloading: %s";
+        case Str::LabelTimeSeeding:     return it ? "In seeding: %s"   : "Seeding: %s";
+
         case Str::LabelSpeedLimitSection:
             return it ? "Limite di velocità per questo torrent:" : "Speed limit for this torrent:";
         case Str::CheckLimitDownload: return it ? "Limita download" : "Limit download";

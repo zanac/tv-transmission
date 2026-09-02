@@ -38,7 +38,7 @@ constexpr ushort cmShowTrackers = 202;
 // its destructor), so passing it the temporary buffer is enough: there's
 // no need (and it would leak memory) to duplicate it here.
 void addLine(TWindow* win, int y, const char* text) {
-    TRect r(2, y, 56, y + 1);
+    TRect r(2, y, 58, y + 1);
     win->insert(new TStaticText(r, text));
 }
 
@@ -114,7 +114,7 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
 }
 
 TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client) {
-    TRect r(0, 0, 58, 20);
+    TRect r(0, 0, 60, 41);
 
     // Title includes the start of the torrent's name, so several open
     // details windows (see the "Window list" dialog) are distinguishable
@@ -127,41 +127,121 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client);
     win->options |= ofCentered;
 
-    char buf[256];
+    char buf[400];
+    int y = 2;
 
     std::snprintf(buf, sizeof(buf), tr(Str::LabelName), t.name.c_str());
-    addLine(win, 2, buf);
+    addLine(win, y++, buf);
 
     std::string sizeStr = formatSize(t.sizeBytes);
     std::snprintf(buf, sizeof(buf), tr(Str::LabelSize), sizeStr.c_str());
-    addLine(win, 3, buf);
+    addLine(win, y++, buf);
+
+    if (t.pieceCount > 0) {
+        std::string pieceSizeStr = formatSize(t.pieceSize);
+        std::snprintf(buf, sizeof(buf), tr(Str::LabelPieces),
+            (long long)t.pieceCount, pieceSizeStr.c_str());
+        addLine(win, y++, buf);
+    }
+
+    if (!t.downloadDir.empty()) {
+        std::string dir = truncateUtf8(t.downloadDir, 48);
+        std::snprintf(buf, sizeof(buf), tr(Str::LabelLocation), dir.c_str());
+        addLine(win, y++, buf);
+    }
+
+    addLine(win, y++, t.isPrivate ? tr(Str::LabelPrivacyPrivate) : tr(Str::LabelPrivacyPublic));
+
+    if (!t.magnetLink.empty()) {
+        // Truncated on purpose: shown as a visual reference (matching
+        // what the reference Android app itself does), not meant to be
+        // selected/copied from within this window — a TUI has no
+        // built-in clipboard integration, so the practical way to copy
+        // it is the terminal emulator's own text selection, for which a
+        // truncated single line is no worse than a full one anyway.
+        std::string magnet = truncateUtf8(t.magnetLink, 48);
+        std::snprintf(buf, sizeof(buf), tr(Str::LabelMagnet), magnet.c_str());
+        addLine(win, y++, buf);
+    }
+
+    y++; // blank separator
+    addLine(win, y++, tr(Str::SectionTransfer));
 
     std::snprintf(buf, sizeof(buf), tr(Str::LabelCompleted), t.percentDone * 100.0);
-    addLine(win, 4, buf);
+    addLine(win, y++, buf);
+
+    // Same formula Transmission's own official GTK/Qt clients use for
+    // "Availability": bytes already had (valid or not-yet-hash-checked)
+    // plus bytes currently obtainable from connected peers, as a
+    // fraction of the size we're actually trying to complete. See the
+    // comment on Torrent::haveValid in Torrent.h.
+    if (t.sizeWhenDone > 0) {
+        double available = (double)(t.haveValid + t.haveUnchecked + t.desiredAvailable)
+                          / t.sizeWhenDone * 100.0;
+        if (available > 100.0) available = 100.0;
+        std::snprintf(buf, sizeof(buf), tr(Str::LabelAvailable), available);
+        addLine(win, y++, buf);
+    }
+
+    std::string downloadedStr = formatSize(t.downloadedEver);
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelDownloadedTotal), downloadedStr.c_str());
+    addLine(win, y++, buf);
+
+    std::string uploadedStr = formatSize(t.uploadedEver);
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelUploadedTotal), uploadedStr.c_str(), t.uploadRatio);
+    addLine(win, y++, buf);
 
     std::snprintf(buf, sizeof(buf), tr(Str::LabelDownload), t.rateDownload / 1024.0);
-    addLine(win, 5, buf);
+    addLine(win, y++, buf);
 
     std::snprintf(buf, sizeof(buf), tr(Str::LabelUpload), t.rateUpload / 1024.0);
-    addLine(win, 6, buf);
+    addLine(win, y++, buf);
 
-    std::snprintf(buf, sizeof(buf), tr(Str::LabelStatus), trTorrentStatus(t.status));
-    addLine(win, 7, buf);
+    if (t.secondsDownloading > 0) {
+        std::string avgSpeed = formatSize((int64_t)(t.downloadedEver / (double)t.secondsDownloading)) + "/s";
+        std::snprintf(buf, sizeof(buf), tr(Str::LabelAverageSpeed), avgSpeed.c_str());
+        addLine(win, y++, buf);
+    }
+
+    y++; // blank separator
+    addLine(win, y++, tr(Str::SectionActivity));
 
     std::string addedStr = formatUnixTimestamp(t.addedDate);
     std::snprintf(buf, sizeof(buf), tr(Str::LabelAdded), addedStr.c_str());
-    addLine(win, 8, buf);
+    addLine(win, y++, buf);
+
+    std::string lastActivityStr = formatUnixTimestamp(t.activityDate);
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelLastActivity),
+        lastActivityStr.empty() ? tr(Str::ValueNotAvailable) : lastActivityStr.c_str());
+    addLine(win, y++, buf);
+
+    y++; // blank separator
+    addLine(win, y++, tr(Str::SectionTimeElapsed));
+
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelTimeDownloading), formatDuration(t.secondsDownloading).c_str());
+    addLine(win, y++, buf);
+
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelTimeSeeding), formatDuration(t.secondsSeeding).c_str());
+    addLine(win, y++, buf);
+
+    y++; // blank separator
+
+    std::snprintf(buf, sizeof(buf), tr(Str::LabelStatus), trTorrentStatus(t.status));
+    addLine(win, y++, buf);
 
     if (!t.errorString.empty()) {
         std::snprintf(buf, sizeof(buf), tr(Str::LabelError), t.errorString.c_str());
-        addLine(win, 9, buf);
+        addLine(win, y++, buf);
     }
 
     std::snprintf(buf, sizeof(buf), tr(Str::LabelId), t.id);
-    addLine(win, 10, buf);
+    addLine(win, y++, buf);
 
     // --- Per-torrent speed limit override ---
-    addLine(win, 12, tr(Str::LabelSpeedLimitSection));
+    y++; // blank separator
+    addLine(win, y, tr(Str::LabelSpeedLimitSection));
+    int checkboxesY = y + 1;
+    y += 4; // 3 rows for the cluster + 1 blank after
 
     // Three independent checkboxes, NOT two + an implied third state:
     // "limit download/upload" (this torrent's own cap) and "honor global
@@ -176,7 +256,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     // length, or the label gets silently cut off. "Honor global speed
     // limits" is 25 characters, so 5+25=30 is the bare minimum; this
     // uses 36 for some breathing room.
-    win->limitCheckboxes = new TCheckBoxes(TRect(2, 13, 38, 16),
+    win->limitCheckboxes = new TCheckBoxes(TRect(2, checkboxesY, 38, checkboxesY + 3),
         new TSItem(tr(Str::CheckLimitDownload),
         new TSItem(tr(Str::CheckLimitUpload),
         new TSItem(tr(Str::CheckHonorGlobalLimits), nullptr))));
@@ -185,25 +265,25 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->limitCheckboxes->setData(&checked);
     win->insert(win->limitCheckboxes);
 
-    win->downloadLimitField = new TInputLine(TRect(40, 13, 50, 14), 8);
+    win->downloadLimitField = new TInputLine(TRect(40, checkboxesY, 50, checkboxesY + 1), 8);
     std::vector<char> downloadBuf(9, 0);
     std::snprintf(downloadBuf.data(), downloadBuf.size(), "%d", t.downloadLimit);
     win->downloadLimitField->setData(downloadBuf.data());
     win->downloadLimitField->setValidator(new TRangeValidator(0, 1000000)); // KB/s, ~1GB/s cap
     win->insert(win->downloadLimitField);
-    win->insert(new TStaticText(TRect(51, 13, 56, 14), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(51, checkboxesY, 56, checkboxesY + 1), tr(Str::UnitKBs)));
 
-    win->uploadLimitField = new TInputLine(TRect(40, 14, 50, 15), 8);
+    win->uploadLimitField = new TInputLine(TRect(40, checkboxesY + 1, 50, checkboxesY + 2), 8);
     std::vector<char> uploadBuf(9, 0);
     std::snprintf(uploadBuf.data(), uploadBuf.size(), "%d", t.uploadLimit);
     win->uploadLimitField->setData(uploadBuf.data());
     win->uploadLimitField->setValidator(new TRangeValidator(0, 1000000));
     win->insert(win->uploadLimitField);
-    win->insert(new TStaticText(TRect(51, 14, 56, 15), tr(Str::UnitKBs)));
+    win->insert(new TStaticText(TRect(51, checkboxesY + 1, 56, checkboxesY + 2), tr(Str::UnitKBs)));
 
-    win->insert(new TButton(TRect(14, 17, 24, 19), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
-    win->insert(new TButton(TRect(28, 17, 38, 19), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
-    win->insert(new TButton(TRect(42, 17, 54, 19), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
+    win->insert(new TButton(TRect(14, y, 24, y + 2), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
+    win->insert(new TButton(TRect(28, y, 38, y + 2), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
+    win->insert(new TButton(TRect(42, y, 54, y + 2), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
 
     return win;
 }

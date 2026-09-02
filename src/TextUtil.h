@@ -41,3 +41,9 @@ std::string formatUnixTimestamp(int64_t unixSeconds);
 // and labels, where trailing spaces would be wrong, not for fixed-width
 // table columns.
 std::string truncateUtf8(const std::string& s, size_t maxWidth);
+
+// Formats a duration in seconds as "3h 23m", "5m 10s", or "0s" —
+// whichever units are non-zero from the largest down, dropping smaller
+// ones once a larger one is present (matching how most torrent clients
+// show elapsed time). 0 or negative returns "0s".
+std::string formatDuration(int64_t totalSeconds);

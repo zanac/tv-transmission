@@ -107,6 +107,49 @@ std::string TransmissionClient::call(const std::string& method,
     return "";
 }
 
+namespace {
+
+// Shared by listTorrents() (which only requests the lightweight base
+// fields, so the extended ones below just fall back to their defaults)
+// and getTorrentDetails() (which requests everything). Whatever wasn't
+// included in the "fields" list of the request simply isn't present in
+// `t`, and .value()'s fallback handles that harmlessly either way.
+Torrent parseTorrent(const json& t) {
+    Torrent tor;
+    tor.id = t.value("id", 0);
+    tor.name = t.value("name", "");
+    tor.sizeBytes = t.value("totalSize", (int64_t)0);
+    tor.percentDone = t.value("percentDone", 0.0);
+    tor.rateDownload = t.value("rateDownload", 0.0);
+    tor.rateUpload = t.value("rateUpload", 0.0);
+    tor.status = t.value("status", 0);
+    tor.errorString = t.value("errorString", "");
+    tor.addedDate = t.value("addedDate", (int64_t)0);
+    tor.downloadLimited = t.value("downloadLimited", false);
+    tor.downloadLimit = t.value("downloadLimit", 0);
+    tor.uploadLimited = t.value("uploadLimited", false);
+    tor.uploadLimit = t.value("uploadLimit", 0);
+    tor.honorsSessionLimits = t.value("honorsSessionLimits", true);
+    tor.downloadDir = t.value("downloadDir", "");
+    tor.isPrivate = t.value("isPrivate", false);
+    tor.magnetLink = t.value("magnetLink", "");
+    tor.pieceCount = t.value("pieceCount", (int64_t)0);
+    tor.pieceSize = t.value("pieceSize", (int64_t)0);
+    tor.downloadedEver = t.value("downloadedEver", (int64_t)0);
+    tor.uploadedEver = t.value("uploadedEver", (int64_t)0);
+    tor.uploadRatio = t.value("uploadRatio", 0.0);
+    tor.activityDate = t.value("activityDate", (int64_t)0);
+    tor.secondsDownloading = t.value("secondsDownloading", (int64_t)0);
+    tor.secondsSeeding = t.value("secondsSeeding", (int64_t)0);
+    tor.haveValid = t.value("haveValid", (int64_t)0);
+    tor.haveUnchecked = t.value("haveUnchecked", (int64_t)0);
+    tor.desiredAvailable = t.value("desiredAvailable", (int64_t)0);
+    tor.sizeWhenDone = t.value("sizeWhenDone", (int64_t)0);
+    return tor;
+}
+
+} // namespace
+
 std::vector<Torrent> TransmissionClient::listTorrents() {
     std::vector<Torrent> result;
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
@@ -118,24 +161,42 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
 
     try {
         json j = json::parse(body);
-        for (auto& t : j["arguments"]["torrents"]) {
-            Torrent tor;
-            tor.id = t.value("id", 0);
-            tor.name = t.value("name", "");
-            tor.sizeBytes = t.value("totalSize", 0LL);
-            tor.percentDone = t.value("percentDone", 0.0);
-            tor.rateDownload = t.value("rateDownload", 0.0);
-            tor.rateUpload = t.value("rateUpload", 0.0);
-            tor.status = t.value("status", 0);
-            tor.errorString = t.value("errorString", "");
-            tor.addedDate = t.value("addedDate", (int64_t)0);
-            tor.downloadLimited = t.value("downloadLimited", false);
-            tor.downloadLimit = t.value("downloadLimit", 0);
-            tor.uploadLimited = t.value("uploadLimited", false);
-            tor.uploadLimit = t.value("uploadLimit", 0);
-            tor.honorsSessionLimits = t.value("honorsSessionLimits", true);
-            result.push_back(std::move(tor));
-        }
+        for (auto& t : j["arguments"]["torrents"])
+            result.push_back(parseTorrent(t));
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+    }
+    return result;
+}
+
+Torrent TransmissionClient::getTorrentDetails(int torrentId) {
+    // Deliberately a separate, on-demand call rather than folding these
+    // fields into listTorrents()'s regular periodic refresh — same
+    // reasoning as getTrackerStats(): this data isn't needed until the
+    // user actually opens the details window for one specific torrent,
+    // so there's no reason to fetch and parse it for every torrent on
+    // every refresh tick.
+    Torrent result;
+    result.id = torrentId;
+    json args = {
+        {"ids", json::array({torrentId})},
+        {"fields", json::array({
+            "id", "name", "totalSize", "percentDone", "rateDownload", "rateUpload",
+            "status", "errorString", "addedDate", "downloadLimited", "downloadLimit",
+            "uploadLimited", "uploadLimit", "honorsSessionLimits",
+            "downloadDir", "isPrivate", "magnetLink", "pieceCount", "pieceSize",
+            "downloadedEver", "uploadedEver", "uploadRatio", "activityDate",
+            "secondsDownloading", "secondsSeeding",
+            "haveValid", "haveUnchecked", "desiredAvailable", "sizeWhenDone",
+        })}
+    };
+    std::string body = call("torrent-get", args.dump());
+    if (body.empty()) return result;
+
+    try {
+        json j = json::parse(body);
+        auto& torrents = j["arguments"]["torrents"];
+        if (!torrents.empty()) result = parseTorrent(torrents[0]);
     } catch (const std::exception& e) {
         lastError_ = std::string("JSON parse error: ") + e.what();
     }

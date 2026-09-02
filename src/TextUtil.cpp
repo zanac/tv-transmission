@@ -42,6 +42,18 @@ std::string truncateUtf8(const std::string& s, size_t maxWidth) {
     return s.substr(0, charStarts[maxWidth - 3]) + "...";
 }
 
+std::string formatDuration(int64_t totalSeconds) {
+    if (totalSeconds <= 0) return "0s";
+    int64_t h = totalSeconds / 3600;
+    int64_t m = (totalSeconds % 3600) / 60;
+    int64_t s = totalSeconds % 60;
+    char buf[32];
+    if (h > 0) std::snprintf(buf, sizeof(buf), "%lldh %lldm", (long long)h, (long long)m);
+    else if (m > 0) std::snprintf(buf, sizeof(buf), "%lldm %llds", (long long)m, (long long)s);
+    else std::snprintf(buf, sizeof(buf), "%llds", (long long)s);
+    return buf;
+}
+
 std::string formatSize(int64_t bytes) {
     static const char* units[] = {"B", "KB", "MB", "GB", "TB", "PB"};
     constexpr int unitCount = 6;

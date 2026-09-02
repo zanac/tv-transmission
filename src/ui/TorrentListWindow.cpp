@@ -524,6 +524,7 @@ void TorrentListWindow::handleEvent(TEvent& event) {
 void TorrentListWindow::showDetailsForSelected() {
     const Torrent* t = listViewer_->selectedTorrent();
     if (!t) return;
+    int id = t->id; // copy before any refresh() invalidates the pointer below
 
     // Look for an already-open details window for this same torrent id
     // before creating a new one — same deskTop->last/next traversal
@@ -536,7 +537,7 @@ void TorrentListWindow::showDetailsForSelected() {
         do {
             p = p->next;
             if (auto* existing = dynamic_cast<TorrentDetailsWindow*>(p)) {
-                if (existing->torrentId() == t->id) {
+                if (existing->torrentId() == id) {
                     existing->select(); // bring the existing one to front instead
                     return;
                 }
@@ -544,7 +545,13 @@ void TorrentListWindow::showDetailsForSelected() {
         } while (p != deskTop->last);
     }
 
-    if (auto* win = createTorrentDetailsWindow(*t, client_))
+    // The main list only carries listTorrents()'s lightweight fields
+    // (see TransmissionClient.h) — the details window needs more
+    // (location, privacy, magnet link, piece info, all-time transfer
+    // totals, activity/elapsed-time fields), fetched here on demand
+    // rather than on every periodic refresh.
+    Torrent details = client_.getTorrentDetails(id);
+    if (auto* win = createTorrentDetailsWindow(details, client_))
         TProgram::application->insertWindow(win);
 }
 
