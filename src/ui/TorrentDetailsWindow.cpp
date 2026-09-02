@@ -37,21 +37,25 @@ constexpr ushort cmShowTrackers = 202;
 // TStaticText already copies the text internally (newStr + delete[] in
 // its destructor), so passing it the temporary buffer is enough: there's
 // no need (and it would leak memory) to duplicate it here.
-void addLine(TWindow* win, int y, const char* text) {
+void addLine(TWindow* win, int y, const std::string& text) {
     TRect r(2, y, 66, y + 1);
-    win->insert(new TStaticText(r, text));
+    win->insert(new TStaticText(r, text.c_str()));
 }
 
 // Two short fields side by side on the same row, instead of one below
 // the other — this is what actually compresses the window: most fields
 // here (percentages, byte counts, dates) are short enough that showing
-// them one per row wastes half of every line. `right` may be nullptr to
-// leave that side blank (e.g. an optional field that isn't available
-// for this torrent) without needing a separate single-column variant.
-void addLineLR(TWindow* win, int y, const char* left, const char* right) {
-    win->insert(new TStaticText(TRect(2, y, 32, y + 1), left));
-    if (right) win->insert(new TStaticText(TRect(34, y, 66, y + 1), right));
+// them one per row wastes half of every line. An empty `right` leaves
+// that side blank (e.g. an optional field that isn't available for this
+// torrent) without needing a separate single-column variant.
+void addLineLR(TWindow* win, int y, const std::string& left, const std::string& right) {
+    win->insert(new TStaticText(TRect(2, y, 32, y + 1), left.c_str()));
+    if (!right.empty()) win->insert(new TStaticText(TRect(34, y, 66, y + 1), right.c_str()));
 }
+
+// One entry queued by the layout pass below, before the window (whose
+// height depends on how many of these there end up being) exists yet.
+struct PendingLine { int y; std::string left, right; bool isPair; };
 
 } // namespace
 
@@ -125,30 +129,28 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
 }
 
 TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client) {
-    TRect r(0, 0, 68, 25);
+    // Layout pass: figure out every row's content and y position first,
+    // without creating the window yet — its height depends on how many
+    // of this torrent's optional fields (location, magnet, error, ...)
+    // actually end up shown, which varies per torrent. A fixed height
+    // sized for the fullest case left visible empty space below the
+    // buttons for any torrent with fewer fields than that (reported
+    // against this exact window) — sizing the window to the real
+    // content instead of a worst-case guess avoids that regardless of
+    // which fields a given torrent happens to have.
+    std::vector<PendingLine> lines;
+    auto queueLine = [&](int y, const std::string& text) {
+        lines.push_back({y, text, "", false});
+    };
+    auto queueLineLR = [&](int y, const std::string& left, const std::string& right) {
+        lines.push_back({y, left, right, true});
+    };
 
-    // Title includes the start of the torrent's name, so several open
-    // details windows (see the "Window list" dialog) are distinguishable
-    // at a glance instead of all reading "Torrent details".
-    char titleBuf[128];
-    std::string shortName = truncateUtf8(t.name, 30);
-    std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
-        tr(Str::WindowTitleDetails), shortName.c_str());
-
-    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client);
-    win->options |= ofCentered;
-
-    // Two short fields per row wherever they naturally pair up (see
-    // addLineLR() above) — this is what actually got everything to fit
-    // in far fewer rows than a strict one-field-per-line layout, along
-    // with dropping the "Transfer:"/"Activity:"/"Time elapsed:" section
-    // headers entirely: each field's own label (e.g. "Available:") is
-    // already clear without a heading grouping it with its neighbors.
     char left[200], right[200];
     int y = 2;
 
     std::snprintf(left, sizeof(left), tr(Str::LabelName), t.name.c_str());
-    addLine(win, y++, left);
+    queueLine(y++, left);
 
     std::string sizeStr = formatSize(t.sizeBytes);
     std::snprintf(left, sizeof(left), tr(Str::LabelSize), sizeStr.c_str());
@@ -156,24 +158,24 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         std::string pieceSizeStr = formatSize(t.pieceSize);
         std::snprintf(right, sizeof(right), tr(Str::LabelPieces),
             (long long)t.pieceCount, pieceSizeStr.c_str());
-        addLineLR(win, y++, left, right);
+        queueLineLR(y++, left, right);
     } else {
-        addLineLR(win, y++, left, nullptr);
+        queueLineLR(y++, left, "");
     }
 
     // Paired here rather than left on its own line at the bottom (where
     // there's nothing short enough nearby to share a row with) — see
-    // the comment above createTorrentDetailsWindow's closing brace for
-    // the other change that came out of the same "too tall" report.
+    // the "Fixed bugs" entry on this window in the README for the other
+    // change that came out of the same "too tall" report.
     char idBuf[32];
     std::snprintf(idBuf, sizeof(idBuf), tr(Str::LabelId), t.id);
-    addLineLR(win, y++,
+    queueLineLR(y++,
         t.isPrivate ? tr(Str::LabelPrivacyPrivate) : tr(Str::LabelPrivacyPublic), idBuf);
 
     if (!t.downloadDir.empty()) {
         std::string dir = truncateUtf8(t.downloadDir, 56);
         std::snprintf(left, sizeof(left), tr(Str::LabelLocation), dir.c_str());
-        addLine(win, y++, left);
+        queueLine(y++, left);
     }
 
     if (!t.magnetLink.empty()) {
@@ -185,7 +187,7 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         // truncated single line is no worse than a full one anyway.
         std::string magnet = truncateUtf8(t.magnetLink, 56);
         std::snprintf(left, sizeof(left), tr(Str::LabelMagnet), magnet.c_str());
-        addLine(win, y++, left);
+        queueLine(y++, left);
     }
 
     // Same formula Transmission's own official GTK/Qt clients use for
@@ -199,29 +201,29 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
                           / t.sizeWhenDone * 100.0;
         if (available > 100.0) available = 100.0;
         std::snprintf(right, sizeof(right), tr(Str::LabelAvailable), available);
-        addLineLR(win, y++, left, right);
+        queueLineLR(y++, left, right);
     } else {
-        addLineLR(win, y++, left, nullptr);
+        queueLineLR(y++, left, "");
     }
 
     std::string downloadedStr = formatSize(t.downloadedEver);
     std::snprintf(left, sizeof(left), tr(Str::LabelDownloadedTotal), downloadedStr.c_str());
     std::string uploadedStr = formatSize(t.uploadedEver);
     std::snprintf(right, sizeof(right), tr(Str::LabelUploadedTotal), uploadedStr.c_str(), t.uploadRatio);
-    addLineLR(win, y++, left, right);
+    queueLineLR(y++, left, right);
 
     std::snprintf(left, sizeof(left), tr(Str::LabelDownload), t.rateDownload / 1024.0);
     std::snprintf(right, sizeof(right), tr(Str::LabelUpload), t.rateUpload / 1024.0);
-    addLineLR(win, y++, left, right);
+    queueLineLR(y++, left, right);
 
     if (t.secondsDownloading > 0) {
         std::string avgSpeed = formatSize((int64_t)(t.downloadedEver / (double)t.secondsDownloading)) + "/s";
         std::snprintf(left, sizeof(left), tr(Str::LabelAverageSpeed), avgSpeed.c_str());
         std::snprintf(right, sizeof(right), tr(Str::LabelStatus), trTorrentStatus(t.status));
-        addLineLR(win, y++, left, right);
+        queueLineLR(y++, left, right);
     } else {
         std::snprintf(left, sizeof(left), tr(Str::LabelStatus), trTorrentStatus(t.status));
-        addLineLR(win, y++, left, nullptr);
+        queueLineLR(y++, left, "");
     }
 
     std::string addedStr = formatUnixTimestamp(t.addedDate);
@@ -229,24 +231,60 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::string lastActivityStr = formatUnixTimestamp(t.activityDate);
     std::snprintf(right, sizeof(right), tr(Str::LabelLastActivity),
         lastActivityStr.empty() ? tr(Str::ValueNotAvailable) : lastActivityStr.c_str());
-    addLineLR(win, y++, left, right);
+    queueLineLR(y++, left, right);
 
     std::snprintf(left, sizeof(left), tr(Str::LabelTimeDownloading), formatDuration(t.secondsDownloading).c_str());
     std::snprintf(right, sizeof(right), tr(Str::LabelTimeSeeding), formatDuration(t.secondsSeeding).c_str());
-    addLineLR(win, y++, left, right);
+    queueLineLR(y++, left, right);
 
     if (!t.errorString.empty()) {
         std::snprintf(left, sizeof(left), tr(Str::LabelError), t.errorString.c_str());
-        addLine(win, y++, left);
+        queueLine(y++, left);
     }
 
     // --- Per-torrent speed limit override ---
     y++; // blank separator
-    addLine(win, y, tr(Str::LabelSpeedLimitSection));
-    int checkboxesY = y + 1;
+    int speedLimitLabelY = y++;
+    int checkboxesY = y;
     y += 3; // 3 rows for the cluster — the gap before the buttons is
             // handled separately below, deliberately not folded into
             // this +3 (see the comment there for why)
+
+    // The gap here is 2 rows, not 1: TCluster's own drawMultiBox() loops
+    // "i <= size.y" (off-by-one in tvision itself, not fixable from
+    // here) rather than "i < size.y", so it paints one extra row right
+    // below its declared bounds — blank of text, but still filled with
+    // its highlighted background color. A single blank row of margin
+    // here would actually be that phantom colored row, making the
+    // buttons look stuck directly to the checkbox box with no visible
+    // separation (exactly what was reported) instead of the real gap
+    // the row count suggests. Two rows guarantees one of them is
+    // genuinely blank.
+    y += 2;
+    int buttonY = y;
+
+    // Now the height is known — the window is exactly as tall as this
+    // particular torrent's fields need, not sized for the fullest
+    // possible case.
+    TRect r(0, 0, 68, buttonY + 3);
+
+    // Title includes the start of the torrent's name, so several open
+    // details windows (see the "Window list" dialog) are distinguishable
+    // at a glance instead of all reading "Torrent details".
+    char titleBuf[128];
+    std::string shortName = truncateUtf8(t.name, 30);
+    std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
+        tr(Str::WindowTitleDetails), shortName.c_str());
+
+    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client);
+    win->options |= ofCentered;
+
+    for (const auto& line : lines) {
+        if (line.isPair) addLineLR(win, line.y, line.left, line.right);
+        else addLine(win, line.y, line.left);
+    }
+
+    addLine(win, speedLimitLabelY, tr(Str::LabelSpeedLimitSection));
 
     // Three independent checkboxes, NOT two + an implied third state:
     // "limit download/upload" (this torrent's own cap) and "honor global
@@ -286,20 +324,9 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->insert(win->uploadLimitField);
     win->insert(new TStaticText(TRect(51, checkboxesY + 1, 56, checkboxesY + 2), tr(Str::UnitKBs)));
 
-    // The gap here is 2 rows, not 1: TCluster's own drawMultiBox() loops
-    // "i <= size.y" (off-by-one in tvision itself, not fixable from
-    // here) rather than "i < size.y", so it paints one extra row right
-    // below its declared bounds — blank of text, but still filled with
-    // its highlighted background color. A single blank row of margin
-    // here would actually be that phantom colored row, making the
-    // buttons look stuck directly to the checkbox box with no visible
-    // separation (exactly what was reported) instead of the real gap
-    // the row count suggests. Two rows guarantees one of them is
-    // genuinely blank.
-    y += 2;
-    win->insert(new TButton(TRect(16, y, 26, y + 2), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
-    win->insert(new TButton(TRect(30, y, 40, y + 2), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
-    win->insert(new TButton(TRect(44, y, 56, y + 2), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
+    win->insert(new TButton(TRect(16, buttonY, 26, buttonY + 2), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
+    win->insert(new TButton(TRect(30, buttonY, 40, buttonY + 2), tr(Str::ButtonClose), cmCloseDetails, bfNormal));
+    win->insert(new TButton(TRect(44, buttonY, 56, buttonY + 2), tr(Str::ButtonTrackers), cmShowTrackers, bfNormal));
 
     return win;
 }
