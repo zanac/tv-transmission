@@ -65,6 +65,9 @@ const char* tr(Str id) {
         case Str::LabelAddTorrentUrl:
             return it ? "Magnet link, URL .torrent o path locale:"
                       : "Magnet link, .torrent URL or local path:";
+        case Str::MsgTorrentDuplicate:
+            return it ? "Questo torrent era già presente nella lista."
+                      : "This torrent was already in the list.";
 
         case Str::ButtonOK:     return "OK";
         case Str::ButtonCancel: return it ? "Annulla" : "Cancel";
@@ -243,6 +246,7 @@ const char* tr(Str id) {
         case Str::CliListEmpty:           return it ? "Nessun torrent." : "No torrents.";
         case Str::CliAddSuccess:    return it ? "Torrent aggiunto." : "Torrent added.";
         case Str::CliAddFailure:    return it ? "Aggiunta del torrent non riuscita." : "Failed to add torrent.";
+        case Str::CliAddDuplicate:  return it ? "Il torrent era già presente." : "Torrent was already present.";
         case Str::CliStartSuccess:  return it ? "Torrent avviato." : "Torrent started.";
         case Str::CliStartFailure:  return it ? "Avvio del torrent non riuscito." : "Failed to start torrent.";
         case Str::CliStopSuccess:   return it ? "Torrent fermato." : "Torrent stopped.";

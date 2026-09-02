@@ -23,14 +23,24 @@ struct SessionLimits {
 // https://github.com/transmission/transmission/blob/main/docs/rpc-spec.md
 class TransmissionClient {
 public:
+    // torrent-add's response distinguishes a genuinely new torrent from
+    // one that was already present — the RPC puts the torrent's info
+    // under a "torrent-added" key for the former, "torrent-duplicate"
+    // for the latter, with "result":"success" either way (Transmission
+    // doesn't treat re-adding an existing torrent as an error). Without
+    // checking which key showed up, a caller has no way to tell the two
+    // apart from a plain success/failure result.
+    enum class AddTorrentResult { Added, Duplicate, Failed };
+
     TransmissionClient(std::string host, int port,
                         std::string user = "", std::string password = "");
 
     // Lists all torrents with their basic fields
     std::vector<Torrent> listTorrents();
 
-    // Adds a torrent from a URL (magnet or .torrent link) or local path
-    bool addTorrent(const std::string& urlOrPath);
+    // Adds a torrent from a URL (magnet or .torrent link) or local path.
+    // See AddTorrentResult above for what the result distinguishes.
+    AddTorrentResult addTorrent(const std::string& urlOrPath);
 
     bool startTorrent(int id);
     bool stopTorrent(int id);

@@ -16,6 +16,7 @@
 #define Uses_TKeys
 #define Uses_TEvent
 #define Uses_TFileDialog
+#define Uses_MsgBox
 #include <tvision/tv.h>
 
 #include <cstdio>
@@ -108,7 +109,11 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
     destroy(dlg);
 
     if (result == cmOK) {
-        if (!url.empty()) client_.addTorrent(url);
+        if (!url.empty()) {
+            auto addResult = client_.addTorrent(url);
+            if (addResult == TransmissionClient::AddTorrentResult::Duplicate)
+                messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
+        }
         return;
     }
 

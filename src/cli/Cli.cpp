@@ -103,9 +103,22 @@ int runCli(int argc, char** argv, AppSettings settings) {
             std::fprintf(stderr, "\n");
             return 1;
         }
-        bool ok = client.addTorrent(positional[1]);
-        std::printf("%s\n", ok ? tr(Str::CliAddSuccess) : tr(Str::CliAddFailure));
-        return ok ? 0 : 1;
+        using AddResult = TransmissionClient::AddTorrentResult;
+        AddResult addResult = client.addTorrent(positional[1]);
+        if (addResult == AddResult::Added) {
+            std::printf("%s\n", tr(Str::CliAddSuccess));
+            return 0;
+        }
+        if (addResult == AddResult::Duplicate) {
+            // Not treated as a script-facing failure: Transmission's own
+            // RPC returns "result":"success" for this too (see
+            // TransmissionClient::AddTorrentResult's comment) — it's
+            // informational, not an error.
+            std::printf("%s\n", tr(Str::CliAddDuplicate));
+            return 0;
+        }
+        std::printf("%s\n", tr(Str::CliAddFailure));
+        return 1;
     }
 
     if (cmd == "start" || cmd == "stop" || cmd == "remove") {

@@ -203,15 +203,19 @@ Torrent TransmissionClient::getTorrentDetails(int torrentId) {
     return result;
 }
 
-bool TransmissionClient::addTorrent(const std::string& urlOrPath) {
+TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath) {
     json args = {{"filename", urlOrPath}};
     std::string body = call("torrent-add", args.dump());
-    if (body.empty()) return false;
+    if (body.empty()) return AddTorrentResult::Failed;
     try {
         json j = json::parse(body);
-        return j.value("result", "") == "success";
+        if (j.value("result", "") != "success") return AddTorrentResult::Failed;
+        auto& a = j["arguments"];
+        if (a.contains("torrent-duplicate")) return AddTorrentResult::Duplicate;
+        if (a.contains("torrent-added")) return AddTorrentResult::Added;
+        return AddTorrentResult::Failed; // "success" but neither key present: unexpected
     } catch (...) {
-        return false;
+        return AddTorrentResult::Failed;
     }
 }
 

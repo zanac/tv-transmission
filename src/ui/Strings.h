@@ -26,7 +26,7 @@ enum class Str {
 
     WindowTitleTorrentList,
 
-    DialogTitleAddTorrent, LabelAddTorrentUrl,
+    DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate,
     ButtonOK, ButtonCancel,
 
     DialogTitleSettings,
@@ -68,7 +68,7 @@ enum class Str {
     CliUsage,
     CliErrorMissingArgument, CliErrorUnknownCommand, CliErrorInvalidId,
     CliListEmpty,
-    CliAddSuccess, CliAddFailure,
+    CliAddSuccess, CliAddFailure, CliAddDuplicate,
     CliStartSuccess, CliStartFailure,
     CliStopSuccess, CliStopFailure,
     CliRemoveSuccess, CliRemoveFailure,
