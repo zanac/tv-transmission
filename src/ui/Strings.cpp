@@ -134,6 +134,9 @@ const char* tr(Str id) {
         case Str::ButtonClose:        return it ? "Chiudi" : "Close";
         case Str::ButtonTrackers:     return it ? "Tracker..." : "Trackers...";
         case Str::ButtonRefresh:      return it ? "Aggiorna" : "Refresh";
+        case Str::ButtonBrowse:       return it ? "Sfoglia..." : "Browse...";
+        case Str::DialogTitleBrowseTorrent:
+            return it ? "Seleziona un file .torrent" : "Select a .torrent file";
 
         case Str::WindowTitleTrackerList:   return it ? "Tracker: %s" : "Trackers: %s";
         case Str::WindowTitleTrackerDetail: return it ? "Dettagli tracker" : "Tracker details";

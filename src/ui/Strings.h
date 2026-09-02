@@ -44,7 +44,8 @@ enum class Str {
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
     CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
-    ButtonTrackers, ButtonRefresh,
+    ButtonTrackers, ButtonRefresh, ButtonBrowse,
+    DialogTitleBrowseTorrent,
 
     WindowTitleTrackerList, WindowTitleTrackerDetail,
     HeaderTrackerHost, HeaderTier, HeaderSeeders, HeaderLeechers,
