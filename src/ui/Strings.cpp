@@ -17,6 +17,7 @@ const char* tr(Str id) {
     switch (id) {
         case Str::MenuTorrent:   return "~T~orrent";
         case Str::MenuAdd:       return it ? "~A~ggiungi..."   : "~A~dd...";
+        case Str::MenuAddFromFile: return it ? "Aggiungi da fi~l~e..." : "Add from ~f~ile...";
         case Str::MenuStart:     return it ? "~S~tart"         : "~S~tart";
         case Str::MenuStop:      return it ? "S~t~op"          : "S~t~op";
         case Str::MenuRemove:    return it ? "~R~imuovi"       : "~R~emove";

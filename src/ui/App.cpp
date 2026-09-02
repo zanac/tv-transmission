@@ -1,6 +1,7 @@
 #include "App.h"
 #include "TorrentListWindow.h"
 #include "AddTorrentDialog.h"
+#include "FileBrowserDialog.h"
 #include "SettingsDialog.h"
 #include "WindowListDialog.h"
 #include "BandwidthStatusLine.h"
@@ -18,6 +19,7 @@
 #include <tvision/tv.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 App::App(const AppSettings& initialSettings)
@@ -37,6 +39,7 @@ TMenuBar* App::initMenuBar(TRect r) {
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
+            *new TMenuItem(tr(Str::MenuAddFromFile), cmAddTorrentFromFile, kbNoKey) +
             *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
             *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
@@ -104,6 +107,32 @@ void App::showAddTorrentDialog() {
             std::string url = addTorrentDialogResult(urlField);
             if (!url.empty())
                 client_.addTorrent(url);
+        }
+        destroy(dlg);
+    }
+}
+
+void App::showAddTorrentFromFileDialog() {
+    // execView() called directly on `this` (App) — one level of dialog
+    // nesting, same as every other dialog in this app. Deliberately NOT
+    // opened from inside showAddTorrentDialog()'s own dialog (a "Browse"
+    // button there was the first attempt): nesting a second modal dialog
+    // on top of an already-open one rendered with garbled colors and
+    // corrupted-looking text, readable as fragments of both the
+    // underlying torrent list and the browser bleeding into each other.
+    // That happened with tvision's own TFileDialog AND with this app's
+    // own hand-built FileBrowserDialog, which rules out either widget's
+    // own implementation as the cause — it's specifically the two-
+    // levels-deep nesting (combined with this app's fully custom
+    // TorrentListViewer::draw() underneath) that breaks. Keeping every
+    // dialog exactly one level deep, as tvision's own examples always
+    // do, avoids it entirely.
+    const char* home = std::getenv("HOME");
+    if (auto* dlg = createFileBrowserDialog(home ? home : "/")) {
+        if (execView(dlg) == cmOK) {
+            std::string path = fileBrowserDialogResult(dlg);
+            if (!path.empty())
+                client_.addTorrent(path);
         }
         destroy(dlg);
     }
@@ -202,6 +231,10 @@ void App::handleEvent(TEvent& event) {
     switch (event.message.command) {
         case cmAddTorrent:
             showAddTorrentDialog();
+            clearEvent(event);
+            break;
+        case cmAddTorrentFromFile:
+            showAddTorrentFromFileDialog();
             clearEvent(event);
             break;
         case cmStartTorrent:

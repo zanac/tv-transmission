@@ -5,13 +5,14 @@
 #include <tvision/tv.h>
 #include <string>
 
-// Creates the "Add torrent" dialog: an input field for a magnet link /
-// .torrent URL / local path, plus a "Browse..." button that opens
-// tvision's own file dialog (filtered to *.torrent) and fills the field
-// in with whatever gets picked — the field itself still accepts
-// anything typed directly (magnet link, URL, or a path Browse never
-// touched), Browse is just a shortcut for the "local .torrent file"
-// case. Returns the field's pointer in `urlField` (same reason as
+// Creates the "Add torrent" dialog: a plain input field for a magnet
+// link / .torrent URL / local path, typed directly. Browsing for a
+// local file is a separate, top-level action (see App::
+// showAddTorrentFromFileDialog() and "Add from file..." in the Torrent
+// menu) rather than a button inside this dialog — nesting a second
+// modal dialog on top of this one broke rendering (see the comment on
+// showAddTorrentFromFileDialog() for what exactly went wrong). Returns
+// the field's pointer in `urlField` (same reason as
 // SettingsDialogFields: no reconstructing field order from the
 // TGroup).
 TDialog* createAddTorrentDialog(TInputLine*& urlField);
