@@ -197,7 +197,7 @@ used from.
 
 1. Add tvision as a submodule:
    ```
-   git submodule add https://github.com/magiblot/tvision external/tvision
+   git submodule add https://github.com/zanac/tvision external/tvision
    git submodule update --init --recursive
    ```
 2. Install dependencies (Debian/Ubuntu):
