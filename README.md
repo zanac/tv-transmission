@@ -4,6 +4,8 @@ A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
 written in C++17.
 
+Actually i use a fork https://github.com/zanac/tvision (i proposed a PR for insert a new widget the Transmission need)
+
 It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
