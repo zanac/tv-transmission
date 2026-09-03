@@ -206,15 +206,29 @@ Torrent TransmissionClient::getTorrentDetails(int torrentId) {
 TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath) {
     json args = {{"filename", urlOrPath}};
     std::string body = call("torrent-add", args.dump());
+    // If body is empty, call() has already set lastError_ (curl/network
+    // failure, or a bad session handshake) — nothing more to add here.
     if (body.empty()) return AddTorrentResult::Failed;
     try {
         json j = json::parse(body);
-        if (j.value("result", "") != "success") return AddTorrentResult::Failed;
+        std::string result = j.value("result", "");
+        if (result != "success") {
+            // Transmission's own error text for this request — e.g.
+            // "invalid or corrupt torrent file" for a bad magnet/local
+            // file, or a fetch error for an unreachable http(s) URL.
+            // Distinct from a network/RPC-level failure (which never
+            // reaches this branch: call() already returned a non-empty
+            // body precisely because the HTTP request itself succeeded).
+            lastError_ = result.empty() ? "Transmission reported an error" : result;
+            return AddTorrentResult::Failed;
+        }
         auto& a = j["arguments"];
         if (a.contains("torrent-duplicate")) return AddTorrentResult::Duplicate;
         if (a.contains("torrent-added")) return AddTorrentResult::Added;
-        return AddTorrentResult::Failed; // "success" but neither key present: unexpected
-    } catch (...) {
+        lastError_ = "unexpected torrent-add response";
+        return AddTorrentResult::Failed; // "success" but neither key present
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
         return AddTorrentResult::Failed;
     }
 }

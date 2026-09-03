@@ -2,11 +2,11 @@
 
 #define Uses_TDialog
 #define Uses_TInputLine
-#define Uses_TRadioButtons
 #define Uses_TCheckBoxes
 #include <tvision/tv.h>
 #include "../AppSettings.h"
 #include "../rpc/TransmissionClient.h"
+#include "LanguageComboBox.h"
 
 // Direct pointers to the Settings dialog's input fields.
 //
@@ -27,7 +27,7 @@ struct SettingsDialogFields {
     TInputLine* port = nullptr;
     TInputLine* user = nullptr;
     TInputLine* password = nullptr;
-    TRadioButtons* language = nullptr; // index 0 = English, 1 = Italian
+    LanguageComboBox* language = nullptr;
 
     // Global (session-wide) speed limits, live on the Transmission
     // daemon rather than in our own settings.json — see

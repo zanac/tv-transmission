@@ -118,6 +118,8 @@ int runCli(int argc, char** argv, AppSettings settings) {
             return 0;
         }
         std::printf("%s\n", tr(Str::CliAddFailure));
+        if (!client.lastError().empty())
+            std::fprintf(stderr, "%s\n", client.lastError().c_str());
         return 1;
     }
 

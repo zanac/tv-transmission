@@ -31,6 +31,7 @@ private:
     void showAddTorrentDialog(const std::string& initialValue = "");
     void showSettingsDialog();
     void showWindowListDialog();
+    void showAboutDialog();
     void applySettings(); // reconfigures client_ after a settings change
     void updateBandwidthStatus(); // updates the D:/U: text in the status bar
 
@@ -53,3 +54,4 @@ const ushort cmReannounceTorrent= 108;
 const ushort cmStartNowTorrent  = 109;
 const ushort cmShowDetails      = 110;
 const ushort cmDeleteTorrentWithData = 111;
+const ushort cmAbout            = 112;

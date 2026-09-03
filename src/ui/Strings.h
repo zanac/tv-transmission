@@ -21,17 +21,18 @@ enum class Str {
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
+    MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,
     DialogTitleWindowList,
     StatusAdd, StatusStart, StatusStop, StatusSettings, StatusQuit,
 
     WindowTitleTorrentList,
 
-    DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate,
+    DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate, MsgTorrentAddFailed,
     ButtonOK, ButtonCancel,
 
     DialogTitleSettings,
     LabelRefreshSeconds, LabelHost, LabelPort, LabelUser, LabelPassword, LabelLanguage,
-    LanguageEnglish, LanguageItalian,
+    LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
 
     WindowTitleDetails,
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,

@@ -2,11 +2,14 @@
 #include <string>
 
 // UI language. English is the default; the numeric value (0, 1, ...)
-// matches the order of entries in the TRadioButtons in
+// matches the order of entries in the language combo box in
 // SettingsDialog.cpp — keep them in sync if more are added.
 enum class Language {
     English = 0,
     Italian = 1,
+    French = 2,
+    German = 3,
+    Spanish = 4,
 };
 
 // Column used to sort the torrent list; the numeric value matches the

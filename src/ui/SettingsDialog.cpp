@@ -38,7 +38,7 @@ TInputLine* addField(TDialog* dlg, int y, const char* label,
 
 TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& sessionLimits,
                                SettingsDialogFields& fields) {
-    TRect r(0, 0, 60, 23);
+    TRect r(0, 0, 60, 22);
     auto* dlg = new TDialog(r, tr(Str::DialogTitleSettings));
     dlg->options |= ofCentered;
 
@@ -57,17 +57,13 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
     fields.password = addField(dlg, 10, tr(Str::LabelPassword), current.password, 128, /*masked=*/true);
 
     dlg->insert(new TStaticText(TRect(2, 12, 24, 13), tr(Str::LabelLanguage)));
-    fields.language = new TRadioButtons(TRect(24, 12, 50, 14),
-        new TSItem(tr(Str::LanguageEnglish),
-        new TSItem(tr(Str::LanguageItalian), nullptr)));
-    ushort selectedLanguage = static_cast<ushort>(current.language);
-    fields.language->setData(&selectedLanguage);
+    fields.language = new LanguageComboBox(TRect(24, 12, 50, 13), current.language);
     dlg->insert(fields.language);
 
     // --- Global (session-wide) speed limits ---
-    dlg->insert(new TStaticText(TRect(2, 16, 50, 17), tr(Str::LabelGlobalSpeedSection)));
+    dlg->insert(new TStaticText(TRect(2, 15, 50, 16), tr(Str::LabelGlobalSpeedSection)));
 
-    fields.globalLimitCheckboxes = new TCheckBoxes(TRect(2, 17, 26, 19),
+    fields.globalLimitCheckboxes = new TCheckBoxes(TRect(2, 16, 26, 18),
         new TSItem(tr(Str::CheckGlobalLimitDownload),
         new TSItem(tr(Str::CheckGlobalLimitUpload), nullptr)));
     ushort globalChecked = (sessionLimits.downloadLimited ? 0x01 : 0) |
@@ -75,24 +71,24 @@ TDialog* createSettingsDialog(const AppSettings& current, const SessionLimits& s
     fields.globalLimitCheckboxes->setData(&globalChecked);
     dlg->insert(fields.globalLimitCheckboxes);
 
-    fields.globalDownloadLimit = new TInputLine(TRect(28, 17, 38, 18), 8);
+    fields.globalDownloadLimit = new TInputLine(TRect(28, 16, 38, 17), 8);
     std::vector<char> downBuf(9, 0);
     std::snprintf(downBuf.data(), downBuf.size(), "%d", sessionLimits.downloadLimit);
     fields.globalDownloadLimit->setData(downBuf.data());
     fields.globalDownloadLimit->setValidator(new TRangeValidator(0, 1000000)); // KB/s, ~1GB/s cap
     dlg->insert(fields.globalDownloadLimit);
-    dlg->insert(new TStaticText(TRect(39, 17, 44, 18), tr(Str::UnitKBs)));
+    dlg->insert(new TStaticText(TRect(39, 16, 44, 17), tr(Str::UnitKBs)));
 
-    fields.globalUploadLimit = new TInputLine(TRect(28, 18, 38, 19), 8);
+    fields.globalUploadLimit = new TInputLine(TRect(28, 17, 38, 18), 8);
     std::vector<char> upBuf(9, 0);
     std::snprintf(upBuf.data(), upBuf.size(), "%d", sessionLimits.uploadLimit);
     fields.globalUploadLimit->setData(upBuf.data());
     fields.globalUploadLimit->setValidator(new TRangeValidator(0, 1000000));
     dlg->insert(fields.globalUploadLimit);
-    dlg->insert(new TStaticText(TRect(39, 18, 44, 19), tr(Str::UnitKBs)));
+    dlg->insert(new TStaticText(TRect(39, 17, 44, 18), tr(Str::UnitKBs)));
 
-    dlg->insert(new TButton(TRect(20, 20, 30, 22), tr(Str::ButtonOK), cmOK, bfDefault));
-    dlg->insert(new TButton(TRect(32, 20, 42, 22), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    dlg->insert(new TButton(TRect(20, 19, 30, 21), tr(Str::ButtonOK), cmOK, bfDefault));
+    dlg->insert(new TButton(TRect(32, 19, 42, 21), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;
@@ -125,9 +121,7 @@ AppSettings settingsDialogResult(const SettingsDialogFields& fields, const AppSe
         result.password = buf;
     }
     if (fields.language) {
-        ushort sel = 0;
-        fields.language->getData(&sel);
-        result.language = static_cast<Language>(sel);
+        result.language = fields.language->language();
     }
 
     return result;

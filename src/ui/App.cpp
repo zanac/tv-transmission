@@ -3,6 +3,7 @@
 #include "AddTorrentDialog.h"
 #include "SettingsDialog.h"
 #include "WindowListDialog.h"
+#include "AboutDialog.h"
 #include "BandwidthStatusLine.h"
 #include "Strings.h"
 #include "../Config.h"
@@ -66,7 +67,9 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuWindowTile), cmTile, kbNoKey) +
             *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
             newLine() +
-            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0)
+            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
+        *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
+            *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
     );
 }
 
@@ -111,8 +114,20 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
     if (result == cmOK) {
         if (!url.empty()) {
             auto addResult = client_.addTorrent(url);
-            if (addResult == TransmissionClient::AddTorrentResult::Duplicate)
+            if (addResult == TransmissionClient::AddTorrentResult::Duplicate) {
                 messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
+            } else if (addResult == TransmissionClient::AddTorrentResult::Failed) {
+                // client_.lastError() carries Transmission's own reason
+                // when the RPC request itself succeeded but adding the
+                // torrent didn't (invalid/corrupt magnet or .torrent,
+                // unreachable http(s) URL, ...), or a network/curl error
+                // when the request couldn't even be made — either way,
+                // something concrete to show instead of doing nothing.
+                char buf[512];
+                std::snprintf(buf, sizeof(buf), tr(Str::MsgTorrentAddFailed),
+                    client_.lastError().c_str());
+                messageBox(buf, mfError | mfOKButton);
+            }
         }
         return;
     }
@@ -225,6 +240,13 @@ void App::showWindowListDialog() {
     }
 }
 
+void App::showAboutDialog() {
+    if (auto* dlg = createAboutDialog()) {
+        execView(dlg);
+        destroy(dlg);
+    }
+}
+
 void App::applySettings() {
     client_.setEndpoint(settings_.host, settings_.port);
     client_.setCredentials(settings_.user, settings_.password);
@@ -288,6 +310,10 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmShowWindowList:
             showWindowListDialog();
+            clearEvent(event);
+            break;
+        case cmAbout:
+            showAboutDialog();
             clearEvent(event);
             break;
         case cmBandwidthDisplay:

@@ -9,7 +9,9 @@ add_executable(tv-transmission
     ui/TorrentListWindow.cpp
     ui/AddTorrentDialog.cpp
     ui/SettingsDialog.cpp
+    ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
+    ui/AboutDialog.cpp
     ui/BandwidthStatusLine.cpp
     ui/TorrentDetailsWindow.cpp
     ui/TrackerListWindow.cpp
