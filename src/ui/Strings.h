@@ -22,6 +22,9 @@ enum class Str {
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,
+    MenuSettingsMenu, MenuFilters,
+    DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
+    MsgLanguageChangeRestart,
     DialogTitleWindowList,
     StatusAdd, StatusStart, StatusStop, StatusSettings, StatusQuit,
 

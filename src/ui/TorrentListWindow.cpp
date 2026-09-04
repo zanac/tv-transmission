@@ -3,6 +3,7 @@
 #include "Strings.h"
 #include "../TextUtil.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -95,6 +96,34 @@ TColorAttr statusRowColor(const Torrent& t) {
 // same-colored row.
 TColorAttr bold(TColorAttr base) {
     return TColorAttr(base.getForeground(), base.getBackground(), base.getStyle() | slBold);
+}
+
+// Case-insensitive substring search — an empty `needle` (no name filter
+// set) always matches, same as the filter not existing.
+bool containsCaseInsensitive(const std::string& haystack, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
+        [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); });
+    return it != haystack.end();
+}
+
+// A torrent is shown only if it satisfies EVERY active filter (AND, not
+// OR) — see TorrentFilter's own comment in AppSettings.h. An unknown
+// status (shouldn't happen with a real Transmission daemon) is shown
+// rather than silently hidden, since none of the filter's status flags
+// were meant to describe it either way.
+bool passesFilter(const Torrent& t, const TorrentFilter& f) {
+    if (!containsCaseInsensitive(t.name, f.nameContains)) return false;
+    switch (t.status) {
+        case 0: return f.showStopped;
+        case 1: return f.showCheckWait;
+        case 2: return f.showChecking;
+        case 3: return f.showDownloadWait;
+        case 4: return f.showDownloading;
+        case 5: return f.showSeedWait;
+        case 6: return f.showSeeding;
+        default: return true;
+    }
 }
 
 // [start,end) range of terminal columns occupied by each column of the
@@ -205,56 +234,76 @@ private:
 
 TorrentListViewer::TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
                                       SortColumn initialSort, bool initialAscending,
+                                      TorrentFilter initialFilter,
                                       SortChangedCallback onSortChanged)
     : TListViewer(r, 1, nullptr, vScrollBar),
+      filter_(std::move(initialFilter)),
       sortColumn_(initialSort), sortAscending_(initialAscending),
       onSortChanged_(std::move(onSortChanged)) {
     setRange(0);
 }
 
 void TorrentListViewer::setTorrents(std::vector<Torrent> torrents) {
-    torrents_ = std::move(torrents);
-    applySort(); // every refresh starts from unsorted server data: the
-                 // user's chosen criterion is re-applied here
-    setRange((short)torrents_.size());
+    allTorrents_ = std::move(torrents);
+    applyFilterAndSort(); // every refresh starts from unsorted, unfiltered
+                          // server data: the user's chosen filter+sort are
+                          // re-applied here
+    setRange((short)visible_.size());
     if (focused >= range && range > 0) focusItem(range - 1);
     updateCommandStates(); // the still-focused torrent's state may have
                            // changed even when its index didn't
     drawView();
 }
 
+void TorrentListViewer::setFilter(TorrentFilter filter) {
+    filter_ = std::move(filter);
+    applyFilterAndSort();
+    setRange((short)visible_.size());
+    focused = 0; // the old focused index may no longer mean anything once
+                 // the visible set changes shape; simplest to just reset it
+    if (range > 0) focusItem(0);
+    else updateCommandStates(); // empty list: still needs the "nothing selected" state
+    drawView();
+}
+
 const Torrent* TorrentListViewer::selectedTorrent() const {
-    if (focused < 0 || focused >= (int)torrents_.size()) return nullptr;
-    return &torrents_[focused];
+    if (focused < 0 || focused >= (int)visible_.size()) return nullptr;
+    return &visible_[focused];
 }
 
 double TorrentListViewer::totalDownloadRate() const {
     double total = 0.0;
-    for (const auto& t : torrents_) total += t.rateDownload;
+    for (const auto& t : visible_) total += t.rateDownload;
     return total;
 }
 
 double TorrentListViewer::totalUploadRate() const {
     double total = 0.0;
-    for (const auto& t : torrents_) total += t.rateUpload;
+    for (const auto& t : visible_) total += t.rateUpload;
     return total;
 }
 
 void TorrentListViewer::toggleSort(SortColumn column) {
     if (column == sortColumn_) sortAscending_ = !sortAscending_;
     else { sortColumn_ = column; sortAscending_ = true; }
-    applySort();
+    applyFilterAndSort();
     drawView();
     if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
 }
 
-void TorrentListViewer::applySort() {
+void TorrentListViewer::applyFilterAndSort() {
+    visible_.clear();
+    visible_.reserve(allTorrents_.size());
+    for (const auto& t : allTorrents_) {
+        if (!passesFilter(t, filter_)) continue;
+        visible_.push_back(t);
+    }
     // Always compare "ascending" but with the arguments swapped for
     // descending order, instead of negating the result: negating `less`
     // to get `greater` breaks the strict-weak-ordering std::sort
     // requires when two elements are equal (a<b false AND b<a false, but
     // !less(a,b) would still be "true" both ways).
-    std::sort(torrents_.begin(), torrents_.end(),
+    std::sort(visible_.begin(), visible_.end(),
         [this](const Torrent& a, const Torrent& b) {
             const Torrent& x = sortAscending_ ? a : b;
             const Torrent& y = sortAscending_ ? b : a;
@@ -272,11 +321,11 @@ void TorrentListViewer::applySort() {
 }
 
 void TorrentListViewer::getText(char* dest, short item, short maxLen) {
-    if (item < 0 || item >= (int)torrents_.size()) {
+    if (item < 0 || item >= (int)visible_.size()) {
         dest[0] = '\0';
         return;
     }
-    const Torrent& t = torrents_[item];
+    const Torrent& t = visible_[item];
     std::string name = padOrTruncateUtf8(t.name, kNameW);
     std::string bar = buildProgressBar(t.percentDone);
     std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
@@ -305,13 +354,13 @@ void TorrentListViewer::draw() {
         short item = topItem + i;
         bool isFocusedRow = (item == focused);
         TColorAttr rowColor = isFocusedRow ? TColorAttr(0xF0) // current row: black on white
-                            : (item >= 0 && item < (int)torrents_.size())
-                                ? statusRowColor(torrents_[item])
+                            : (item >= 0 && item < (int)visible_.size())
+                                ? statusRowColor(visible_[item])
                                 : TColorAttr(0x1F);
         b.moveChar(0, ' ', rowColor, size.x);
 
-        if (item >= 0 && item < (int)torrents_.size()) {
-            const Torrent& t = torrents_[item];
+        if (item >= 0 && item < (int)visible_.size()) {
+            const Torrent& t = visible_[item];
             std::string name = padOrTruncateUtf8(t.name, kNameW);
             std::string bar = buildProgressBar(t.percentDone);
             std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
@@ -458,6 +507,7 @@ void TorrentListViewer::showContextMenu(TPoint where) {
 
 TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                                       SortColumn initialSort, bool initialAscending,
+                                      TorrentFilter initialFilter,
                                       SortChangedCallback onSortChanged)
     : TWindowInit(&TWindow::initFrame),
       TWindow(bounds, tr(Str::WindowTitleTorrentList), wnNoNumber),
@@ -491,7 +541,7 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
     insert(vScroll);
 
     listViewer_ = new TorrentListViewer(listRect, vScroll, initialSort, initialAscending,
-                                         std::move(onSortChanged));
+                                         std::move(initialFilter), std::move(onSortChanged));
     insert(listViewer_);
 
     insert(new TorrentListHeader(headerRect, listViewer_));
@@ -614,4 +664,12 @@ double TorrentListWindow::totalDownloadRate() const {
 
 double TorrentListWindow::totalUploadRate() const {
     return listViewer_ ? listViewer_->totalUploadRate() : 0.0;
+}
+
+void TorrentListWindow::setFilter(TorrentFilter filter) {
+    if (listViewer_) listViewer_->setFilter(std::move(filter));
+}
+
+TorrentFilter TorrentListWindow::filter() const {
+    return listViewer_ ? listViewer_->filter() : TorrentFilter{};
 }

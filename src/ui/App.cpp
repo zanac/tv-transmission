@@ -2,6 +2,7 @@
 #include "TorrentListWindow.h"
 #include "AddTorrentDialog.h"
 #include "SettingsDialog.h"
+#include "FilterDialog.h"
 #include "WindowListDialog.h"
 #include "AboutDialog.h"
 #include "BandwidthStatusLine.h"
@@ -51,8 +52,6 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
             newLine() +
-            *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
-            newLine() +
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
             // Standard tvision commands: the main window can't be closed
@@ -68,6 +67,9 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
+        *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
+            *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
     );
@@ -94,7 +96,7 @@ void App::newTorrentListWindow() {
     // to always stay maximized.
     TRect r = deskTop->getExtent();
     listWindow_ = new TorrentListWindow(r, client_,
-        settings_.sortColumn, settings_.sortAscending,
+        settings_.sortColumn, settings_.sortAscending, settings_.filter,
         [this](SortColumn col, bool asc) {
             settings_.sortColumn = col;
             settings_.sortAscending = asc;
@@ -184,6 +186,7 @@ void App::showSettingsDialog() {
     SettingsDialogFields fields;
     if (auto* dlg = createSettingsDialog(settings_, sessionLimits, fields)) {
         if (execView(dlg) == cmOK) {
+            Language oldLanguage = settings_.language;
             settings_ = settingsDialogResult(fields, settings_);
             applySettings();
             saveSettings(settings_); // persisted right away: see Config.h
@@ -195,6 +198,15 @@ void App::showSettingsDialog() {
             // restarted — but from this point on restarting *works*:
             // the config file now holds the chosen language.
             if (listWindow_) listWindow_->retranslate();
+
+            // Told explicitly rather than left to notice on their own:
+            // most of the UI already switched (see retranslate() above
+            // and every other window/dialog, rebuilt fresh each time
+            // it's shown), so a restart looks unnecessary until they
+            // spot the still-old menu bar/status bar.
+            if (settings_.language != oldLanguage) {
+                messageBox(tr(Str::MsgLanguageChangeRestart), mfInformation | mfOKButton);
+            }
 
             // Only pushed back if the fetch above actually succeeded.
             // Otherwise the dialog's speed-limit fields were showing
@@ -209,6 +221,19 @@ void App::showSettingsDialog() {
             if (sessionLimitsFetched) {
                 client_.setSessionLimits(settingsDialogSessionLimits(fields));
             }
+        }
+        destroy(dlg);
+    }
+}
+
+void App::showFilterDialog() {
+    if (!listWindow_) return;
+    FilterDialogFields fields;
+    if (auto* dlg = createFilterDialog(settings_.filter, fields)) {
+        if (execView(dlg) == cmOK) {
+            settings_.filter = filterDialogResult(fields);
+            saveSettings(settings_); // persisted right away, same as everything else in Config.h
+            listWindow_->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
         }
         destroy(dlg);
     }
@@ -306,6 +331,10 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmSettings:
             showSettingsDialog();
+            clearEvent(event);
+            break;
+        case cmFilters:
+            showFilterDialog();
             clearEvent(event);
             break;
         case cmShowWindowList:

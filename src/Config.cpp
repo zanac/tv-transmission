@@ -54,6 +54,18 @@ AppSettings loadSettings() {
         int sortCol = j.value("sortColumn", static_cast<int>(settings.sortColumn));
         settings.sortColumn = static_cast<SortColumn>(sortCol);
         settings.sortAscending = j.value("sortAscending", settings.sortAscending);
+
+        if (j.contains("filter") && j["filter"].is_object()) {
+            auto& f = j["filter"];
+            settings.filter.nameContains = f.value("nameContains", settings.filter.nameContains);
+            settings.filter.showStopped = f.value("showStopped", settings.filter.showStopped);
+            settings.filter.showCheckWait = f.value("showCheckWait", settings.filter.showCheckWait);
+            settings.filter.showChecking = f.value("showChecking", settings.filter.showChecking);
+            settings.filter.showDownloadWait = f.value("showDownloadWait", settings.filter.showDownloadWait);
+            settings.filter.showDownloading = f.value("showDownloading", settings.filter.showDownloading);
+            settings.filter.showSeedWait = f.value("showSeedWait", settings.filter.showSeedWait);
+            settings.filter.showSeeding = f.value("showSeeding", settings.filter.showSeeding);
+        }
     } catch (const std::exception&) {
         // Corrupted/malformed file: better to fall back to defaults than
         // to block the app from starting.
@@ -75,6 +87,16 @@ bool saveSettings(const AppSettings& settings) {
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
     j["sortAscending"] = settings.sortAscending;
+    j["filter"] = {
+        {"nameContains", settings.filter.nameContains},
+        {"showStopped", settings.filter.showStopped},
+        {"showCheckWait", settings.filter.showCheckWait},
+        {"showChecking", settings.filter.showChecking},
+        {"showDownloadWait", settings.filter.showDownloadWait},
+        {"showDownloading", settings.filter.showDownloading},
+        {"showSeedWait", settings.filter.showSeedWait},
+        {"showSeeding", settings.filter.showSeeding},
+    };
 
     std::string path = configFilePath();
     std::ofstream out(path, std::ios::trunc);

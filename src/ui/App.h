@@ -30,6 +30,7 @@ private:
     void newTorrentListWindow();
     void showAddTorrentDialog(const std::string& initialValue = "");
     void showSettingsDialog();
+    void showFilterDialog();
     void showWindowListDialog();
     void showAboutDialog();
     void applySettings(); // reconfigures client_ after a settings change
@@ -55,3 +56,4 @@ const ushort cmStartNowTorrent  = 109;
 const ushort cmShowDetails      = 110;
 const ushort cmDeleteTorrentWithData = 111;
 const ushort cmAbout            = 112;
+const ushort cmFilters          = 113;

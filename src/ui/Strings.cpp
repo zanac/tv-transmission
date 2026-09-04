@@ -36,6 +36,30 @@ const char* tr(Str id) {
         case Str::MenuRemove:    return pick("~R~emove", "~R~imuovi", "~S~upprimer", "~E~ntfernen", "~E~liminar");
         case Str::MenuSettings:  return pick("S~e~ttings...", "~I~mpostazioni...", "~P~aramètres...", "Ei~n~stellungen...", "~C~onfiguración...");
         case Str::MenuQuit:      return pick("~Q~uit", "~E~sci", "~Q~uitter", "~B~eenden", "~S~alir");
+        case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración");
+        case Str::MenuFilters:      return pick("~F~ilters...", "~F~iltri...", "~F~iltres...", "~F~ilter...", "~F~iltros...");
+        case Str::DialogTitleFilters:
+            return pick("Filters", "Filtri", "Filtres", "Filter", "Filtros");
+        case Str::LabelFilterName:
+            return pick("Name contains:", "Il nome contiene:", "Le nom contient :",
+                        "Name enthält:", "El nombre contiene:");
+        case Str::LabelFilterStatusSection:
+            return pick("Show status:", "Mostra stato:", "Afficher l'état :",
+                        "Status anzeigen:", "Mostrar estado:");
+        case Str::ButtonReset:
+            return pick("Reset", "Ripristina", "Réinitialiser", "Zurücksetzen", "Restablecer");
+        case Str::MsgLanguageChangeRestart:
+            return pick(
+                "Language changed. Restart the application for the menu bar and "
+                "status bar to fully switch over (everything else already has).",
+                "Lingua cambiata. Riavvia l'applicazione perché il menu e la barra "
+                "di stato si aggiornino del tutto (il resto è già cambiato).",
+                "Langue changée. Redémarrez l'application pour que la barre de "
+                "menus et la barre d'état basculent complètement (le reste a déjà changé).",
+                "Sprache geändert. Starten Sie die Anwendung neu, damit Menüleiste "
+                "und Statusleiste vollständig umschalten (alles andere hat sich bereits geändert).",
+                "Idioma cambiado. Reinicia la aplicación para que la barra de menús "
+                "y la barra de estado cambien del todo (el resto ya ha cambiado).");
         case Str::MenuVerify:      return pick("~V~erify", "~V~erifica", "~V~érifier", "~P~rüfen", "~V~erificar");
         case Str::MenuReannounce:  return pick("Reannoun~c~e", "Ricontatta tra~c~ker", "Réannon~c~er", "Tracker neu ~a~nfragen", "Reanun~c~iar");
         case Str::MenuStartNow:    return pick("Start ~N~ow", "Avvia s~u~bito", "Démarrer ~m~aintenant", "~J~etzt starten", "Iniciar ~a~hora");

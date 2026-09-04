@@ -21,13 +21,19 @@ class TorrentListViewer : public TListViewer {
 public:
     TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
                        SortColumn initialSort, bool initialAscending,
+                       TorrentFilter initialFilter,
                        SortChangedCallback onSortChanged);
 
     void setTorrents(std::vector<Torrent> torrents);
     const Torrent* selectedTorrent() const;
 
-    double totalDownloadRate() const; // sum of rateDownload across all torrents
-    double totalUploadRate() const;   // sum of rateUpload across all torrents
+    // Re-applied to the same underlying data already held (no fresh RPC
+    // fetch needed) — see applyFilterAndSort() in the .cpp file.
+    void setFilter(TorrentFilter filter);
+    const TorrentFilter& filter() const { return filter_; }
+
+    double totalDownloadRate() const; // sum of rateDownload across VISIBLE (filtered) torrents
+    double totalUploadRate() const;   // sum of rateUpload across VISIBLE (filtered) torrents
 
     // Header column click: if it's already the active sort column, flips
     // direction; otherwise sorts by the new column (ascending). The
@@ -73,10 +79,18 @@ public:
     void handleEvent(TEvent& event) override; // right-click context menu
 
 private:
-    void applySort(); // re-sorts torrents_ according to sortColumn_/sortAscending_
+    void applyFilterAndSort(); // rebuilds visible_ from allTorrents_ (filter, then sort)
     void showContextMenu(TPoint where);
 
-    std::vector<Torrent> torrents_;
+    // allTorrents_ is every torrent listTorrents() last returned, in
+    // server order; visible_ is the filtered-then-sorted subset actually
+    // shown, which is what every other method here (getText, draw,
+    // selectedTorrent, the rate totals, ...) operates on. Kept separate
+    // rather than filtering allTorrents_ in place so changing the filter
+    // (setFilter()) doesn't need a fresh RPC round-trip to reapply.
+    std::vector<Torrent> allTorrents_;
+    std::vector<Torrent> visible_;
+    TorrentFilter filter_;
     SortColumn sortColumn_;
     bool sortAscending_;
     SortChangedCallback onSortChanged_;
@@ -86,6 +100,7 @@ class TorrentListWindow : public TWindow {
 public:
     TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                        SortColumn initialSort, bool initialAscending,
+                       TorrentFilter initialFilter,
                        SortChangedCallback onSortChanged);
 
     void handleEvent(TEvent& event) override; // catches the double-click
@@ -100,6 +115,9 @@ public:
     void reannounceSelected();
     void showDetailsForSelected();
     void retranslate();   // re-applies the title in the current language
+
+    void setFilter(TorrentFilter filter); // applied to already-fetched data, no re-fetch
+    TorrentFilter filter() const;
 
     double totalDownloadRate() const;
     double totalUploadRate() const;
