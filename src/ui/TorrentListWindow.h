@@ -1,8 +1,5 @@
 #pragma once
 
-#define Uses_TWindow
-#define Uses_TListViewer
-#define Uses_TScrollBar
 #define Uses_TEvent
 #include <tvision/tv.h>
 
@@ -11,99 +8,49 @@
 #include "../AppSettings.h"
 #include "../rpc/TransmissionClient.h"
 #include "../rpc/Torrent.h"
+#include "../tgridview/TGridWindow.h"
 
 // Called whenever the user changes the sort column/direction (header
-// click), so the caller can persist it (see App::newTorrentListWindow()).
+// click — the toggle-direction and indicator-drawing logic itself now
+// lives in TGridView; see TGridView::SortChangedFn), so the caller can
+// persist it (see App::newTorrentListWindow()).
 using SortChangedCallback = std::function<void(SortColumn, bool)>;
 
-// TListViewer that renders one row per torrent: name, %, down/up rate.
-class TorrentListViewer : public TListViewer {
+// The main torrent list — a thin app-specific layer on top of the
+// generic TGridView (src/tgridview/), which supplies the actual
+// column/row rendering, sorting-on-click UI, resizing, the scrollbar,
+// and mouse handling. What lives here is everything genuinely
+// torrent-specific: which columns exist and how wide, how a Torrent
+// becomes each column's text, the status-based row coloring, and the
+// actions (start/stop/remove/...) wired to the grid's callbacks. See
+// "Fixed bugs" in README.md for the story of this migration.
+class TorrentListWindow : public TGridWindow {
 public:
-    TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
-                       SortColumn initialSort, bool initialAscending,
-                       TorrentFilter initialFilter,
-                       SortChangedCallback onSortChanged);
-
-    void setTorrents(std::vector<Torrent> torrents);
-    const Torrent* selectedTorrent() const;
-
-    // Re-applied to the same underlying data already held (no fresh RPC
-    // fetch needed) — see applyFilterAndSort() in the .cpp file.
-    void setFilter(TorrentFilter filter);
-    const TorrentFilter& filter() const { return filter_; }
-
-    double totalDownloadRate() const; // sum of rateDownload across VISIBLE (filtered) torrents
-    double totalUploadRate() const;   // sum of rateUpload across VISIBLE (filtered) torrents
-
-    // Header column click: if it's already the active sort column, flips
-    // direction; otherwise sorts by the new column (ascending). The
-    // criterion is re-applied automatically on every refresh (see
-    // setTorrents()), so it stays in effect over time. Also invokes
-    // onSortChanged so it can be persisted.
-    void toggleSort(SortColumn column);
-    SortColumn sortColumn() const { return sortColumn_; }
-    bool sortAscending() const { return sortAscending_; }
-
-    void getText(char* dest, short item, short maxLen) override;
-
-    // Called on construction, after every refresh, and whenever the
-    // focused row changes (see focusItem() below) — enables/disables
-    // App.h's torrent commands (cmStartTorrent, cmStopTorrent, etc.)
-    // according to the now-selected torrent's state. This uses
-    // tvision's own global enable/disable mechanism (TView::
-    // enableCommand()/disableCommand(), backed by a single shared
-    // TCommandSet — see mapcolor... no, see tview.cpp's
-    // curCommandSet), so it automatically grays out matching items in
-    // the Torrent menu, the status bar, AND the right-click context
-    // menu below all at once, without having to touch any of them
-    // individually.
-    void updateCommandStates();
-    void focusItem(short item) override; // calls updateCommandStates()
-
-    // Full custom row rendering: bold torrent name, a filled/empty block
-    // progress bar, and a text color that depends on the torrent's
-    // status (downloading/seeding/stopped/queued/error), not just
-    // focused-vs-not. This can't be done by returning fixed colors from
-    // mapColor() (the previous approach, used for the earlier "always
-    // blue" look): TListViewer's inherited draw() paints an entire row
-    // with a single TColorAttr from one getColor() call, so per-torrent
-    // status color and a bold-vs-normal name within the *same* row are
-    // both outside what it can express. Overriding draw() completely
-    // sidesteps that: each row is built here as several TDrawBuffer
-    // segments (name, bar, size, rates, added, status), each with its
-    // own TColorAttr — still with a fixed palette (independent of the
-    // app's theme, same reasoning as before), just no longer a single
-    // color per row.
-    void draw() override;
-
-    void handleEvent(TEvent& event) override; // right-click context menu
-
-private:
-    void applyFilterAndSort(); // rebuilds visible_ from allTorrents_ (filter, then sort)
-    void showContextMenu(TPoint where);
-
-    // allTorrents_ is every torrent listTorrents() last returned, in
-    // server order; visible_ is the filtered-then-sorted subset actually
-    // shown, which is what every other method here (getText, draw,
-    // selectedTorrent, the rate totals, ...) operates on. Kept separate
-    // rather than filtering allTorrents_ in place so changing the filter
-    // (setFilter()) doesn't need a fresh RPC round-trip to reapply.
-    std::vector<Torrent> allTorrents_;
-    std::vector<Torrent> visible_;
-    TorrentFilter filter_;
-    SortColumn sortColumn_;
-    bool sortAscending_;
-    SortChangedCallback onSortChanged_;
-};
-
-class TorrentListWindow : public TWindow {
-public:
+    // `initialColumnWidths`: one width per column, same order as
+    // SortColumn (Name, Done, Size, Down, Up, Added, Status) — from
+    // AppSettings::columnWidths, so a previous session's resizing
+    // survives a restart. Empty (or a mismatched count) falls back to
+    // this window's own defaults, which also covers the very first run.
+    //
+    // `initialColumnOrder`: a permutation of [0, 7) — one entry per
+    // visual position, each holding the LOGICAL column index (again
+    // SortColumn's own order) shown there — from AppSettings::
+    // columnOrder, so a previous session's rearranging survives a
+    // restart too. Empty (or not a valid permutation) falls back to
+    // identity order (Name, Done, Size, Down, Up, Added, Status, left to
+    // right) — see TGridView::setColumnOrder()'s own doc comment for
+    // exactly what "not valid" covers.
+    // `initialColumnVisible`: one bool per column, same order as
+    // SortColumn — from AppSettings::columnVisible, so a previous
+    // session's column choices survive a restart. Empty (or a
+    // mismatched count) falls back to every column shown.
     TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                        SortColumn initialSort, bool initialAscending,
                        TorrentFilter initialFilter,
+                       const std::vector<int>& initialColumnWidths,
+                       const std::vector<int>& initialColumnOrder,
+                       const std::vector<bool>& initialColumnVisible,
                        SortChangedCallback onSortChanged);
-
-    void handleEvent(TEvent& event) override; // catches the double-click
 
     void refresh();       // calls listTorrents() and updates the view
     void startSelected();
@@ -114,15 +61,66 @@ public:
     void verifySelected();
     void reannounceSelected();
     void showDetailsForSelected();
-    void retranslate();   // re-applies the title in the current language
+    void retranslate();   // re-applies the title + column headers in the current language
 
     void setFilter(TorrentFilter filter); // applied to already-fetched data, no re-fetch
-    TorrentFilter filter() const;
+    const TorrentFilter& filter() const { return filter_; }
 
-    double totalDownloadRate() const;
+    // Forwards to TGridView::startKeyboardResize() for one of this
+    // window's own columns — `col` is a SortColumn value cast to int
+    // (Name=0 .. Status=6). Used by the column manager dialog's
+    // "Resize" button (see App::showColumnManagerDialog()).
+    void startColumnResize(int col);
+
+    // Forwards to TGridView::startKeyboardReorder() — same `col`
+    // convention as startColumnResize() above, used by the column
+    // manager dialog's "Move" button.
+    void startColumnReorder(int col);
+
+    // Current width of every column, same order as the constructor's
+    // `initialColumnWidths` — read by App::shutDown() to persist
+    // whatever the user last resized them to.
+    std::vector<int> columnWidths() const;
+
+    // Current visual arrangement, same convention as the constructor's
+    // `initialColumnOrder` — read by App::shutDown() to persist whatever
+    // the user last rearranged it to.
+    std::vector<int> columnOrder() const;
+
+    // Which columns are currently shown, same convention as the
+    // constructor's `initialColumnVisible`.
+    std::vector<bool> columnVisibility() const;
+    // Applied immediately, e.g. right after the Columns dialog is
+    // confirmed (see App::showColumnsDialog()).
+    void setColumnVisibility(const std::vector<bool>& visible);
+
+    // Resets width, order, AND visibility all at once, back to this
+    // window's own built-in defaults — what "Reset" in the column
+    // manager dialog does (see App::showColumnManagerDialog()).
+    void resetColumnLayout();
+
+    double totalDownloadRate() const; // sum over VISIBLE (filtered) torrents
     double totalUploadRate() const;
 
 private:
+    void setupColumns(const std::vector<int>& initialWidths);
+    void applyColumnLabels();   // (re)applies translated header text for the current language
+    void applyFilterAndSort();  // rebuilds visible_ from allTorrents_ (filter, then sort)
+    void updateCommandStates(); // enables/disables App.h's torrent commands for the focused row
+    const Torrent* selectedTorrent() const;
+    void showContextMenuFor(int row, TPoint screenPos);
+
     TransmissionClient& client_;
-    TorrentListViewer* listViewer_ = nullptr;
+
+    // allTorrents_ is every torrent listTorrents() last returned, in
+    // server order; visible_ is the filtered-then-sorted subset actually
+    // shown (what the grid's callbacks read from). Kept separate rather
+    // than filtering allTorrents_ in place so changing the filter
+    // (setFilter()) doesn't need a fresh RPC round-trip to reapply.
+    std::vector<Torrent> allTorrents_;
+    std::vector<Torrent> visible_;
+    TorrentFilter filter_;
+    SortColumn sortColumn_;
+    bool sortAscending_;
+    SortChangedCallback onSortChanged_;
 };

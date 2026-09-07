@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 // UI language. English is the default; the numeric value (0, 1, ...)
 // matches the order of entries in the language combo box in
@@ -64,4 +65,28 @@ struct AppSettings {
     // Persisted the same way as everything else here: saved when the
     // Filters window is confirmed, reloaded on the next launch.
     TorrentFilter filter;
+
+    // Current width of each torrent-list column, same order as
+    // SortColumn (Name, Done, Size, Down, Up, Added, Status) — read
+    // from the grid and saved on exit (see App::shutDown()), applied
+    // back when the list is built on the next launch. Empty (or a
+    // mismatched count, e.g. a settings.json from before a column was
+    // added) falls back to the list's own built-in defaults.
+    std::vector<int> columnWidths;
+
+    // Current visual arrangement of the torrent-list columns — a
+    // permutation of [0, 7), one entry per visual position holding the
+    // LOGICAL column index (SortColumn's own order) shown there. Saved
+    // and restored the same way as columnWidths above. Empty (or not a
+    // valid permutation — see TGridView::setColumnOrder()) falls back
+    // to identity order.
+    std::vector<int> columnOrder;
+
+    // Which torrent-list columns are shown at all, same order as
+    // SortColumn — chosen from the "Columns..." dialog (Settings menu).
+    // Saved as soon as that dialog is confirmed (unlike widths/order,
+    // which are only captured on exit — see App::shutDown() — this is a
+    // discrete dialog choice, not a continuous drag). Empty (or a
+    // mismatched count) falls back to every column shown.
+    std::vector<bool> columnVisible;
 };

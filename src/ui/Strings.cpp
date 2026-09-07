@@ -38,6 +38,9 @@ const char* tr(Str id) {
         case Str::MenuQuit:      return pick("~Q~uit", "~E~sci", "~Q~uitter", "~B~eenden", "~S~alir");
         case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración");
         case Str::MenuFilters:      return pick("~F~ilters...", "~F~iltri...", "~F~iltres...", "~F~ilter...", "~F~iltros...");
+        case Str::MenuManageColumns:
+            return pick("~M~anage columns...", "~G~estisci colonne...", "~G~érer les colonnes...",
+                        "Spalten ~v~erwalten...", "~G~estionar columnas...");
         case Str::DialogTitleFilters:
             return pick("Filters", "Filtri", "Filtres", "Filter", "Filtros");
         case Str::LabelFilterName:
@@ -60,6 +63,22 @@ const char* tr(Str id) {
                 "und Statusleiste vollständig umschalten (alles andere hat sich bereits geändert).",
                 "Idioma cambiado. Reinicia la aplicación para que la barra de menús "
                 "y la barra de estado cambien del todo (el resto ya ha cambiado).");
+        case Str::DialogTitleColumnManager:
+            return pick("Manage columns", "Gestisci colonne", "Gérer les colonnes",
+                        "Spalten verwalten", "Gestionar columnas");
+        case Str::LabelColumnManagerColumn:
+            return pick("Column", "Colonna", "Colonne", "Spalte", "Columna");
+        case Str::LabelColumnManagerWidth:
+            return pick("Width", "Larghezza", "Largeur", "Breite", "Ancho");
+        case Str::LabelColumnManagerVisible:
+            return pick("Visible", "Visibile", "Visible", "Sichtbar", "Visible");
+        case Str::ButtonResizeColumn:
+            return pick("~R~esize", "~R~idimensiona", "~R~edimensionner", "~G~röße ändern", "~R~edimensionar");
+        case Str::ButtonMoveColumn:
+            return pick("~M~ove", "~S~posta", "Dé~p~lacer", "~V~erschieben", "~M~over");
+        case Str::ButtonToggleVisible:
+            return pick("~T~oggle visible", "~M~ostra/Nascondi", "~A~fficher/Masquer",
+                        "S~i~chtbarkeit", "~O~cultar/Mostrar");
         case Str::MenuVerify:      return pick("~V~erify", "~V~erifica", "~V~érifier", "~P~rüfen", "~V~erificar");
         case Str::MenuReannounce:  return pick("Reannoun~c~e", "Ricontatta tra~c~ker", "Réannon~c~er", "Tracker neu ~a~nfragen", "Reanun~c~iar");
         case Str::MenuStartNow:    return pick("Start ~N~ow", "Avvia s~u~bito", "Démarrer ~m~aintenant", "~J~etzt starten", "Iniciar ~a~hora");

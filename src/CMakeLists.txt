@@ -10,6 +10,7 @@ add_executable(tv-transmission
     ui/AddTorrentDialog.cpp
     ui/SettingsDialog.cpp
     ui/FilterDialog.cpp
+    ui/ColumnManagerDialog.cpp
     ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
@@ -18,6 +19,8 @@ add_executable(tv-transmission
     ui/TrackerListWindow.cpp
     ui/TrackerDetailWindow.cpp
     ui/Strings.cpp
+    tgridview/TGridView.cpp
+    tgridview/TGridWindow.cpp
 )
 
 target_include_directories(tv-transmission PRIVATE

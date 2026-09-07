@@ -3,6 +3,7 @@
 #include "AddTorrentDialog.h"
 #include "SettingsDialog.h"
 #include "FilterDialog.h"
+#include "ColumnManagerDialog.h"
 #include "WindowListDialog.h"
 #include "AboutDialog.h"
 #include "BandwidthStatusLine.h"
@@ -69,6 +70,14 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
+            // Rationalized from what used to be three separate entry
+            // points here (a "Resize columns" submenu, an "Order
+            // columns" submenu, and a standalone "Columns..." dialog —
+            // each nested with the same (TMenuItem&) cast idiom that
+            // was needed for those two submenus, no longer needed now
+            // that there's only one plain item) into the single column
+            // manager dialog — see ColumnManagerDialog.h.
+            *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
             *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
@@ -97,6 +106,7 @@ void App::newTorrentListWindow() {
     TRect r = deskTop->getExtent();
     listWindow_ = new TorrentListWindow(r, client_,
         settings_.sortColumn, settings_.sortAscending, settings_.filter,
+        settings_.columnWidths, settings_.columnOrder, settings_.columnVisible,
         [this](SortColumn col, bool asc) {
             settings_.sortColumn = col;
             settings_.sortAscending = asc;
@@ -239,6 +249,25 @@ void App::showFilterDialog() {
     }
 }
 
+void App::showColumnManagerDialog() {
+    if (!listWindow_) return;
+    if (auto* dlg = createColumnManagerDialog(listWindow_)) {
+        // Unlike the Filters/Settings dialogs, there's nothing to read
+        // back from this one on close: every action inside it (resize,
+        // move, toggle visible) applies straight to listWindow_ as it
+        // happens — see ColumnManagerDialog.h's own doc comment for why.
+        execView(dlg);
+        destroy(dlg);
+        // Persisted here as a natural "done editing" point, same
+        // reasoning as App::shutDown() persisting these on exit — the
+        // user might not close the app again for a while after this.
+        settings_.columnWidths = listWindow_->columnWidths();
+        settings_.columnOrder = listWindow_->columnOrder();
+        settings_.columnVisible = listWindow_->columnVisibility();
+        saveSettings(settings_);
+    }
+}
+
 void App::showWindowListDialog() {
     // deskTop->last/next: TGroup's public circular chain, the same
     // traversal mechanism already used elsewhere in this project. Order
@@ -337,6 +366,10 @@ void App::handleEvent(TEvent& event) {
             showFilterDialog();
             clearEvent(event);
             break;
+        case cmManageColumns:
+            showColumnManagerDialog();
+            clearEvent(event);
+            break;
         case cmShowWindowList:
             showWindowListDialog();
             clearEvent(event);
@@ -352,6 +385,21 @@ void App::handleEvent(TEvent& event) {
         default:
             break;
     }
+}
+
+void App::shutDown() {
+    // Captured here rather than after every single drag/reorder step:
+    // both are live, continuous interactions (see TGridView's own
+    // README.md), so writing settings.json on every intermediate step
+    // would be far more I/O than the user's final choice actually
+    // needs. Whatever the widths/order are at the moment the app is
+    // closing is what's worth remembering for next time.
+    if (listWindow_) {
+        settings_.columnWidths = listWindow_->columnWidths();
+        settings_.columnOrder = listWindow_->columnOrder();
+        saveSettings(settings_);
+    }
+    TApplication::shutDown();
 }
 
 void App::idle() {

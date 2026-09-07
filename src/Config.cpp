@@ -66,6 +66,15 @@ AppSettings loadSettings() {
             settings.filter.showSeedWait = f.value("showSeedWait", settings.filter.showSeedWait);
             settings.filter.showSeeding = f.value("showSeeding", settings.filter.showSeeding);
         }
+        if (j.contains("columnWidths") && j["columnWidths"].is_array()) {
+            settings.columnWidths = j["columnWidths"].get<std::vector<int>>();
+        }
+        if (j.contains("columnOrder") && j["columnOrder"].is_array()) {
+            settings.columnOrder = j["columnOrder"].get<std::vector<int>>();
+        }
+        if (j.contains("columnVisible") && j["columnVisible"].is_array()) {
+            settings.columnVisible = j["columnVisible"].get<std::vector<bool>>();
+        }
     } catch (const std::exception&) {
         // Corrupted/malformed file: better to fall back to defaults than
         // to block the app from starting.
@@ -97,6 +106,9 @@ bool saveSettings(const AppSettings& settings) {
         {"showSeedWait", settings.filter.showSeedWait},
         {"showSeeding", settings.filter.showSeeding},
     };
+    j["columnWidths"] = settings.columnWidths;
+    j["columnOrder"] = settings.columnOrder;
+    j["columnVisible"] = settings.columnVisible;
 
     std::string path = configFilePath();
     std::ofstream out(path, std::ios::trunc);

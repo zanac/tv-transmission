@@ -7,12 +7,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <utility>
-#include <vector>
 
 #define Uses_TProgram
 #define Uses_TDeskTop
-#define Uses_TDrawBuffer
 #define Uses_TMenuItem
 #define Uses_TMenu
 #define Uses_TMenuPopup
@@ -23,39 +20,12 @@
 
 namespace {
 
-// Column widths shared between the data row (drawRow), the header
-// (TorrentListHeader) and click detection (columnAt), so they stay
-// aligned by construction rather than by eyeballing them.
-constexpr int kNameW     = 30; // name column
-constexpr int kBarInnerW = 16; // filled/empty blocks inside the brackets
-// "[" + kBarInnerW blocks + "]" + " NNN%" (5 chars: space + up to 3
-// digits, right-aligned + '%') = 1 + 16 + 1 + 5 = 23.
-constexpr int kProgressW = 1 + kBarInnerW + 1 + 5;
-constexpr int kSizeW   = 10; // formatSize() output (adaptive unit), right-aligned
-constexpr int kDownW   = 14; // "  D:     0KB/s" in full (spaces included)
-constexpr int kUpW     = 13; // " U:     0KB/s" in full (space included)
-constexpr int kAddedW  = 17; // "YYYY-MM-DD HH:MM" (16 chars) + 1
-constexpr int kStatusW = 23; // longest status string across both languages + 1
-                              // ("In attesa di verifica"/"In attesa di download" = 22 chars)
-
-// Right-aligns a (plain ASCII) string to exactly `width` columns,
-// padding with leading spaces. Unlike padOrTruncateUtf8 (used for the
-// name column, left-aligned), this never truncates: a still-too-long
-// string is left as-is rather than having digits silently cut off,
-// which would turn a large-but-correct number into a smaller, wrong
-// one. All values placed through this (formatSize()'s output,
-// timestamps) are kept short by construction, so overflow here would
-// only happen at values far beyond anything a real torrent produces.
-std::string rightAlign(const std::string& s, size_t width) {
-    if (s.size() >= width) return s;
-    return std::string(width - s.size(), ' ') + s;
-}
-
 // Builds "[███████░░░░░░░░░]  42%" — the block characters (U+2588 full
 // block / U+2591 light shade) are a near-universal convention for
 // filled/empty progress in any UTF-8 terminal; the count of each is
 // exactly proportional to percentDone, so the bar visibly fills up as
 // the torrent approaches 100%.
+constexpr int kBarInnerW = 16;
 std::string buildProgressBar(double percentDone) {
     int filled = static_cast<int>(std::lround(percentDone * kBarInnerW));
     if (filled < 0) filled = 0;
@@ -74,11 +44,9 @@ std::string buildProgressBar(double percentDone) {
 // 1=check-wait, 2=checking, 3=download-wait, 4=downloading,
 // 5=seed-wait, 6=seeding.
 //
-// A row's color reflects the torrent's status at a glance, distinct
-// from the focused-row highlight (always black-on-white, handled
-// separately in draw() below, regardless of status) — an error takes
-// priority over the status-based color since it's the most actionable
-// state to notice.
+// A row's color reflects the torrent's status at a glance; an error
+// takes priority over the status-based color since it's the most
+// actionable state to notice.
 TColorAttr statusRowColor(const Torrent& t) {
     if (!t.errorString.empty()) return TColorAttr(0x1C); // error: light red on blue
     switch (t.status) {
@@ -91,11 +59,24 @@ TColorAttr statusRowColor(const Torrent& t) {
     }
 }
 
-// Same fg/bg as `base`, with the bold style bit added — used for the
-// name segment only, so it stands out from the rest of an otherwise
-// same-colored row.
-TColorAttr bold(TColorAttr base) {
-    return TColorAttr(base.getForeground(), base.getBackground(), base.getStyle() | slBold);
+// "Queued" here means 1/3/5: already started (waiting for its turn),
+// as opposed to genuinely stopped (0).
+bool isStopped(const Torrent& t) { return t.status == 0; }
+bool isQueued(const Torrent& t) { return t.status == 1 || t.status == 3 || t.status == 5; }
+
+void setCmd(TView* v, ushort cmd, bool enable) {
+    if (enable) v->enableCommand(cmd);
+    else v->disableCommand(cmd);
+}
+
+// `fmt` is one of our own tr() strings with a single "%s" placeholder;
+// `value` is a plain argument to it, not itself interpreted as a format
+// string, so a torrent name containing a literal '%' can't cause any
+// issue here (unlike passing it directly to printf as the format).
+std::string formatMessage(const char* fmt, const std::string& value) {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), fmt, value.c_str());
+    return buf;
 }
 
 // Case-insensitive substring search — an empty `needle` (no name filter
@@ -108,10 +89,7 @@ bool containsCaseInsensitive(const std::string& haystack, const std::string& nee
 }
 
 // A torrent is shown only if it satisfies EVERY active filter (AND, not
-// OR) — see TorrentFilter's own comment in AppSettings.h. An unknown
-// status (shouldn't happen with a real Transmission daemon) is shown
-// rather than silently hidden, since none of the filter's status flags
-// were meant to describe it either way.
+// OR) — see TorrentFilter's own comment in AppSettings.h.
 bool passesFilter(const Torrent& t, const TorrentFilter& f) {
     if (!containsCaseInsensitive(t.name, f.nameContains)) return false;
     switch (t.status) {
@@ -126,178 +104,242 @@ bool passesFilter(const Torrent& t, const TorrentFilter& f) {
     }
 }
 
-// [start,end) range of terminal columns occupied by each column of the
-// header/row, in the same order as SortColumn. Built once from the
-// kNameW/etc. constants above, so clicking and drawing always use the
-// same math.
-struct ColumnRange { int start, end; SortColumn column; };
-
-std::vector<ColumnRange> columnRanges() {
-    std::vector<ColumnRange> ranges;
-    int pos = 0;
-    ranges.push_back({pos, pos + kNameW, SortColumn::Name}); pos += kNameW + 1; // +1 separator space
-    ranges.push_back({pos, pos + kProgressW, SortColumn::Done}); pos += kProgressW + 1; // +1 separator space
-    ranges.push_back({pos, pos + kSizeW, SortColumn::Size}); pos += kSizeW;     // no space before Down
-    ranges.push_back({pos, pos + kDownW, SortColumn::Down}); pos += kDownW;     // no space before Up
-    ranges.push_back({pos, pos + kUpW,   SortColumn::Up});   pos += kUpW + 1;   // +1 separator space
-    ranges.push_back({pos, pos + kAddedW, SortColumn::Added}); pos += kAddedW + 1; // +1 separator space
-    ranges.push_back({pos, pos + kStatusW, SortColumn::Status});
-    return ranges;
-}
-
-// Column clicked given a local x coordinate within the header, or -1 if
-// the click landed on a separator space.
-int columnAt(int x) {
-    for (const auto& r : columnRanges())
-        if (x >= r.start && x < r.end) return static_cast<int>(r.column);
-    return -1;
-}
-
-// Base label for each column, indexed by SortColumn.
-const char* baseLabel(SortColumn col) {
-    switch (col) {
-        case SortColumn::Name:   return tr(Str::HeaderName);
-        case SortColumn::Done:   return tr(Str::HeaderDone);
-        case SortColumn::Size:   return tr(Str::HeaderSize);
-        case SortColumn::Down:   return tr(Str::HeaderDownload);
-        case SortColumn::Up:     return tr(Str::HeaderUpload);
-        case SortColumn::Added:  return tr(Str::HeaderAdded);
-        case SortColumn::Status: return tr(Str::HeaderStatus);
-    }
-    return "";
-}
-
-// Header row with the exact same widths as drawRow(), plus a ^/v
-// indicator on the column currently used for sorting.
-// Note: unlike windows/dialogs that get rebuilt every time they're
-// shown, this header does not update itself if the language changes at
-// runtime — same limitation (and same reason) as the menu bar/status
-// bar, see App.cpp/main.cpp.
-std::string buildHeaderText(SortColumn sortColumn, bool ascending) {
-    auto label = [&](SortColumn col) {
-        std::string s = baseLabel(col);
-        if (col == sortColumn) s += ascending ? " ^" : " v";
-        return s;
-    };
-    char buf[192];
-    std::snprintf(buf, sizeof(buf), "%-*s %*s %*s%*s%*s %*s %*s",
-        kNameW, label(SortColumn::Name).c_str(),
-        kProgressW, label(SortColumn::Done).c_str(),
-        kSizeW, label(SortColumn::Size).c_str(),
-        kDownW, label(SortColumn::Down).c_str(),
-        kUpW,   label(SortColumn::Up).c_str(),
-        kAddedW, label(SortColumn::Added).c_str(),
-        kStatusW, label(SortColumn::Status).c_str());
-    return buf;
-}
-
 } // namespace
 
-// Minimal view that draws the header and handles clicks for sorting.
-// Holds a pointer to the TorrentListViewer to know what to draw (current
-// column/direction) and to apply the new sort on click.
-class TorrentListHeader : public TView {
-public:
-    TorrentListHeader(const TRect& r, TorrentListViewer* listViewer)
-        : TView(r), listViewer_(listViewer) {
-        growMode = gfGrowHiX; // follows the window's width
-    }
-
-    void draw() override {
-        TDrawBuffer b;
-        // Yellow on blue: distinct from the rows (white on blue) while
-        // staying in the same blue tones requested for the list.
-        TColorAttr color(0x1E);
-        std::string text = buildHeaderText(listViewer_->sortColumn(),
-                                            listViewer_->sortAscending());
-        b.moveChar(0, ' ', color, size.x);
-        b.moveStr(0, text.c_str(), color);
-        writeLine(0, 0, size.x, 1, b);
-    }
-
-    void handleEvent(TEvent& event) override {
-        TView::handleEvent(event);
-        if (event.what == evMouseDown) {
-            TPoint p = makeLocal(event.mouse.where);
-            int col = columnAt(p.x);
-            if (col >= 0) {
-                listViewer_->toggleSort(static_cast<SortColumn>(col));
-                drawView();
-            }
-            clearEvent(event);
-        }
-    }
-
-private:
-    TorrentListViewer* listViewer_;
-};
-
-TorrentListViewer::TorrentListViewer(const TRect& r, TScrollBar* vScrollBar,
+TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                                       SortColumn initialSort, bool initialAscending,
                                       TorrentFilter initialFilter,
+                                      const std::vector<int>& initialColumnWidths,
+                                      const std::vector<int>& initialColumnOrder,
+                                      const std::vector<bool>& initialColumnVisible,
                                       SortChangedCallback onSortChanged)
-    : TListViewer(r, 1, nullptr, vScrollBar),
-      filter_(std::move(initialFilter)),
+    : TWindowInit(&TWindow::initFrame), // virtual base: must be initialized here,
+                                         // by the most-derived class — TGridWindow's
+                                         // own initialization of it doesn't propagate
+                                         // through another level of inheritance
+      TGridWindow(bounds, tr(Str::WindowTitleTorrentList), /*fullScreen=*/true,
+                  gvResizableColumns | gvReorderableColumns),
+      client_(client), filter_(std::move(initialFilter)),
       sortColumn_(initialSort), sortAscending_(initialAscending),
       onSortChanged_(std::move(onSortChanged)) {
-    setRange(0);
+    setupColumns(initialColumnWidths);
+    applyColumnLabels();
+    // Restores a persisted arrangement without needing any reaction from
+    // this window: reordering only changes where columns are drawn, not
+    // what data they show (see TGridView's logical/visual index split),
+    // so unlike the sort indicator just below there's nothing else to
+    // keep in sync here.
+    grid()->setColumnOrder(initialColumnOrder);
+    setColumnVisibility(initialColumnVisible);
+    // Reflects the persisted sort in the header's "^"/"v" indicator
+    // without going through setSortChangedCallback()'s callback: the
+    // data isn't loaded yet (refresh() below sorts it, using
+    // sortColumn_/sortAscending_ directly), so there's nothing to
+    // re-sort in reaction to this — it would just be redundant.
+    grid()->setSortIndicator((int)sortColumn_, sortAscending_);
+
+    grid()->setCellTextCallback([this](int row, int col) -> std::string {
+        if (row < 0 || row >= (int)visible_.size()) return "";
+        const Torrent& t = visible_[row];
+        switch (static_cast<SortColumn>(col)) {
+            case SortColumn::Name:   return t.name;
+            case SortColumn::Done:   return buildProgressBar(t.percentDone);
+            case SortColumn::Size:   return formatSize(t.sizeBytes);
+            case SortColumn::Down: {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "D:%7.1fKB/s", t.rateDownload / 1024.0);
+                return buf;
+            }
+            case SortColumn::Up: {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "U:%7.1fKB/s", t.rateUpload / 1024.0);
+                return buf;
+            }
+            case SortColumn::Added:  return formatUnixTimestamp(t.addedDate);
+            case SortColumn::Status: return trTorrentStatus(t.status);
+        }
+        return "";
+    });
+
+    grid()->setRowColorCallback([this](int row, bool focused) -> TColorAttr {
+        if (focused) return TColorAttr(0xF0); // current row: black on white, regardless of status
+        if (row < 0 || row >= (int)visible_.size()) return TColorAttr(0x1F);
+        return statusRowColor(visible_[row]);
+    });
+
+    // Only the name column is bold — see TGridView's own draw(): applied
+    // regardless of focus, same as this window's rendering did before
+    // the TGridView migration.
+    grid()->setCellBoldCallback([](int, int col) { return col == (int)SortColumn::Name; });
+
+    // Sorting-on-click itself (toggling direction, drawing "^"/"v") is
+    // now handled entirely inside TGridView (see its own
+    // setSortChangedCallback doc comment) — this callback only needs to
+    // react to the choice: re-sort visible_ and let the caller persist
+    // it, same as the old toggleSort() did.
+    grid()->setSortChangedCallback([this](int col, bool ascending) {
+        sortColumn_ = static_cast<SortColumn>(col);
+        sortAscending_ = ascending;
+        applyFilterAndSort();
+        if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
+    });
+    grid()->setRowActivateCallback([this](int) { showDetailsForSelected(); });
+    grid()->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
+    grid()->setRowFocusCallback([this](int) { updateCommandStates(); });
+
+    refresh();
 }
 
-void TorrentListViewer::setTorrents(std::vector<Torrent> torrents) {
-    allTorrents_ = std::move(torrents);
-    applyFilterAndSort(); // every refresh starts from unsorted, unfiltered
-                          // server data: the user's chosen filter+sort are
-                          // re-applied here
-    setRange((short)visible_.size());
-    if (focused >= range && range > 0) focusItem(range - 1);
-    updateCommandStates(); // the still-focused torrent's state may have
-                           // changed even when its index didn't
+void TorrentListWindow::setupColumns(const std::vector<int>& initialWidths) {
+    grid()->clearColumns();
+
+    TGridColumn name;
+    name.header = tr(Str::HeaderName);
+    name.width = 30;
+    name.minWidth = 10;
+    grid()->addColumn(name);
+
+    TGridColumn done;
+    done.header = tr(Str::HeaderDone);
+    done.width = 23;       // "[" + 16 blocks + "]" + " NNN%" (5) = 23
+    done.minWidth = 23;
+    // Not resizable: buildProgressBar() always produces a fixed-width
+    // 23-character string (a fixed 16-block-wide bar), so shrinking this
+    // column would just truncate the bar/percentage rather than
+    // reflowing anything — better to not offer a resize that can't do
+    // anything useful.
+    done.resizable = false;
+    grid()->addColumn(done);
+
+    TGridColumn size;
+    size.header = tr(Str::HeaderSize);
+    size.width = 10;
+    size.minWidth = 6;
+    size.align = TGridColumn::Align::Right;
+    grid()->addColumn(size);
+
+    TGridColumn down;
+    down.header = tr(Str::HeaderDownload);
+    down.width = 14;
+    down.minWidth = 8;
+    grid()->addColumn(down);
+
+    TGridColumn up;
+    up.header = tr(Str::HeaderUpload);
+    up.width = 14;
+    up.minWidth = 8;
+    grid()->addColumn(up);
+
+    TGridColumn added;
+    added.header = tr(Str::HeaderAdded);
+    added.width = 17;
+    added.minWidth = 10;
+    grid()->addColumn(added);
+
+    TGridColumn status;
+    status.header = tr(Str::HeaderStatus);
+    status.width = 23;
+    status.minWidth = 8;
+    grid()->addColumn(status);
+
+    // Persisted widths from a previous session, applied on top of the
+    // defaults above — only if there's exactly one per column: a
+    // mismatched count (first run with no saved widths yet, or a
+    // settings.json from before a column was added/removed) falls back
+    // to the defaults just set rather than applying them partially or
+    // out of order.
+    if (initialWidths.size() == (size_t)grid()->columnCount()) {
+        for (int i = 0; i < grid()->columnCount(); i++)
+            grid()->setColumnWidth(i, initialWidths[i]);
+    }
+}
+
+void TorrentListWindow::applyColumnLabels() {
+    static const Str kLabels[] = {
+        Str::HeaderName, Str::HeaderDone, Str::HeaderSize,
+        Str::HeaderDownload, Str::HeaderUpload, Str::HeaderAdded, Str::HeaderStatus,
+    };
+    int n = std::min(grid()->columnCount(), (int)(sizeof(kLabels) / sizeof(kLabels[0])));
+    for (int i = 0; i < n; i++) grid()->column(i).header = tr(kLabels[i]);
+}
+
+void TorrentListWindow::retranslate() {
+    // title is allocated with newStr() by TWindow's constructor (see
+    // twindow.cpp) and freed with delete[] in its destructor — the same
+    // pattern used for TStatusItem::text in BandwidthStatusLine.
+    delete[] (char*)title;
+    title = newStr(tr(Str::WindowTitleTorrentList));
+    applyColumnLabels(); // the sort "^"/"v" indicator is drawn by TGridView
+                         // itself at draw time (see grid()->refresh() below),
+                         // independent of the header label text — nothing
+                         // to reapply here for it.
+    grid()->refresh();
     drawView();
 }
 
-void TorrentListViewer::setFilter(TorrentFilter filter) {
+void TorrentListWindow::refresh() {
+    allTorrents_ = client_.listTorrents();
+    applyFilterAndSort();
+}
+
+void TorrentListWindow::setFilter(TorrentFilter filter) {
     filter_ = std::move(filter);
     applyFilterAndSort();
-    setRange((short)visible_.size());
-    focused = 0; // the old focused index may no longer mean anything once
-                 // the visible set changes shape; simplest to just reset it
-    if (range > 0) focusItem(0);
-    else updateCommandStates(); // empty list: still needs the "nothing selected" state
-    drawView();
 }
 
-const Torrent* TorrentListViewer::selectedTorrent() const {
-    if (focused < 0 || focused >= (int)visible_.size()) return nullptr;
-    return &visible_[focused];
+std::vector<int> TorrentListWindow::columnWidths() const {
+    std::vector<int> widths;
+    widths.reserve(grid()->columnCount());
+    for (int i = 0; i < grid()->columnCount(); i++)
+        widths.push_back(grid()->column(i).width);
+    return widths;
 }
 
-double TorrentListViewer::totalDownloadRate() const {
-    double total = 0.0;
-    for (const auto& t : visible_) total += t.rateDownload;
-    return total;
+void TorrentListWindow::startColumnResize(int col) {
+    grid()->startKeyboardResize(col);
 }
 
-double TorrentListViewer::totalUploadRate() const {
-    double total = 0.0;
-    for (const auto& t : visible_) total += t.rateUpload;
-    return total;
+void TorrentListWindow::startColumnReorder(int col) {
+    grid()->startKeyboardReorder(col);
 }
 
-void TorrentListViewer::toggleSort(SortColumn column) {
-    if (column == sortColumn_) sortAscending_ = !sortAscending_;
-    else { sortColumn_ = column; sortAscending_ = true; }
-    applyFilterAndSort();
-    drawView();
-    if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
+std::vector<int> TorrentListWindow::columnOrder() const {
+    return grid()->columnOrder();
 }
 
-void TorrentListViewer::applyFilterAndSort() {
+std::vector<bool> TorrentListWindow::columnVisibility() const {
+    std::vector<bool> vis(7, true);
+    for (int i = 0; i < 7; i++) vis[i] = grid()->isColumnVisible(i);
+    return vis;
+}
+
+void TorrentListWindow::setColumnVisibility(const std::vector<bool>& visible) {
+    for (int i = 0; i < 7; i++) {
+        bool shown = (i < (int)visible.size()) ? visible[i] : true;
+        grid()->setColumnVisible(i, shown);
+    }
+}
+
+void TorrentListWindow::resetColumnLayout() {
+    // setupColumns({}) re-adds all 7 columns fresh with their built-in
+    // default widths (see its own body) — TGridView::clearColumns()/
+    // addColumn() each reset the display order to identity as a side
+    // effect (see TGridView.h's comment on why), so order comes back to
+    // Name..Status left-to-right for free; visibility needs its own
+    // pass since clearing/re-adding columns doesn't touch it.
+    setupColumns({});
+    for (int i = 0; i < 7; i++) grid()->setColumnVisible(i, true);
+    applyFilterAndSort(); // row count/content are unaffected by any of
+                          // this, but the columns were just torn down
+                          // and rebuilt, so the grid needs telling again
+}
+
+void TorrentListWindow::applyFilterAndSort() {
     visible_.clear();
     visible_.reserve(allTorrents_.size());
-    for (const auto& t : allTorrents_) {
-        if (!passesFilter(t, filter_)) continue;
-        visible_.push_back(t);
-    }
+    for (const auto& t : allTorrents_)
+        if (passesFilter(t, filter_)) visible_.push_back(t);
+
     // Always compare "ascending" but with the arguments swapped for
     // descending order, instead of negating the result: negating `less`
     // to get `greater` breaks the strict-weak-ordering std::sort
@@ -318,102 +360,19 @@ void TorrentListViewer::applyFilterAndSort() {
             }
             return false;
         });
+
+    grid()->setRowCount((int)visible_.size());
+    grid()->refresh();
+    updateCommandStates();
 }
 
-void TorrentListViewer::getText(char* dest, short item, short maxLen) {
-    if (item < 0 || item >= (int)visible_.size()) {
-        dest[0] = '\0';
-        return;
-    }
-    const Torrent& t = visible_[item];
-    std::string name = padOrTruncateUtf8(t.name, kNameW);
-    std::string bar = buildProgressBar(t.percentDone);
-    std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
-    std::string addedStr = rightAlign(formatUnixTimestamp(t.addedDate), kAddedW);
-    std::string statusStr = padOrTruncateUtf8(trTorrentStatus(t.status), kStatusW);
-    std::snprintf(dest, maxLen,
-        "%s %s %s  D:%6.0fKB/s U:%6.0fKB/s %s %s",
-        name.c_str(), bar.c_str(), sizeStr.c_str(),
-        t.rateDownload / 1024.0, t.rateUpload / 1024.0,
-        addedStr.c_str(), statusStr.c_str());
+const Torrent* TorrentListWindow::selectedTorrent() const {
+    int row = grid()->focusedRow();
+    if (row < 0 || row >= (int)visible_.size()) return nullptr;
+    return &visible_[row];
 }
 
-void TorrentListViewer::draw() {
-    // Full custom rendering instead of relying on TListViewer's
-    // inherited draw() (which paints an entire row with one color from
-    // a single getColor() call) — see the comment on this override's
-    // declaration in TorrentListWindow.h for why: a bold name plus a
-    // status-dependent color within the *same* row isn't expressible
-    // that way. Built directly here rather than by formatting one
-    // string (as getText() still does, kept for any other internal use
-    // TListViewer might make of it) because each segment needs its own
-    // TColorAttr — moveStr() positions text at an absolute column, so
-    // segments are placed one after another by tracking `x`.
-    TDrawBuffer b;
-    for (short i = 0; i < size.y; i++) {
-        short item = topItem + i;
-        bool isFocusedRow = (item == focused);
-        TColorAttr rowColor = isFocusedRow ? TColorAttr(0xF0) // current row: black on white
-                            : (item >= 0 && item < (int)visible_.size())
-                                ? statusRowColor(visible_[item])
-                                : TColorAttr(0x1F);
-        b.moveChar(0, ' ', rowColor, size.x);
-
-        if (item >= 0 && item < (int)visible_.size()) {
-            const Torrent& t = visible_[item];
-            std::string name = padOrTruncateUtf8(t.name, kNameW);
-            std::string bar = buildProgressBar(t.percentDone);
-            std::string sizeStr = rightAlign(formatSize(t.sizeBytes), kSizeW);
-            std::string addedStr = rightAlign(formatUnixTimestamp(t.addedDate), kAddedW);
-            std::string statusStr = padOrTruncateUtf8(trTorrentStatus(t.status), kStatusW);
-            char rateBuf[48];
-            std::snprintf(rateBuf, sizeof(rateBuf), "  D:%6.0fKB/s U:%6.0fKB/s",
-                t.rateDownload / 1024.0, t.rateUpload / 1024.0);
-
-            int x = 0;
-            x += b.moveStr(x, name.c_str(), bold(rowColor)); // only the name is bold
-            x += b.moveStr(x, " ", rowColor);
-            x += b.moveStr(x, bar.c_str(), rowColor);
-            x += b.moveStr(x, " ", rowColor);
-            x += b.moveStr(x, sizeStr.c_str(), rowColor);
-            x += b.moveStr(x, rateBuf, rowColor);
-            x += b.moveStr(x, " ", rowColor);
-            x += b.moveStr(x, addedStr.c_str(), rowColor);
-            x += b.moveStr(x, " ", rowColor);
-            x += b.moveStr(x, statusStr.c_str(), rowColor);
-        }
-
-        writeLine(0, i, size.x, 1, b);
-    }
-}
-
-namespace {
-
-// tr_torrent_activity values (Transmission RPC): 0=stopped,
-// 1=check-wait, 2=checking, 3=download-wait, 4=downloading,
-// 5=seed-wait, 6=seeding. "Queued" here means 1/3/5: already started
-// (waiting for its turn), as opposed to genuinely stopped (0).
-bool isStopped(const Torrent& t) { return t.status == 0; }
-bool isQueued(const Torrent& t) { return t.status == 1 || t.status == 3 || t.status == 5; }
-
-void setCmd(TView* v, ushort cmd, bool enable) {
-    if (enable) v->enableCommand(cmd);
-    else v->disableCommand(cmd);
-}
-
-// `fmt` is one of our own tr() strings with a single "%s" placeholder;
-// `value` is a plain argument to it, not itself interpreted as a format
-// string, so a torrent name containing a literal '%' can't cause any
-// issue here (unlike passing it directly to printf as the format).
-std::string formatMessage(const char* fmt, const std::string& value) {
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), fmt, value.c_str());
-    return buf;
-}
-
-} // namespace
-
-void TorrentListViewer::updateCommandStates() {
+void TorrentListWindow::updateCommandStates() {
     const Torrent* t = selectedTorrent();
     if (!t) {
         // Nothing selected (e.g. empty list): no per-torrent action
@@ -442,36 +401,13 @@ void TorrentListViewer::updateCommandStates() {
     setCmd(this, cmShowDetails, true);                 // always possible
 }
 
-void TorrentListViewer::focusItem(short item) {
-    TListViewer::focusItem(item);
-    updateCommandStates();
-}
-
-void TorrentListViewer::handleEvent(TEvent& event) {
-    TListViewer::handleEvent(event);
-    if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0) {
-        TPoint where = event.mouse.where; // already in global/screen coordinates
-        TPoint local = makeLocal(where);
-        // Same formula TListViewer::handleEvent() itself uses for
-        // left-click selection (see tlstview.cpp): with numCols == 1
-        // (our case) each item is exactly one row, so the clicked
-        // index is simply topItem + the local y offset.
-        short row = topItem + local.y;
-        if (row >= 0 && row < range) {
-            focusItemNum(row); // also runs updateCommandStates() via the override above
-            showContextMenu(where);
-        }
-        clearEvent(event);
-    }
-}
-
-void TorrentListViewer::showContextMenu(TPoint where) {
+void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // TMenuBox/TMenuPopup size themselves from their content and anchor
     // at bounds.a, expanding toward bounds.b — a small bounds.b here
     // (rather than a comfortably large one) would make it anchor
     // backwards from the click point instead of growing rightward/
     // downward from it (see getRect() in tvision's tmenubox.cpp).
-    TRect r(where.x, where.y, where.x + 40, where.y + 10);
+    TRect r(screenPos.x, screenPos.y, screenPos.x + 40, screenPos.y + 10);
     TMenu* menu = new TMenu(
         *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
@@ -505,74 +441,8 @@ void TorrentListViewer::showContextMenu(TPoint where) {
     }
 }
 
-TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
-                                      SortColumn initialSort, bool initialAscending,
-                                      TorrentFilter initialFilter,
-                                      SortChangedCallback onSortChanged)
-    : TWindowInit(&TWindow::initFrame),
-      TWindow(bounds, tr(Str::WindowTitleTorrentList), wnNoNumber),
-      client_(client) {
-    options |= ofTileable;
-
-    // This is the main window, kept pointed to by App::listWindow_,
-    // always full-screen: no moving, resizing, zooming or closing. The
-    // reason wfClose has to go too is the historical one below:
-    // TWindow::close() would destroy the object (destroy(this)), leaving
-    // App::listWindow_ a dangling pointer on the next idle() tick.
-    flags = 0;
-
-    TRect r = getExtent();
-    r.grow(-1, -1);
-
-    // Column header row, right below the window border; everything else
-    // (scrollbar + list) moves down one row to make room for it.
-    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 1);
-    r.a.y += 1;
-
-    // FIX: the scrollbar used to occupy the last column, but the list
-    // was created as wide as the whole `r` (including that column), and
-    // being drawn ON TOP of the scrollbar (inserted after it) it covered
-    // it completely — hence "the scrollbars are missing" even though
-    // they were there. The list is now `r` minus the scrollbar's column.
-    TRect scrollRect(r.b.x - 1, r.a.y, r.b.x, r.b.y);
-    TRect listRect(r.a.x, r.a.y, r.b.x - 1, r.b.y);
-
-    TScrollBar* vScroll = new TScrollBar(scrollRect);
-    insert(vScroll);
-
-    listViewer_ = new TorrentListViewer(listRect, vScroll, initialSort, initialAscending,
-                                         std::move(initialFilter), std::move(onSortChanged));
-    insert(listViewer_);
-
-    insert(new TorrentListHeader(headerRect, listViewer_));
-
-    refresh();
-}
-
-void TorrentListWindow::retranslate() {
-    // title is allocated with newStr() by TWindow's constructor (see
-    // twindow.cpp) and freed with delete[] in its destructor — the same
-    // pattern used for TStatusItem::text in BandwidthStatusLine.
-    delete[] (char*)title;
-    title = newStr(tr(Str::WindowTitleTorrentList));
-    drawView();
-}
-
-void TorrentListWindow::handleEvent(TEvent& event) {
-    TWindow::handleEvent(event);
-    // TListViewer::selectItem() sends this broadcast to its own owner
-    // (this window) when an item is selected via double-click (see
-    // tlstview.cpp: meDoubleClick -> selectItem()).
-    if (event.what == evBroadcast &&
-        event.message.command == cmListItemSelected &&
-        event.message.infoPtr == listViewer_) {
-        showDetailsForSelected();
-        clearEvent(event);
-    }
-}
-
 void TorrentListWindow::showDetailsForSelected() {
-    const Torrent* t = listViewer_->selectedTorrent();
+    const Torrent* t = selectedTorrent();
     if (!t) return;
     int id = t->id; // copy before any refresh() invalidates the pointer below
 
@@ -605,25 +475,20 @@ void TorrentListWindow::showDetailsForSelected() {
         TProgram::application->insertWindow(win);
 }
 
-void TorrentListWindow::refresh() {
-    if (!listViewer_) return;
-    listViewer_->setTorrents(client_.listTorrents());
-}
-
 void TorrentListWindow::startSelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent())
+    if (const Torrent* t = selectedTorrent())
         client_.startTorrent(t->id);
     refresh();
 }
 
 void TorrentListWindow::stopSelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent())
+    if (const Torrent* t = selectedTorrent())
         client_.stopTorrent(t->id);
     refresh();
 }
 
 void TorrentListWindow::removeSelected() {
-    const Torrent* t = listViewer_->selectedTorrent();
+    const Torrent* t = selectedTorrent();
     if (!t) return;
     std::string msg = formatMessage(tr(Str::ConfirmRemoveTorrent), t->name);
     if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
@@ -632,7 +497,7 @@ void TorrentListWindow::removeSelected() {
 }
 
 void TorrentListWindow::deleteWithDataSelected() {
-    const Torrent* t = listViewer_->selectedTorrent();
+    const Torrent* t = selectedTorrent();
     if (!t) return;
     std::string msg = formatMessage(tr(Str::ConfirmDeleteTorrentWithData), t->name);
     if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
@@ -641,35 +506,31 @@ void TorrentListWindow::deleteWithDataSelected() {
 }
 
 void TorrentListWindow::startNowSelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent())
+    if (const Torrent* t = selectedTorrent())
         client_.startTorrentNow(t->id);
     refresh();
 }
 
 void TorrentListWindow::verifySelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent())
+    if (const Torrent* t = selectedTorrent())
         client_.verifyTorrent(t->id);
     refresh();
 }
 
 void TorrentListWindow::reannounceSelected() {
-    if (const Torrent* t = listViewer_->selectedTorrent())
+    if (const Torrent* t = selectedTorrent())
         client_.reannounceTorrent(t->id);
     refresh();
 }
 
 double TorrentListWindow::totalDownloadRate() const {
-    return listViewer_ ? listViewer_->totalDownloadRate() : 0.0;
+    double total = 0.0;
+    for (const auto& t : visible_) total += t.rateDownload;
+    return total;
 }
 
 double TorrentListWindow::totalUploadRate() const {
-    return listViewer_ ? listViewer_->totalUploadRate() : 0.0;
-}
-
-void TorrentListWindow::setFilter(TorrentFilter filter) {
-    if (listViewer_) listViewer_->setFilter(std::move(filter));
-}
-
-TorrentFilter TorrentListWindow::filter() const {
-    return listViewer_ ? listViewer_->filter() : TorrentFilter{};
+    double total = 0.0;
+    for (const auto& t : visible_) total += t.rateUpload;
+    return total;
 }

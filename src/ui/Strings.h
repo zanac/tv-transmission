@@ -25,6 +25,9 @@ enum class Str {
     MenuSettingsMenu, MenuFilters,
     DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
     MsgLanguageChangeRestart,
+    MenuManageColumns, DialogTitleColumnManager,
+    LabelColumnManagerColumn, LabelColumnManagerWidth, LabelColumnManagerVisible,
+    ButtonResizeColumn, ButtonMoveColumn, ButtonToggleVisible,
     DialogTitleWindowList,
     StatusAdd, StatusStart, StatusStop, StatusSettings, StatusQuit,
 

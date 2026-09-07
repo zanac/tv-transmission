@@ -25,12 +25,14 @@ public:
 
     void handleEvent(TEvent& event) override;
     void idle() override; // checks whether it's time to refresh again
+    void shutDown() override; // saves the torrent list's current column widths before exiting
 
 private:
     void newTorrentListWindow();
     void showAddTorrentDialog(const std::string& initialValue = "");
     void showSettingsDialog();
     void showFilterDialog();
+    void showColumnManagerDialog();
     void showWindowListDialog();
     void showAboutDialog();
     void applySettings(); // reconfigures client_ after a settings change
@@ -57,3 +59,4 @@ const ushort cmShowDetails      = 110;
 const ushort cmDeleteTorrentWithData = 111;
 const ushort cmAbout            = 112;
 const ushort cmFilters          = 113;
+const ushort cmManageColumns    = 114;
