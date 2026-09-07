@@ -22,7 +22,7 @@ enum class Str {
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,
-    MenuSettingsMenu, MenuFilters,
+    MenuSettingsMenu, MenuColumnsMenu, MenuFilters,
     DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
     MsgLanguageChangeRestart,
     MenuManageColumns, DialogTitleColumnManager,

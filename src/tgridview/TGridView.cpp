@@ -150,6 +150,14 @@ public:
                 x += b.moveStr(x, sep, color);
             }
         }
+        // Whatever's left of the header's own width after the last
+        // column — e.g. the view is wider than the columns need, or an
+        // owning window was resized larger — is filled with "=" in the
+        // same header color, rather than left blank. Same idea as a
+        // classic printed table's rule line: a visibly-intentional edge
+        // instead of empty space that could read as "something's
+        // missing here".
+        if (x < size.x) b.moveChar(x, '=', color, size.x - x);
         writeLine(0, 0, size.x, 1, b);
     }
 

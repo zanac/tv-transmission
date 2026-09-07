@@ -37,6 +37,8 @@ const char* tr(Str id) {
         case Str::MenuSettings:  return pick("S~e~ttings...", "~I~mpostazioni...", "~P~aramètres...", "Ei~n~stellungen...", "~C~onfiguración...");
         case Str::MenuQuit:      return pick("~Q~uit", "~E~sci", "~Q~uitter", "~B~eenden", "~S~alir");
         case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración");
+        case Str::MenuColumnsMenu:
+            return pick("~C~olumns", "~C~olonne", "~C~olonnes", "~S~palten", "Co~l~umnas");
         case Str::MenuFilters:      return pick("~F~ilters...", "~F~iltri...", "~F~iltres...", "~F~ilter...", "~F~iltros...");
         case Str::MenuManageColumns:
             return pick("~M~anage columns...", "~G~estisci colonne...", "~G~érer les colonnes...",

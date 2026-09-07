@@ -68,7 +68,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
-        *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
+        *new TSubMenu(tr(Str::MenuColumnsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
             // Rationalized from what used to be three separate entry
             // points here (a "Resize columns" submenu, an "Order
@@ -78,6 +78,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             // that there's only one plain item) into the single column
             // manager dialog — see ColumnManagerDialog.h.
             *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
+        *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
