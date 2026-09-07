@@ -1,17 +1,14 @@
 # TV Transmission
 
+**Version 1.1** — stable release.
+
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
 written in C++17.
 
-Actually i use a fork https://github.com/zanac/tvision (i proposed a PR for insert a new widget the Transmission need)
-
 It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
-
-<img width="806" height="654" alt="image" src="https://github.com/user-attachments/assets/c0c09902-5ff6-4c17-9de3-141ed332db9c" />
-
 
 ## Features
 
@@ -20,7 +17,17 @@ HTTP and nlohmann/json for parsing.
   closed (it's the app's main view, kept as a raw pointer internally —
   see "Fixed bugs" below for why closing it used to crash the app)
 - Columns: name (bold), progress bar, size, download rate, upload
-  rate, date added, status
+  rate, date added, status — shown by default; nine more are available
+  but hidden by default (see "Manage columns..." below): ratio,
+  all-time uploaded/downloaded totals, location, ETA, peers connected,
+  queue position, bandwidth priority, and completion date
+- Every column except the progress bar can be resized (drag the
+  separator between two headers with the mouse) or reordered
+  (double-click a column's name — "<"/">" markers appear where a move
+  is possible); **Columns → Manage columns...** does the same, plus
+  showing/hiding columns, all from one place — see its own entry below.
+  Width, order, and visibility are all saved and restored across
+  launches
 - Click a column header to sort by it; click again to reverse the
   direction (a `^`/`v` indicator shows the active column and direction);
   the chosen column and direction are saved and restored on the next launch
@@ -33,12 +40,29 @@ HTTP and nlohmann/json for parsing.
   regardless of status, so it's always clear what's selected
 - Double-click a row to open a details window for that torrent — window
   title includes the start of the torrent's name, so several open ones
-  are distinguishable at a glance; name, size, %, rates, date added,
-  status, error if any, plus a speed-limit override — see below; these
-  are ordinary, non-modal windows using tvision's default palette (same
-  look as the Settings dialog), so you can have several open at once,
-  and double-clicking a torrent that already has one open brings it to
-  the front instead of opening a duplicate
+  are distinguishable at a glance; these are ordinary, non-modal windows
+  using tvision's default palette (same look as the Settings dialog), so
+  you can have several open at once, and double-clicking a torrent that
+  already has one open brings it to the front instead of opening a
+  duplicate. Shows:
+  - Name, size (with piece count/size), download location, public/
+    private, magnet link (truncated — see "Known limitations" for why)
+  - Completion %, availability % (see "Fixed bugs" below for the
+    formula), all-time downloaded/uploaded totals and ratio, current
+    download/upload rate, average speed since first started
+  - Added date, last activity date
+  - Time spent downloading / time spent seeding
+  - Status, error if any, torrent ID
+  - A speed-limit override — see below
+  - Two short fields share each row wherever they naturally pair up
+    (e.g. size + piece info, completion % + availability %, added date +
+    last activity) instead of one field per line — this is what actually
+    keeps the window a manageable height with this much information in
+    it, rather than a single long column that overflows most terminals
+  - This extra detail (everything past size/rates/status) is fetched
+    with a separate RPC call made only when the window is opened, not
+    as part of the main list's periodic refresh — see "How the
+    connection works" below
 
 **Per-torrent speed limit override**
 - In a torrent's details window, three independent checkboxes:
@@ -70,6 +94,25 @@ HTTP and nlohmann/json for parsing.
 
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
+  — typed directly, or via "Browse...", which opens tvision's own file
+  dialog (filtered to `*.torrent`) and fills the field in with whatever
+  gets picked; see "Fixed bugs" below for why Browse closes this dialog
+  first and reopens it afterwards instead of opening the file dialog
+  directly from a button inside it
+- Adding a torrent that's already in the list shows a small "already
+  present" popup instead of silently doing nothing — Transmission's own
+  RPC distinguishes a genuinely new torrent from a duplicate in its
+  response, so this doesn't need a manual comparison against the
+  existing list, and it doesn't fire for a real network/RPC failure
+  either (the CLI's `add` command reports the same distinction, with
+  a duplicate exiting 0, same as Transmission's own RPC treats it as
+  success and not an error)
+- Adding an invalid magnet link, a corrupt/unreadable `.torrent`, or an
+  unreachable `http(s)://` URL also shows a popup with the specific
+  reason instead of doing nothing — whatever Transmission's own RPC
+  reported (e.g. "invalid or corrupt torrent file", an error fetching
+  the URL) if the request reached it at all, or the underlying network
+  error if it couldn't even connect
 - Start / stop the selected torrent (F5 / F6)
 - Remove the selected torrent (F8) — keeps its files on disk
 - Delete the selected torrent **and its files on disk** — a separate,
@@ -96,7 +139,7 @@ HTTP and nlohmann/json for parsing.
 - A status bar shows the combined download/upload rate across all
   torrents, refreshed on every UI tick (no extra RPC calls)
 
-**Settings (F9)**
+**Settings (F9, "Settings" menu)**
 - Refresh interval (seconds), host, port, RPC username/password,
   interface language — applied immediately and saved to disk (see
   "Configuration file" below for where and how)
@@ -104,6 +147,63 @@ HTTP and nlohmann/json for parsing.
   written straight to the Transmission daemon itself (`session-get` /
   `session-set`), not stored in this app's own settings file; these are
   the defaults any torrent without its own override (above) follows
+- Changing the language shows a popup noting that a restart is needed
+  for the menu bar and status bar to relabel — everything else already
+  has (see "Internationalization" below for why those two specifically
+  lag behind)
+
+**Filters ("Columns" menu)**
+- Narrows the main list to torrents matching ALL active filters (AND,
+  not OR): a case-insensitive substring match on the name, and a
+  multi-select checklist of every torrent status (Stopped, Queued for
+  check, Checking, Queued for download, Downloading, Queued for
+  seeding, Seeding) — unchecking one hides torrents in that state
+- "Reset" clears the name field and re-checks every status (back to
+  showing everything) without closing the dialog, so the effect is
+  visible before deciding whether to confirm it
+- Applied to already-fetched data (no extra RPC round-trip) and
+  re-applied automatically on every periodic refresh
+- Saved to disk the same way as everything else in "Settings" above,
+  and restored on the next launch
+
+**Manage columns... ("Columns" menu)**
+- One window for everything about the main list's columns, replacing
+  what used to be three separate entry points (a "Resize columns"
+  submenu, an "Order columns" submenu, and a standalone "Columns..."
+  checkbox dialog) — see "Fixed bugs" below for why
+- Shown as a small grid of its own — one row per real column (16 in
+  total: the 7 shown by default, plus 9 more hidden by default — see
+  below), with its label, current width, and a `[X]`/`[ ]` visibility
+  marker — select a row, then:
+  - **Resize**: the same keyboard-driven resize (Left/Right live,
+    Enter confirms, Esc cancels) that dragging a column header
+    separator does
+  - **Move**: the same reorder ("<"/">" markers, Left/Right, Enter/Esc)
+    that double-clicking a column's header does
+  - **Toggle visible**: shows or hides it immediately — hiding doesn't
+    lose its width or position, it just takes no screen space until
+    shown again, reappearing exactly where it was
+  - **Reset**: puts width, order, AND visibility back to this list's
+    built-in defaults, all at once (the 9 columns below go back to
+    hidden, not shown)
+- Every change applies to the actual list immediately, so there's
+  nothing to separately confirm — closing the window (or the app
+  exiting) is what persists the current state to `settings.json`
+
+**The nine hidden-by-default columns**, shown from "Manage columns...":
+ratio, all-time uploaded, all-time downloaded, location (download
+folder), ETA, peers connected, queue position, bandwidth priority, and
+completion date. Requested from the daemon on every periodic refresh
+alongside the always-visible columns' own fields (not fetched lazily
+only once shown), so a column shows current data the moment it's made
+visible rather than needing a refresh cycle first. Special values are
+shown in a human-readable way rather than as raw numbers: ratio is
+"∞" for a torrent that's uploaded without downloading anything and "—"
+where Transmission has no ratio to report yet; ETA is "—" when it
+can't be estimated (not downloading, or not yet enough data to guess);
+completion date is "—" for a torrent that hasn't finished yet; queue
+position is shown 1-based (matching how you'd count it, not
+Transmission's own 0-based internal numbering).
 
 **Input validation**
 - Every numeric field (refresh interval, RPC port, global and
@@ -117,8 +217,18 @@ HTTP and nlohmann/json for parsing.
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
   dialog (Alt+0) listing every open window, letting you jump to one
 
+**Help menu**
+- "About" shows the app name, version (`src/Version.h` — bumped by
+  hand, not tied to any build/commit counter), copyright (current year,
+  computed at runtime so it doesn't need a manual update every January),
+  and the project's repository URL
+
 **Internationalization**
-- English (default) and Italian, selectable from the Settings dialog
+- English (default), Italian, French, German, and Spanish, selectable
+  from the Settings dialog via a real `TComboBox` (see "Building" and
+  "Fixed bugs" below — tvision itself has no built-in combo/dropdown
+  control; this project currently points at a fork that adds one,
+  pending a PR upstream)
 - Windows and dialogs that get rebuilt each time they're shown (Add
   torrent, Settings, Torrent details, the main list's title) update
   immediately; the menu bar and status bar are only built once at
@@ -159,10 +269,19 @@ mistake shows up at once (an empty list); the CLI's `list` command
 distinguishes a genuinely empty torrent list from a failed connection
 via the RPC client's last-error state, and exits non-zero on failure.
 
+The main list's periodic refresh (`listTorrents()`) only requests a
+lightweight set of fields — the extra detail shown in a torrent's
+details window or tracker list (location, magnet link, piece info,
+all-time totals, per-tracker stats, ...) is fetched with its own
+separate request, made only when that window is opened (or its
+"Refresh" button pressed, for trackers), so the fields most torrents'
+rows don't need aren't carried on every refresh tick for every torrent.
+
 ## Configuration file
 
-Settings (host, port, user, password, refresh interval, language, and
-the torrent list's last sort column/direction) are stored in:
+Settings (host, port, user, password, refresh interval, language, the
+torrent list's last sort column/direction, column widths/order/
+visibility, and the active filter) are stored in:
 
 ```
 $XDG_CONFIG_HOME/tv-transmission/settings.json
@@ -170,9 +289,18 @@ $XDG_CONFIG_HOME/tv-transmission/settings.json
 
 or `~/.config/tv-transmission/settings.json` if `XDG_CONFIG_HOME` isn't
 set. The file is read at startup and rewritten every time you confirm
-the Settings dialog, or click a column header to sort by it (or, from
-the CLI, whenever you'd change them from the TUI — the CLI itself is
-read-only with respect to this file).
+the Settings or Filters dialog, close the "Manage columns..." window,
+or click a column header to sort by it (or, from the CLI, whenever
+you'd change them from the TUI — the CLI itself is read-only with
+respect to this file). Column widths, order, and visibility are the one
+exception to "rewritten immediately after each individual change":
+resizing and reordering are both live, continuous interactions, so
+writing the file on every intermediate step (every keypress or drag)
+would be far more disk I/O than the final choice actually needs — all
+three are instead captured and saved together once, when "Manage
+columns..." closes, and again on exit as a backstop (`App::shutDown()`)
+in case the app quits without that window ever being opened after the
+last change.
 
 Global and per-torrent speed limits are **not** in this file — they
 live on the Transmission daemon itself and are read/written through the
@@ -200,6 +328,17 @@ used from.
    git submodule add https://github.com/zanac/tvision external/tvision
    git submodule update --init --recursive
    ```
+   This points at [zanac/tvision](https://github.com/zanac/tvision), a
+   fork of the real upstream ([magiblot/tvision](https://github.com/magiblot/tvision))
+   that adds `TComboBox` (a proper drop-down combo box — tvision has none
+   built in; see [issue #173](https://github.com/magiblot/tvision/issues/173),
+   open since 2025 with no resolution). It's otherwise identical to
+   upstream — no other changes, nothing removed or renamed — so this is
+   purely additive and temporary: once that PR is merged upstream,
+   switch this line back to `https://github.com/magiblot/tvision` and
+   nothing else in this project needs to change (`Uses_TComboBox` and
+   the rest of the `TComboBox`/`TComboWindow`/`TComboViewer`/
+   `TComboItem` API are exactly what the real upstream will provide).
 2. Install dependencies (Debian/Ubuntu):
    ```
    sudo apt install cmake libcurl4-openssl-dev libncursesw5-dev libgpm-dev
@@ -261,6 +400,7 @@ src/
   main.cpp                  Entry point: loads settings, dispatches to CLI or TUI
   AppSettings.h              Settings struct + Language enum
   Config.h/.cpp              Load/save settings.json
+  Version.h                  App version string (see the "About" dialog)
   Obfuscation.h/.cpp          Password obfuscation for settings.json (not real encryption)
   TextUtil.h/.cpp             Shared UTF-8-safe pad/truncate helper
   cli/
@@ -278,17 +418,38 @@ src/
     TrackerDetailWindow.h/.cpp  Full status for a single tracker (double-click a row)
     AddTorrentDialog.h/.cpp     "Add torrent" dialog
     SettingsDialog.h/.cpp       "Settings" dialog
+    FilterDialog.h/.cpp         "Filters" dialog
+    ColumnManagerDialog.h/.cpp  "Manage columns" window (resize/move/show/hide,
+                                all in one place — built on TGridView itself)
+    LanguageComboBox.h/.cpp      Compact custom combo box for the language picker
     WindowListDialog.h/.cpp     "Window list" dialog
+    AboutDialog.h/.cpp          "About" dialog
     BandwidthStatusLine.h/.cpp  Status bar with a runtime-updatable item
 packaging/
   appimage/
     build-appimage.sh          Builds build/TvTransmission-x86_64.AppImage
     tv-transmission.desktop     Desktop entry (Terminal=true)
     tv-transmission.png         Placeholder icon
+  tgridview/
+    TGridView.h/.cpp           Generic dynamic-column list view — see its own
+                                README.md; self-contained, no dependency on
+                                the rest of this project, meant to be copied
+                                into other Turbo Vision projects wholesale.
+                                Used by TorrentListWindow (ui/) for the main
+                                list's rendering.
+    TGridWindow.h/.cpp          Optional TWindow wrapper (fullscreen-locked or
+                                ordinary MDI child) hosting one TGridView —
+                                TorrentListWindow (ui/) derives from this
+    README.md                   Full design writeup for this standalone module
 ```
 
 ## Known limitations
 
+- The magnet link shown in the details window is truncated, as a visual
+  reference only — a TUI has no clipboard integration, so there's no
+  "copy" action for it; select it with your terminal emulator's own
+  text selection if you need the full value (which a truncated line
+  doesn't help with either way).
 - The torrent list's progress bar uses Unicode block characters
   (`█`/`░`), which need a UTF-8-capable terminal to render correctly —
   chosen deliberately over an ASCII-only bar for a nicer look, on the
@@ -334,6 +495,539 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Moved "Filters..." and "Manage columns..." into their own "Columns"
+menu**, out of "Settings" (which now holds just the "Settings..." item
+it started with). Both were genuinely about the torrent list's columns
+and filtering, not application settings — grouping them together
+reads more clearly than having them share a menu with an unrelated
+"Settings" entry just because that's where they first landed.
+
+**`TGridView`'s header is now 2 rows tall: column labels, then a full
+"=" rule line**, separating the header from the actual data rows below
+— not a fill *next to* the last column, which is what the first attempt
+at this did before being corrected. Clicks landing on the rule row
+(rather than the label row above it) are explicitly ignored, so the
+sort glyph and reorder markers can't be accidentally triggered by a
+click that only shares the same x position on the wrong row. Verified
+by actually capturing a rendered screen (a real pty, not just reading
+the draw code) — both a standalone grid and this project's own main
+torrent list — confirming the rule line sits between the header and the
+data rows in both, and that a simulated click on the rule row does
+nothing while the same x on the label row above it still works.
+
+**A column header's double-click (to reorder) and single-click (to
+sort) were colliding.** A double-click arrives as two separate
+mouse-down events — an ordinary one first, then a second one carrying
+the double-click flag — so the *first* click of an intended
+double-click was indistinguishable from a plain single click at the
+moment it happened, and fired the sort-toggle immediately; the second
+click then *also* started a reorder. Fixed by giving sorting its own
+dedicated, single-character hotspot — a "□" glyph (turning into "^"/"v"
+once that column is the active sort) reserved at the last character of
+a sortable column's width, checked first and unconditionally regardless
+of the double-click flag, so clicking it is sort-only on either half of
+a double-click and never starts a reorder. A plain click anywhere else
+on a column's name now does nothing on its own (only a double-click
+there starts a reorder), removing the collision entirely. Verified
+directly: a click on the glyph's exact position sorts; a click
+elsewhere on the name does not; the *first* mouse-down of a simulated
+double-click (before the flag would even be known) doesn't sort either;
+and a double-click landing squarely on the glyph itself still only
+sorts — it never starts a reorder, matching the two being fully
+separate hotspots now.
+
+**The reorder mode's right-hand "▷" marker sometimes wasn't clickable.**
+Root cause: the marker text was built by concatenating "<"/the label/
+the sort indicator/">" into one string and letting `fitToWidth()`
+truncate whatever didn't fit within the column's width — which silently
+dropped the trailing ">" (rarely the leading "<", since it isn't at the
+truncated end) whenever a column's label came close to filling its own
+width, exactly the case a longer torrent-list column name would hit
+more often than not. The hit-test, meanwhile, still expected it at a
+fixed position regardless — clicking there hit nothing, because nothing
+was actually drawn there. Fixed by reserving "<"/">" (and the sort
+glyph above) at their exact intended positions explicitly, rather than
+via concatenation-then-truncation, so what's drawn and what's
+hit-tested can never drift apart. Verified with a column name long
+enough to have triggered the old truncation: a simulated mouse click at
+the marker's fixed position now reliably moves the column, every time.
+
+**"Manage columns..." now toggles a row's visibility on double-click**,
+not only via the "Toggle visible" button — the same
+`setRowActivateCallback()` mechanism (double-click / Enter) `TGridView`
+already provides elsewhere in this app (e.g. opening torrent details),
+wired to the identical toggle logic the button already used rather than
+a second copy of it. Verified directly: double-clicking a row hides it,
+and double-clicking it again shows it back — a real toggle, not a
+one-way action.
+
+**"Manage columns..." wasn't visibly highlighting the focused row.**
+Its meta-grid never set a row-color callback, so it fell back to
+`TGridView`'s own default (`TListViewer`'s inherited palette colors 1
+and 2 for normal/focused) — functionally correct (clicking a row *did*
+move focus, as confirmed directly), but those two colors don't contrast
+enough inside a `TDialog` to actually notice which row is selected.
+Fixed the same way the main torrent list already handles this: an
+explicit `setRowColorCallback()` returning a fixed black-on-white for
+the focused row regardless of the dialog's own palette.
+
+**Added nine optional, hidden-by-default columns** (ratio, all-time
+uploaded/downloaded, location, ETA, peers, queue position, priority,
+completion date), all fetched by `listTorrents()` itself on every
+periodic refresh — not lazily the first time a column is shown — so
+toggling one visible in "Manage columns..." shows current data
+immediately rather than needing a refresh cycle to catch up. Extended
+`SortColumn` with nine more values *after* the original seven rather
+than interleaving them, specifically so a `sortColumn` value saved by
+an older version of this app still means the same column after
+upgrading. `TorrentListWindow::columnVisibility()`/
+`setColumnVisibility()`'s fallback for a missing entry had to stop
+defaulting to "shown" unconditionally once this landed: a
+`settings.json` saved before these nine existed only has 7 entries, and
+treating every missing one as "shown" would have made all nine appear
+visible by default for anyone upgrading, the opposite of what "hidden
+by default" is supposed to mean — fixed by defaulting index 0-6 to
+shown and 7-15 to hidden specifically, rather than one blanket default
+for every index. Also hit a real naming collision while wiring the new
+header labels: `Str::HeaderDownloaded` already existed, for the
+tracker-list window's own "Downloaded" column — renamed the new torrent
+-list ones to `HeaderTotalUploaded`/`HeaderTotalDownloaded`, which also
+reads more clearly next to the already-existing rate-based `HeaderUpload`/
+`HeaderDownload`. Verified end to end against a mock server for both
+common and edge-case values: the RPC request itself actually asks for
+all nine new fields; the default visibility split (7 shown, 9 hidden)
+is exactly right, including from an old 7-entry settings file; and the
+special-value formatting for ratio (∞ for an uploaded-only torrent),
+ETA (unknown), priority, and completion date (not yet finished) each
+render as the intended human-readable text rather than a raw sentinel
+number.
+
+**Rationalized what had grown into three separate column-management
+entry points** (a "Resize columns" submenu, an "Order columns"
+submenu, and a standalone "Columns..." checkbox dialog — all added
+incrementally, each solving one problem at a time) **into a single
+"Manage columns..." window.** Deliberately reused rather than
+reimplemented the existing interactive primitives: the window's
+"Resize" and "Move" buttons call straight into `TorrentListWindow::
+startColumnResize()`/`startColumnReorder()` — the same blocking Left/
+Right/Enter/Esc loops already used by the header's own mouse and
+keyboard entry points — so there was no new interactive-loop code to
+get wrong here, only new code to pick *which* column those loops act
+on. That "which column" picker turned into a small grid of its own —
+one row per real column, showing its label/width/visibility — built
+with `TGridView` on itself (not resizable or reorderable itself, since
+reordering a list *of columns* would be a strange thing to offer): a
+reasonable proof that the generic widget holds up being used this way,
+not just for a torrent list. Added `TorrentListWindow::
+resetColumnLayout()` for the window's own "Reset" button, since
+resetting width+order+visibility together wasn't something any
+existing method did — it re-adds all 7 columns fresh (their own default
+widths) and re-shows every one, rather than needing three separate
+reset calls. Verified directly: the meta-grid actually reflects a real
+`TorrentListWindow`'s current label/width/visibility per row; the
+"Toggle visible" button changes the real list's visibility, not just
+something local to the dialog; and "Reset" restores all three
+properties (widths, order, *and* visibility) in one call rather than
+requiring separate cleanup.
+
+**Added showing/hiding individual columns** (Settings → Columns..., a
+checkbox per column plus Reset), which pushed `TGridView`'s visual/
+logical index split (see the column-reordering entry below) one step
+further: every visual operation already had to translate a display
+*position* to a column's stable logical identity for reordering to work
+correctly — hiding needed those same operations to also skip a column
+entirely, as if it took zero screen space, while a caller's own
+`cellText()`/`cellBold()`/etc. callbacks keep referring to it by that
+same stable identity whenever they're asked about a column that's
+merely somewhere else, never one that no longer exists. Solved by
+having `visibleDisplayOrder()` — a fresh filter over `columnOrder()`
+down to just the shown columns, computed wherever it's needed — become
+the one sequence every layout, drawing, and hit-testing path iterates,
+instead of the raw (possibly-including-hidden) order. The trickiest
+part was making that consistent with reordering *while* some columns
+are hidden: swapping two positions that are visual neighbors doesn't
+mean their positions in the underlying (unfiltered) order are adjacent,
+if a hidden column happens to sit between them — `runReorderLoop()`
+resolves each visible neighbor's *true* position before swapping, so a
+column can be moved past a hidden one exactly as if it weren't there,
+without disturbing where the hidden one itself will reappear once shown
+again. Verified directly: a hidden column is skipped entirely by
+rendering (its `cellText()` callback never even gets called for it);
+showing it again restores its previously-remembered position; and —
+the scenario most likely to have a subtle bug — reordering two visible
+columns with a hidden one sandwiched between them swaps the right
+pair, skips over the hidden one correctly, and leaves every column
+accounted for (no duplicates, none dropped) once the hidden one is
+shown again. Also verified end to end against a mock Transmission
+server: hiding columns at startup excludes them from the actually-
+rendered row, and showing them again at runtime brings them back.
+
+**Added column reordering** — double-click a header (or, from the
+keyboard, Settings → Order columns) to move a column left/right,
+Enter/a non-marker click confirms, Esc restores the order it had when
+the mode was entered. This required a real structural change to
+`TGridView`, not just another interactive loop bolted on next to
+resizing: every column index the widget hands to a caller's own
+callbacks (`cellText`, `cellBold`, the sort/resize APIs, ...) had to
+keep meaning the same *logical* column — its stable identity, assigned
+once when it's added — regardless of where it's currently *drawn*.
+Before reordering existed those two concepts were the same number, so
+nothing distinguished them; letting the user rearrange columns broke
+that assumption; a caller's `cellText(row, col)` switching on `col` to
+decide which field to return would otherwise start returning the wrong
+field for whatever moved. Fixed by adding a `displayOrder_` permutation
+(visual position → logical index) that the header and rows both
+translate through on every draw and every hit-test, while `column()`
+and every callback keep using logical indices exactly as before —
+`TorrentListWindow`'s own callbacks didn't need a single line changed.
+Wiring the mouse and keyboard entry points into one shared interactive
+loop (`runReorderLoop()`) reused the same `TView::getEvent()` primitive
+`startKeyboardResize()` already relied on, this time pumping and
+handling both key and mouse events in the same loop rather than one or
+the other. Verified directly: the logical-index guarantee itself (the
+whole point of the change) — a caller's callback receives the correct
+logical index throughout a rearranged order; `setColumnOrder()`
+rejecting anything that isn't exactly a permutation (wrong size, an
+out-of-range or duplicate index); a real reorder sequence via injected
+events (Right, Right, Enter confirming the expected final order, and
+separately Esc reverting with no callback firing); and, end to end
+against a mock Transmission server, that a torrent's data stays
+correctly associated with each column after reordering (moving the
+Status column first, the rendered row genuinely shows the status text
+before the name, not scrambled data). Reused the same nested-submenu
+`(TMenuItem&)` cast idiom (see the "Resize columns" entry below) for
+the new "Order columns" submenu.
+
+**Added keyboard-driven column resizing** (`TGridView::
+startKeyboardResize()`), alongside the existing mouse-drag one — the
+same live-feedback resize, just started from a menu instead of a mouse
+grab, for when a mouse isn't convenient. Uses the same underlying
+primitive the mouse-drag already relied on: `TView::getEvent()`, which
+`mouseEvent()` itself is built on internally (see `tview.cpp`) — any
+view can call it to synchronously pull the next event, which is what
+makes this callable from outside the header's own event handling (a
+menu command), not just from within a mouse-down already being
+processed there. Left/Right adjust the width live (redrawn after every
+press), Enter confirms, Esc restores the width the column had when the
+mode was entered. Guards against a menu item invoking this on an
+out-of-range or non-resizable column by returning immediately, before
+ever entering the event-pump loop — verified directly (with a timeout
+wrapped around the test, specifically to catch a regression that made
+it loop forever instead of returning): both cases return without
+blocking. The interactive part itself — actually pressing arrows and
+watching the column follow — needs a real terminal to verify, the same
+limitation as the mouse-drag resize and any other interactive input
+built on tvision.
+
+Wiring this into a menu (Settings → Resize columns, listing each
+column) surfaced a real gotcha in how tvision's menu-building operators
+work: `TSubMenu`'s `operator+(TSubMenu&, TSubMenu&)` chains the second
+submenu as a **sibling** at the same menu level, not nested inside the
+first one's dropdown — only `operator+(TSubMenu&, TMenuItem&)` nests,
+and overload resolution picks the sibling-chaining one whenever the
+right-hand side is *statically* a `TSubMenu`, which a nested submenu
+naturally is. Without realizing this, "Resize columns" would have
+appeared as a new top-level menu bar entry (a sibling of "Torrent",
+"Settings", ...) instead of living inside "Settings" as intended, and
+the "Settings" item itself would have ended up nested *inside* "Resize
+columns" by the same mechanism. Fixed the same way tvision's own
+`tvedit`/`tvdemo` examples do it: wrap the whole nested submenu
+subexpression in an explicit `(TMenuItem&)` cast before combining it
+into the outer chain, forcing the nesting overload instead of the
+sibling one.
+
+**Sorting-on-click moved from this app into `TGridView` itself, to
+actually be the reusable behavior the widget's own README claims.**
+After the migration (see the entry below), clicking a header still
+worked, but the "click toggles ascending/descending" and "draw a `^`/`v`
+indicator on the active column" logic lived entirely in
+`TorrentListWindow` — meaning another project reusing `TGridView` would
+have to reimplement both from scratch, and the indicator was appended
+directly into `TGridColumn::header`'s stored text, so every language
+switch had to remember to strip the old one before applying a new
+label. Moved into `TGridView`: it now tracks which column is sorted and
+in which direction, toggles that itself on a click to a `sortable`
+column (new per-column flag), and draws the indicator at draw time
+without ever touching the stored header text. `TGridView` still has no
+idea how to reorder rows (consistent with owning no row data at all —
+see its README's core design principle), so a `SortChangedFn` callback
+tells the owner which column and direction were chosen; a separate
+`setSortIndicator()` lets the owner restore a persisted sort at startup
+without that callback firing (there's nothing to react to — the data is
+about to be loaded already in that order). Verified with simulated
+header clicks (not just reading the code): clicking an unsorted column
+selects it ascending and fires the callback, clicking the already-
+active column flips to descending, and `setSortIndicator()` sets the
+displayed state without firing anything.
+
+**Torrent-list column widths are now saved and restored**, the same way
+everything else in `settings.json` is, with one deliberate difference:
+instead of writing the file on every resize (a live, continuous drag —
+see `TGridView`'s own resizing design), widths are captured once at
+exit, via overriding `App::shutDown()` (already called from `main.cpp`
+right after the run loop returns) to read `TorrentListWindow::
+columnWidths()` and save. Applied back through a new constructor
+parameter, matched against the current column count so a first run (no
+saved widths yet) or a `settings.json` from a version with a different
+number of columns falls back cleanly to the built-in defaults rather
+than applying a mismatched, out-of-order list. Verified: the full
+save/reload round trip through `settings.json` (including the no-
+`columnWidths`-key backward-compatibility case), and that a
+`TorrentListWindow` actually applies persisted widths at construction —
+correctly falling back to defaults for both the empty-vector (first
+run) and wrong-count (stale settings file) cases.
+
+**New: `TGridView`, a generic dynamic-column list widget** (`src/tgridview/`),
+extracted from this project's own fixed-column torrent list rendering
+so it can be reused in other Turbo Vision projects — see its own
+`README.md` for the full design writeup (why the data source is
+callback-based rather than the grid owning a copy of the rows, exactly
+how mouse-driven column resizing behaves and why it resizes only the
+column being dragged rather than redistributing space across others,
+and the two ways to host it — a plain `TView` insertable into any
+window, or the optional `TGridWindow` convenience wrapper with a
+`fullScreen` flag mirroring this project's own locked-fullscreen vs.
+ordinary-MDI-window distinction). Verified directly: dynamic column
+add/insert/remove/clear at runtime, cell text read live through the
+callback (changing the underlying data changes what's shown on the
+next draw, with nothing to keep in sync by hand), column width
+clamping to each column's own minimum, and the double-click row-
+activation broadcast. The interactive part of mouse-driven resizing —
+actually dragging a column border and watching it follow the mouse —
+needs a real terminal to verify, the same limitation that applies to
+any interactive mouse handling built on tvision.
+
+**`TorrentListWindow` migrated to use it**, replacing its own
+purpose-built column/header/row rendering (`TorrentListViewer`,
+`TorrentListHeader` — both gone now) with `TGridView` underneath.
+Wiring this up surfaced two real gaps in `TGridView` itself, fixed as
+part of the migration rather than worked around in the app: (1) there
+was no way to know when the focused row changed via arrow keys or a
+plain click — only double-click (`RowActivateFn`) and right-click
+(`RowContextFn`) had callbacks — which this app needs to enable/disable
+the Start/Stop/Remove/... commands for whichever torrent is currently
+selected; added `setRowFocusCallback()`. (2) the row-color callback was
+only ever invoked for *non*-focused rows, silently falling back to
+`TListViewer`'s own default "selected" look for the focused one — fine
+for a grid with no opinion on that, wrong for this app, which wants its
+own black-on-white focused-row look applied consistently *and* the
+bold-name styling to keep applying even when a row is focused (both of
+which the original hand-rolled rendering already did). Fixed by always
+invoking the row-color callback with the correct `focused` flag, and no
+longer skipping the bold-cell callback for the focused row. Verified
+end to end against a mock Transmission server (not just against fake
+in-memory data): the real per-column data renders correctly (name,
+progress bar, size, rates, status), the default name-ascending sort is
+correct, a name filter narrows the grid and the bandwidth totals only
+count what's actually visible, and — importantly, since this is
+exactly the kind of thing a subtle row/index mixup could get wrong —
+`startSelected()` acts on the *same* torrent that's actually focused
+after sorting, not on a stale index. One cosmetic side effect worth
+knowing about: the Download and Upload columns are now genuinely
+separate columns (matching `SortColumn`'s own enum, which already
+treated them as such for sorting) with a normal separator between them,
+where before they were packed together with no gap; and the list picked
+up mouse-driven column resizing (`gvResizableColumns`) for free, except
+on the progress-bar column, which stays fixed-width since the bar
+itself is always rendered at a fixed size.
+
+**Added torrent filtering (name substring + status multi-select) and a
+dedicated "Settings" menu.** The Settings item moved out of the Torrent
+menu into its own top-level menu, with a new "Filters..." item above
+it. The harder part was integrating filtering into `TorrentListViewer`
+without disturbing anything already built on top of "the list of
+torrents": every method that used to read `torrents_` directly
+(`getText()`, `draw()`, `selectedTorrent()`, the two rate totals) had to
+switch to a separate `visible_` vector, computed by filtering then
+sorting `allTorrents_` (every torrent last fetched, untouched) —
+otherwise changing the filter would need a fresh RPC round-trip just to
+recompute what should be visible, or would corrupt the "full" data with
+whatever was hidden. `setFilter()` re-derives `visible_` from the
+already-held `allTorrents_`, matching the same reasoning already used
+for `getTorrentDetails()`/`getTrackerStats()` being separate on-demand
+calls elsewhere in this project — apply what's already fetched instead
+of re-fetching by default. Verified directly: a name filter matches
+case-insensitively regardless of the query's own case, a status filter
+correctly narrows to just the checked states, combining both is a real
+AND (not OR — a torrent matching only one of the two stays hidden), the
+rate totals only sum currently-visible torrents, and resetting the
+filter brings every torrent back. Filter settings round-trip through
+`settings.json` correctly, and a settings file saved by a version
+without this feature (no `"filter"` key at all) still loads with the
+correct "show everything" default instead of failing or hiding
+everything.
+
+**A real `TComboBox` is now available**, via the `zanac/tvision` fork
+this project points at (see "Building" above) — built to the exact
+design already settled on for it: a popup styled like the existing
+`THistoryWindow`/`THistoryViewer` pair (not a menu-style overlay), and
+entries (`TComboItem`) with a displayed label plus an opaque `value`
+the caller can use to identify the choice. Verified directly
+(construction with an initial focus, `focusItem()` including
+out-of-range clamping, `newList()` replacing the item chain and
+updating the focused value, destruction freeing the chain without
+leaking or crashing, and the empty-list case) against the actual
+library build produced by this project's own CMake — not just read
+from source.
+
+`LanguageComboBox` (previously a hand-built `TView` that opened a
+`TMenuPopup` — a generic-string, id-based design, unlike `TComboItem`'s
+label+value) has since been switched over to it: it's now a thin
+`TComboBox` subclass that only supplies the 5-language `TComboItem`
+chain and a typed `language()` accessor (`TComboBox::value` cast back
+to `Language` — exact, since every item's `value` was built from a
+`Language` enumerator to begin with), while `TComboBox` itself handles
+drawing, opening its own popup, and keyboard/mouse input. Verified
+end-to-end: construction with each of the 5 languages as the initial
+value, `focusItem()` updating `language()` correctly, and the full
+`SettingsDialog` flow (`createSettingsDialog()` pre-filling the combo,
+`settingsDialogResult()` reading back a language chosen through it).
+
+**Added French, German, and Spanish, with a compact combo box instead
+of radio buttons for picking a language.** Every one of the ~130
+translatable strings needed a third/fourth/fifth variant, not just a
+new set — the old `tr()` used a plain English/Italian ternary
+throughout, so this meant replacing it with a 5-way `pick(en, it, fr,
+de, es)` helper and updating every call site, all in one pass rather
+than piecemeal (an exhaustive `switch` over `Str` was already the
+existing convention specifically so a missed/misordered translation
+shows up on review instead of silently). For the combo box: tvision has
+no built-in combo/dropdown widget at all (checked: nothing in
+`dialogs.h`/`views.h` resembles one) — `LanguageComboBox` is a small
+custom `TView` that shows the current language name on one line and
+opens a `TMenuPopup` (the same mechanism behind the torrent list's
+right-click menu) listing all 5 below it, replacing what used to be a
+2-row `TRadioButtons` cluster with 1 row. Verified: `tr()` returns
+distinct, correct text for a representative sample of strings (menu
+labels, the CLI's help text) in all 5 languages, including that the
+native language names themselves don't change with the current
+language; `LanguageComboBox` constructs correctly and reports back
+whichever language it was given for all 5; and the full save/reload
+round trip through `settings.json` preserves all 5 language values.
+
+**Adding an already-added torrent did nothing, with no indication why.**
+`torrent-add`'s response was only ever checked for `"result":"success"`,
+which Transmission returns whether the torrent was genuinely new or
+already present — the two cases are distinguished by which key shows up
+under `arguments` instead (`"torrent-added"` vs `"torrent-duplicate"`),
+which nothing was checking. Fixed by having `TransmissionClient::
+addTorrent()` return which of the two (or failure) actually happened,
+and showing a `messageBox` for the duplicate case in the TUI (the CLI's
+`add` command reports it as text instead, still exiting 0 — matching
+that Transmission itself doesn't treat this as an error). The failure
+case had the exact same problem, just unnoticed until asked about
+directly: an invalid magnet, corrupt `.torrent`, or unreachable URL also
+did nothing, silently. Fixed the same way — `addTorrent()` now also
+captures Transmission's own error text for that request (its `"result"`
+field, when not `"success"`) into `lastError()`, distinct from a
+network/curl-level failure that never reaches Transmission at all
+(`lastError()` already carried that from `call()`, just wasn't being
+shown anywhere for this specific action). Verified against a mock
+server for all four outcomes: added, duplicate, Transmission's own
+rejection (with its exact error text asserted, not just "some error"),
+and a fully unreachable server.
+
+**Settings could silently wipe out real global speed limits on first
+setup.** The Settings dialog fetches the server's current global speed
+limits (`getSessionLimits()`) *before* opening, using whatever
+connection is active at that point, then writes back whatever the
+dialog shows when confirmed. If that initial fetch failed — most
+commonly the very first time host/user/password are being configured,
+since the *old* connection can't reach anything yet — it silently
+returned an all-zero/disabled `SessionLimits`, indistinguishable from
+"the server genuinely has no limits set". Confirming the dialog then
+applied the *new*, now-working connection settings first, and only
+after that sent those meaningless zeros back — to a connection that,
+by then, actually worked, potentially overwriting real limits already
+configured on that server, even though the user only meant to set up
+the connection and never touched the speed-limit fields. Fixed by
+having `getSessionLimits()` report whether the fetch actually succeeded
+(an optional `bool*` out-parameter), and only sending values back to
+the server when it did. Verified directly: against an unreachable
+server the flag comes back false and the (still zero) values are
+correctly recognized as not real; against a real server, the flag is
+true and the actual configured values come through.
+
+**"Add torrent" gained a "Browse..." button**, first as a button inside
+the "Add torrent" dialog that opened tvision's own `TFileDialog`
+(filtered to `*.torrent`) on top of it. That didn't last: nested inside
+this app's already-modal "Add torrent" dialog, `TFileDialog` rendered
+with wrong colors and garbled text (fragments of both the underlying
+torrent list and the file dialog itself, bleeding into each other) —
+first suspected as a `TFileDialog`-specific quirk, since even tvision's
+own `tvedit` example never nests a dialog this way (it opens
+`TFileDialog` directly from the application, one level deep). Replaced
+with a small custom directory browser (`TListViewer`/`TStaticText`/
+`TButton`, the same building blocks as everything else in this app),
+expecting that to sidestep whatever was `TFileDialog`-specific about
+it. It didn't: the *exact same* garbling showed up with this hand-built
+dialog too, which ruled out either widget's own implementation as the
+cause. The real common factor was the nesting depth itself — two modal
+dialogs deep, on top of this app's fully custom `TorrentListViewer::
+draw()` — regardless of which widget sat in the inner slot. With that
+understood, the fix didn't need a custom browser at all: "Browse" now
+destroys the "Add torrent" dialog *first*, opens `TFileDialog` directly
+from the application (one level deep, exactly like every other dialog
+here), and — if a file was picked — reopens "Add torrent" with that
+path pre-filled (`createAddTorrentDialog()` takes an optional initial
+value now) so the user still sees/can edit it before confirming.
+`TFileDialog` never ends up nested inside another modal dialog, so the
+rendering bug's actual trigger never occurs; the custom browser this
+went through along the way was reverted, since it no longer served a
+purpose once the real cause was found. Verified: `createAddTorrentDialog()`
+pre-fills its field correctly both with and without an initial value.
+The nesting-depth fix itself (that `TFileDialog` no longer renders
+wrong) could only be confirmed by inspection and running the real app,
+since reproducing the original rendering artifact needs an actual
+terminal.
+
+**Torrent details window, extended with location/privacy/magnet link/
+piece info/all-time totals/ratio/activity/elapsed-time fields**,
+matching what a reference Android Transmission client shows. Fetched
+via a new `TransmissionClient::getTorrentDetails()` — deliberately
+separate from `listTorrents()` (same reasoning as `getTrackerStats()`):
+these fields aren't needed until the user opens details for one
+specific torrent, so the periodic list refresh stays lightweight rather
+than carrying them for every torrent on every tick. "Availability %" in
+particular has no direct field in Transmission's RPC; it's computed
+with the same formula Transmission's own official GTK/Qt clients use:
+`(haveValid + haveUnchecked + desiredAvailable) / sizeWhenDone * 100`.
+The first version of this laid every field out one per line, which grew
+the window to 41 rows tall — taller than most terminals, so it got cut
+off rather than actually showing everything. Fixed by pairing two short
+fields per row wherever they're naturally related (size + piece info,
+completion % + availability %, added date + last activity, etc.) and
+dropping the "Transfer:"/"Activity:"/"Time elapsed:" section headers
+entirely (each field's own label is already clear without one), bringing
+it down to 27 rows for the same content. Still too tall in practice — a
+screenshot showed the window taking up nearly the entire terminal, and
+the buttons looking stuck directly to the speed-limit checkboxes with
+no visible gap. The second problem turned out to be a real bug, not
+just a spacing choice: tvision's `TCluster::drawMultiBox()` (the code
+behind `TCheckBoxes`) loops `i <= size.y` rather than `i < size.y`, so
+it paints one extra row right below its declared bounds — blank of
+text, but still filled with its own highlighted background color. That
+phantom colored row was exactly the blank margin this window left
+before its buttons, so the row was never actually blank on screen. Not
+something fixable in the vendored library from here; worked around by
+reserving two blank rows before the buttons instead of one, so at least
+one of them is guaranteed to be genuinely blank regardless of the
+overdraw. Further compaction (moving the ID field to share a row with
+Privacy instead of sitting alone, dropping another now-redundant blank
+separator) brought the window down to 25 rows. That 25 was still a
+fixed height sized for a fairly full case, though — a torrent with
+fewer optional fields (no error, sometimes no location) left visible
+empty space below the buttons, per a follow-up screenshot. Fixed by
+computing the height from what a given torrent's own fields actually
+need instead of a fixed guess: a first pass builds the list of rows to
+show (without creating the window yet, since its height depends on the
+result) and only then is the window created at exactly that height,
+followed by a second pass that actually inserts the views. Verified
+directly: two torrents with the same set of optional fields present
+produce windows of the identical height, adding an error string adds
+exactly one row, and a minimal torrent (missing most optional fields)
+produces a noticeably shorter window rather than reusing the fixed one.
 
 **Torrent list rendering, rewritten for a bolder name and per-status
 color.** Previously the list relied on `TListViewer`'s inherited

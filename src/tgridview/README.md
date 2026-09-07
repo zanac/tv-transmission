@@ -112,11 +112,18 @@ out-of-range column index or one with `resizable = false`, rather than
 entering an interactive mode that can't do anything.
 
 **Sorting-on-click is handled entirely inside the grid, except for the
-one thing it structurally can't do.** Clicking a `sortable` column
-(the default) toggles ascending/descending if it's already the active
-sort column, or selects it ascending otherwise, and draws the "^"/"v"
-indicator — all without any code in the owner. What the grid can't do
-is reorder rows, because it doesn't own row data at all (see the
+one thing it structurally can't do.** A `sortable` column (the
+default) shows a dedicated, single-character hotspot at the end of its
+own width — "□" normally, "^"/"v" once it's the active sort column —
+and clicking *that specific character* toggles ascending/descending (or
+selects the column ascending, if it wasn't already the sort column),
+drawing the updated indicator, all without any code in the owner. It's
+a deliberately separate hotspot from the rest of the column's name,
+not a click-anywhere-on-the-header affordance: with `gvReorderableColumns`
+also on, a plain click anywhere else on the name does nothing on its
+own (see the reordering entry below for why sorting and reordering
+can't both react to an ordinary click there). What the grid can't do is
+reorder rows, because it doesn't own row data at all (see the
 callback-based data source above) — reordering `torrents` (or whatever
 the owner's actual collection is) has to happen in
 `setSortChangedCallback()`. The indicator itself is drawn at header-
@@ -139,6 +146,38 @@ order the grid had when the mode was entered. This shares its event
 loop (`runReorderLoop()`) between both entry points, handling mouse and
 keyboard input side by side, so either works regardless of which one
 started the mode.
+
+**A double-click's first, ordinary mouse-down used to fire the sort
+toggle before the second one even arrived to signal a reorder.**
+tvision delivers a double-click as two separate `evMouseDown` events —
+a ordinary one, then a second one carrying `meDoubleClick` — so at the
+moment the first lands there's no way yet to tell it's about to become
+a double-click. When both sorting and reordering listened for "any
+click on the column," the first click always sorted and the second
+always reordered, on the same intended gesture. Fixing this is why
+sorting moved to its own dedicated glyph (see above) instead of firing
+on any click within the column: the glyph is checked first, unconditionally
+of the double-click flag, so clicking it is sort-only regardless of
+which half of a double-click it happens to be, and a plain click
+anywhere else in the column now does nothing at all — only a
+double-click there enters reorder mode. The two gestures no longer
+share a hotspot, so they can't collide.
+
+**Both markers/the glyph are reserved at fixed positions, not appended
+and left to `fitToWidth()`'s truncation.** The original implementation
+built each header cell as one string — label, then " ^"/" v", then
+"<"/">" — and fit the whole thing into the column's width, truncating
+whatever didn't fit. Since truncation cuts from the end, a label long
+enough to fill the column would silently drop the *trailing* character
+first — almost always the ">" marker, rarely the leading "<" — leaving
+it undrawn while the hit-test still expected it at the assumed
+position. Fixed by computing each cell's layout explicitly: the
+marker/glyph occupies its exact reserved character(s) (first for "<",
+last for ">" or the sort glyph), and the label is fit into whatever
+width remains between them — never at risk of silently vanishing
+regardless of how long the label is. Verified with a column name long
+enough to have triggered the old truncation: the right-hand marker's
+fixed position still registers a click correctly every time.
 
 The harder part wasn't the loop — it was `columnOrder()`, a
 `displayOrder_` permutation mapping visual position to logical column
@@ -174,6 +213,19 @@ each one's *true* position first (`visualPositionOf()`), not just swap
 two adjacent array slots, so a column can move past a hidden neighbor
 exactly as if it weren't there, without disturbing where that hidden
 column will reappear once shown again.
+
+**The header is 2 rows tall: column labels on the first, a full "="
+rule line on the second**, in the same header color — separating the
+labels from the actual data rows below, the way a printed table's
+header rule would. Every row/height calculation in this file accounts
+for the extra row automatically (the header view itself, the rows
+view's and scrollbar's starting position); a click landing on the rule
+row is explicitly ignored by the header's own `handleEvent()` rather
+than falling through to whichever column's hit-test happens to match
+that x position, so it can never be mistaken for a click on the sort
+glyph or a reorder marker one row up. No option to turn the rule line
+off currently; it's a small enough cosmetic default that it didn't seem
+worth one.
 
 **Two ways to host it**: `TGridView` is a normal `TView` (a `TGroup`,
 specifically) and can be `insert()`-ed into any window you already

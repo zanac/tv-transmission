@@ -150,23 +150,28 @@ public:
                 x += b.moveStr(x, sep, color);
             }
         }
-        // Whatever's left of the header's own width after the last
-        // column — e.g. the view is wider than the columns need, or an
-        // owning window was resized larger — is filled with "=" in the
-        // same header color, rather than left blank. Same idea as a
-        // classic printed table's rule line: a visibly-intentional edge
-        // instead of empty space that could read as "something's
-        // missing here".
-        if (x < size.x) b.moveChar(x, '=', color, size.x - x);
         writeLine(0, 0, size.x, 1, b);
+
+        // Second row: a plain "=" rule, full width, in the same header
+        // color — separates the column labels from the actual data
+        // rows below, the way a printed table's header rule would.
+        TDrawBuffer ruleLine;
+        ruleLine.moveChar(0, '=', color, size.x);
+        writeLine(0, 1, size.x, 1, ruleLine);
     }
 
     void handleEvent(TEvent& event) override {
         TView::handleEvent(event);
         if (event.what != evMouseDown) return;
 
-        auto vis = owner_->visibleDisplayOrder();
         TPoint local = makeLocal(event.mouse.where);
+        // Row 1 is the "=" rule line (see draw() above) — purely
+        // decorative, not another row of column headers, so clicks
+        // there are ignored rather than falling through to whichever
+        // column happens to occupy that x position.
+        if (local.y != 0) return;
+
+        auto vis = owner_->visibleDisplayOrder();
         int visualPos = columnAtX(local.x, vis);
 
         // The sort glyph has its own fixed, single-character hotspot
@@ -380,9 +385,13 @@ TGridView::TGridView(const TRect& bounds, ushort options)
     : TGroup(bounds), options_(options) {
     TRect r = getExtent();
 
-    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 1);
-    TRect scrollRect(r.b.x - 1, r.a.y + 1, r.b.x, r.b.y);
-    TRect rowsRect(r.a.x, r.a.y + 1, r.b.x - 1, r.b.y);
+    // The header is 2 rows tall: column labels on the first, a full
+    // "=" rule line on the second — see TGridHeaderView::draw() — so
+    // everything below it (the scrollbar and the rows) starts one row
+    // further down than before.
+    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 2);
+    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y);
+    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y);
 
     scrollBar_ = new TScrollBar(scrollRect);
     scrollBar_->growMode = gfGrowLoX | gfGrowHiX | gfGrowHiY;
