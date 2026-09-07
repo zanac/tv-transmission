@@ -179,6 +179,17 @@ TDialog* createColumnManagerDialog(TorrentListWindow* target) {
         }
         return "";
     });
+    // Without this, the row/no-row distinction relies entirely on
+    // TListViewer's own default palette colors (see TGridRowsView::
+    // draw()'s fallback in TGridView.cpp) — which, inside a TDialog,
+    // turned out not to contrast enough to actually notice which row
+    // was focused. Same fixed black-on-white-when-focused look already
+    // used for the main torrent list, for the same reason: guaranteed
+    // visible contrast regardless of whatever palette a dialog resolves
+    // colors 1/2 to.
+    dlg->metaGrid->setRowColorCallback([](int, bool focused) -> TColorAttr {
+        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
     dlg->refreshRows();
 
     dlg->insert(new TButton(TRect(2, 21, 14, 23), tr(Str::ButtonResizeColumn), cmColMgrResize, bfNormal));
