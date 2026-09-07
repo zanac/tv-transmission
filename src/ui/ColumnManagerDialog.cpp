@@ -62,6 +62,20 @@ public:
     std::vector<int> targetWidths() const { return target_->columnWidths(); }
     std::vector<bool> targetVisibility() const { return target_->columnVisibility(); }
 
+    // Public (not private, like the other do*() actions below) so
+    // double-clicking a row — wired via setRowActivateCallback() in
+    // createColumnManagerDialog(), outside this class — can trigger the
+    // exact same toggle the "Toggle visible" button does, rather than
+    // duplicating its logic.
+    void doToggle() {
+        int col = focusedLogicalCol();
+        if (col < 0) return;
+        auto vis = target_->columnVisibility();
+        if (col < (int)vis.size()) vis[col] = !vis[col];
+        target_->setColumnVisibility(vis);
+        refreshRows();
+    }
+
 private:
     // The one thing every action needs first: which real column the
     // currently-focused row of the meta-grid corresponds to, or -1 if
@@ -95,15 +109,6 @@ private:
         for (int i = 0; i < (int)rowToLogicalCol.size(); i++) {
             if (rowToLogicalCol[i] == col) { metaGrid->focusRow(i); break; }
         }
-    }
-
-    void doToggle() {
-        int col = focusedLogicalCol();
-        if (col < 0) return;
-        auto vis = target_->columnVisibility();
-        if (col < (int)vis.size()) vis[col] = !vis[col];
-        target_->setColumnVisibility(vis);
-        refreshRows();
     }
 
     void doReset() {
@@ -179,6 +184,11 @@ TDialog* createColumnManagerDialog(TorrentListWindow* target) {
         }
         return "";
     });
+    // Double-click a row: same action as the "Toggle visible" button —
+    // TListViewer's own double-click/Enter broadcast (see TGridView's
+    // setRowActivateCallback() doc comment), so there's no need to
+    // reach for the button for the single most common thing to do here.
+    dlg->metaGrid->setRowActivateCallback([dlg](int) { dlg->doToggle(); });
     // Without this, the row/no-row distinction relies entirely on
     // TListViewer's own default palette colors (see TGridRowsView::
     // draw()'s fallback in TGridView.cpp) — which, inside a TDialog,

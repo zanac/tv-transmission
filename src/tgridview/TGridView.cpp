@@ -101,23 +101,46 @@ public:
         for (int visualPos = 0; visualPos < n; visualPos++) {
             int logicalCol = vis[visualPos];
             const TGridColumn& col = owner_->column(logicalCol);
-            // The sort indicator is appended here, at draw time, rather
-            // than stored in TGridColumn::header — so changing a
-            // column's label (e.g. a language switch) never has to
-            // remember to strip/reapply it first. Same reasoning for the
-            // "<"/">" reorder markers just below.
-            std::string text = col.header;
-            if (logicalCol == owner_->sortColumn_) text += owner_->sortAscending_ ? " ^" : " v";
+            std::string cellText;
+
             if (visualPos == owner_->reorderVisualPos_) {
-                // No marker on whichever side doesn't apply — there's
+                // Reorder-highlighted: "<"/">" are reserved at the
+                // exact first/last character of the column's own
+                // width — computed explicitly, not by concatenating
+                // them onto the label and letting fitToWidth() truncate
+                // whatever doesn't fit. That used to silently drop the
+                // trailing ">" (and, less often, the leading "<") for
+                // any column whose label came close to filling the
+                // width, which is exactly why the right marker
+                // sometimes didn't seem to register a click: it simply
+                // wasn't drawn where the hit-test expected it. No
+                // marker on whichever side doesn't apply — there's
                 // nowhere further to move at either edge of what's
                 // currently visible.
                 std::string left = (visualPos > 0) ? "<" : "";
                 std::string right = (visualPos < n - 1) ? ">" : "";
-                text = left + text + right;
+                int innerWidth = col.width - (int)left.size() - (int)right.size();
+                cellText = left + fitToWidth(col.header, innerWidth, col.align) + right;
+            } else if (col.sortable) {
+                // Same fixed-position reasoning for the sort indicator:
+                // the last character is always reserved for it — "^"/
+                // "v" for the active sort column, "□" otherwise (a
+                // visible, clickable hint that this column CAN be
+                // sorted) — with a separating space before it, rather
+                // than appended to the label and hoping it fits. This
+                // also gives sorting its own dedicated, single-character
+                // hotspot distinct from the rest of the column's name —
+                // see handleEvent() below for why that matters.
+                const char* glyph = (logicalCol == owner_->sortColumn_)
+                    ? (owner_->sortAscending_ ? "^" : "v")
+                    : "\xE2\x96\xA1"; // □
+                int innerWidth = col.width - 2; // " " + glyph
+                cellText = fitToWidth(col.header, innerWidth, col.align) + " " + glyph;
+            } else {
+                cellText = fitToWidth(col.header, col.width, col.align);
             }
-            text = fitToWidth(text, col.width, col.align);
-            x += b.moveStr(x, text.c_str(), color);
+
+            x += b.moveStr(x, cellText.c_str(), color);
             if (visualPos < n - 1) {
                 // The separator doubles as the resize handle's visual
                 // cue when resizing is enabled — "│" makes the grabbable
@@ -138,10 +161,30 @@ public:
         TPoint local = makeLocal(event.mouse.where);
         int visualPos = columnAtX(local.x, vis);
 
-        // Checked before resize/sort: a double-click on a column's name
-        // (not its separator) always means "start reordering", taking
-        // priority over the single-click sort-toggle that would
-        // otherwise also fire for the same click.
+        // The sort glyph has its own fixed, single-character hotspot
+        // (the column's last character — see draw() above), checked
+        // first and unconditionally, regardless of whether this
+        // mouse-down carries the double-click flag. That's deliberate:
+        // clicking the glyph is sort-only, on either click of a
+        // double-click, and must never be interpreted as the start of
+        // a reorder — otherwise every double-click on a sortable
+        // column would toggle the sort AND start a move at the same
+        // time (the sort toggling on the double-click's own first,
+        // ordinary mouse-down, before tvision even knows a second one
+        // is coming). Not drawn (and so not checked) for the column
+        // currently reorder-highlighted, since draw() replaces the
+        // glyph with the "<"/">" markers there instead.
+        if (visualPos >= 0 && visualPos != owner_->reorderVisualPos_) {
+            int logicalCol = vis[visualPos];
+            if (owner_->column(logicalCol).sortable && isOnSortGlyph(local.x, visualPos, vis)) {
+                bool ascending = (logicalCol == owner_->sortColumn_) ? !owner_->sortAscending_ : true;
+                owner_->setSortIndicator(logicalCol, ascending);
+                if (owner_->onSortChanged_) owner_->onSortChanged_(logicalCol, ascending);
+                clearEvent(event);
+                return;
+            }
+        }
+
         if ((owner_->options_ & gvReorderableColumns) &&
             (event.mouse.eventFlags & meDoubleClick) && visualPos >= 0) {
             int logicalCol = vis[visualPos];
@@ -157,15 +200,10 @@ public:
             clearEvent(event);
             return;
         }
-        if (visualPos >= 0) {
-            int logicalCol = vis[visualPos];
-            if (owner_->column(logicalCol).sortable) {
-                bool ascending = (logicalCol == owner_->sortColumn_) ? !owner_->sortAscending_ : true;
-                owner_->setSortIndicator(logicalCol, ascending);
-                if (owner_->onSortChanged_) owner_->onSortChanged_(logicalCol, ascending);
-                clearEvent(event);
-            }
-        }
+        // A plain single click elsewhere on a column's name — not the
+        // sort glyph, not a resize separator — intentionally does
+        // nothing now. It used to also toggle sort, which was the
+        // other half of the double-click collision described above.
     }
 
 private:
@@ -181,6 +219,17 @@ private:
             pos += w;
         }
         return -1;
+    }
+
+    // True if x lands exactly on the sort glyph's reserved position —
+    // the last character of the column's own width (see draw() above:
+    // never shifted by truncation, since it's placed there explicitly
+    // rather than by concatenation).
+    bool isOnSortGlyph(int x, int visualPos, const std::vector<int>& vis) const {
+        int pos = 0;
+        for (int i = 0; i < visualPos; i++) pos += owner_->column(vis[i]).width + kSeparatorWidth;
+        int width = owner_->column(vis[visualPos]).width;
+        return x == pos + width - 1;
     }
 
     // True if x lands exactly on the separator column right after visual
