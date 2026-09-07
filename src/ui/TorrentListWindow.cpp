@@ -40,6 +40,37 @@ std::string buildProgressBar(double percentDone) {
     return bar;
 }
 
+// Transmission's own sentinels for uploadRatio: -1 = not available (e.g.
+// no data transferred yet), -2 = infinite (uploaded something with
+// nothing downloaded, e.g. a torrent added as a seed). Shown as "—"/"∞"
+// rather than the literal negative number, which would look like an
+// error rather than a special case.
+std::string formatRatio(double ratio) {
+    if (ratio <= -2.0) return "\xE2\x88\x9E";    // ∞
+    if (ratio < 0.0) return "\xE2\x80\x94";       // —
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.2f", ratio);
+    return buf;
+}
+
+// Transmission's own sentinels for eta: -1 = not available, -2 =
+// unknown — both shown as "—" rather than a negative second count.
+std::string formatEta(int64_t etaSeconds) {
+    if (etaSeconds < 0) return "\xE2\x80\x94"; // —
+    int64_t hours = etaSeconds / 3600;
+    int64_t minutes = (etaSeconds % 3600) / 60;
+    char buf[32];
+    if (hours > 0) std::snprintf(buf, sizeof(buf), "%lldh %lldm", (long long)hours, (long long)minutes);
+    else std::snprintf(buf, sizeof(buf), "%lldm", (long long)minutes);
+    return buf;
+}
+
+std::string formatPriority(int priority) {
+    if (priority < 0) return tr(Str::PriorityLow);
+    if (priority > 0) return tr(Str::PriorityHigh);
+    return tr(Str::PriorityNormal);
+}
+
 // tr_torrent_activity values (Transmission RPC): 0=stopped,
 // 1=check-wait, 2=checking, 3=download-wait, 4=downloading,
 // 5=seed-wait, 6=seeding.
@@ -157,6 +188,16 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
             }
             case SortColumn::Added:  return formatUnixTimestamp(t.addedDate);
             case SortColumn::Status: return trTorrentStatus(t.status);
+            case SortColumn::Ratio:      return formatRatio(t.uploadRatio);
+            case SortColumn::Uploaded:   return formatSize(t.uploadedEver);
+            case SortColumn::Downloaded: return formatSize(t.downloadedEver);
+            case SortColumn::Location:   return t.downloadDir;
+            case SortColumn::Eta:        return formatEta(t.eta);
+            case SortColumn::Peers:      return std::to_string(t.peersConnected);
+            case SortColumn::QueuePosition: return std::to_string(t.queuePosition + 1); // shown 1-based
+            case SortColumn::Priority:   return formatPriority(t.bandwidthPriority);
+            case SortColumn::CompletedDate:
+                return t.doneDate > 0 ? formatUnixTimestamp(t.doneDate) : "\xE2\x80\x94"; // —
         }
         return "";
     });
@@ -242,6 +283,77 @@ void TorrentListWindow::setupColumns(const std::vector<int>& initialWidths) {
     status.minWidth = 8;
     grid()->addColumn(status);
 
+    // Hidden-by-default columns — useful to some, but not part of the
+    // list's default look; shown via "Manage columns...".
+    TGridColumn ratio;
+    ratio.header = tr(Str::HeaderRatio);
+    ratio.width = 8;
+    ratio.minWidth = 5;
+    ratio.align = TGridColumn::Align::Right;
+    ratio.visible = false;
+    grid()->addColumn(ratio);
+
+    TGridColumn uploaded;
+    uploaded.header = tr(Str::HeaderTotalUploaded);
+    uploaded.width = 10;
+    uploaded.minWidth = 6;
+    uploaded.align = TGridColumn::Align::Right;
+    uploaded.visible = false;
+    grid()->addColumn(uploaded);
+
+    TGridColumn downloaded;
+    downloaded.header = tr(Str::HeaderTotalDownloaded);
+    downloaded.width = 10;
+    downloaded.minWidth = 6;
+    downloaded.align = TGridColumn::Align::Right;
+    downloaded.visible = false;
+    grid()->addColumn(downloaded);
+
+    TGridColumn location;
+    location.header = tr(Str::HeaderLocation);
+    location.width = 30;
+    location.minWidth = 10;
+    location.visible = false;
+    grid()->addColumn(location);
+
+    TGridColumn eta;
+    eta.header = tr(Str::HeaderEta);
+    eta.width = 10;
+    eta.minWidth = 6;
+    eta.align = TGridColumn::Align::Right;
+    eta.visible = false;
+    grid()->addColumn(eta);
+
+    TGridColumn peers;
+    peers.header = tr(Str::HeaderPeers);
+    peers.width = 6;
+    peers.minWidth = 4;
+    peers.align = TGridColumn::Align::Right;
+    peers.visible = false;
+    grid()->addColumn(peers);
+
+    TGridColumn queuePos;
+    queuePos.header = tr(Str::HeaderQueuePosition);
+    queuePos.width = 6;
+    queuePos.minWidth = 4;
+    queuePos.align = TGridColumn::Align::Right;
+    queuePos.visible = false;
+    grid()->addColumn(queuePos);
+
+    TGridColumn priority;
+    priority.header = tr(Str::HeaderPriority);
+    priority.width = 8;
+    priority.minWidth = 6;
+    priority.visible = false;
+    grid()->addColumn(priority);
+
+    TGridColumn completedDate;
+    completedDate.header = tr(Str::HeaderCompletedDate);
+    completedDate.width = 17;
+    completedDate.minWidth = 10;
+    completedDate.visible = false;
+    grid()->addColumn(completedDate);
+
     // Persisted widths from a previous session, applied on top of the
     // defaults above — only if there's exactly one per column: a
     // mismatched count (first run with no saved widths yet, or a
@@ -258,6 +370,9 @@ void TorrentListWindow::applyColumnLabels() {
     static const Str kLabels[] = {
         Str::HeaderName, Str::HeaderDone, Str::HeaderSize,
         Str::HeaderDownload, Str::HeaderUpload, Str::HeaderAdded, Str::HeaderStatus,
+        Str::HeaderRatio, Str::HeaderTotalUploaded, Str::HeaderTotalDownloaded, Str::HeaderLocation,
+        Str::HeaderEta, Str::HeaderPeers, Str::HeaderQueuePosition, Str::HeaderPriority,
+        Str::HeaderCompletedDate,
     };
     int n = std::min(grid()->columnCount(), (int)(sizeof(kLabels) / sizeof(kLabels[0])));
     for (int i = 0; i < n; i++) grid()->column(i).header = tr(kLabels[i]);
@@ -308,27 +423,35 @@ std::vector<int> TorrentListWindow::columnOrder() const {
 }
 
 std::vector<bool> TorrentListWindow::columnVisibility() const {
-    std::vector<bool> vis(7, true);
-    for (int i = 0; i < 7; i++) vis[i] = grid()->isColumnVisible(i);
+    std::vector<bool> vis(kTorrentColumnCount, true);
+    for (int i = 0; i < kTorrentColumnCount; i++) vis[i] = grid()->isColumnVisible(i);
     return vis;
 }
 
 void TorrentListWindow::setColumnVisibility(const std::vector<bool>& visible) {
-    for (int i = 0; i < 7; i++) {
-        bool shown = (i < (int)visible.size()) ? visible[i] : true;
+    for (int i = 0; i < kTorrentColumnCount; i++) {
+        // A missing entry falls back to that column's own default —
+        // true for the original 7, false for the 9 added later (see
+        // setupColumns()) — rather than always true. That matters for
+        // a settings.json saved before those 9 existed: it only has 7
+        // entries, and without this, the missing 9 would silently come
+        // back shown instead of hidden-by-default as intended.
+        bool defaultShown = (i < 7);
+        bool shown = (i < (int)visible.size()) ? visible[i] : defaultShown;
         grid()->setColumnVisible(i, shown);
     }
 }
 
 void TorrentListWindow::resetColumnLayout() {
-    // setupColumns({}) re-adds all 7 columns fresh with their built-in
-    // default widths (see its own body) — TGridView::clearColumns()/
-    // addColumn() each reset the display order to identity as a side
-    // effect (see TGridView.h's comment on why), so order comes back to
-    // Name..Status left-to-right for free; visibility needs its own
-    // pass since clearing/re-adding columns doesn't touch it.
+    // setupColumns({}) re-adds every column fresh with its own built-in
+    // default width AND default visibility (see its own body — the
+    // original 7 default to visible, the 9 added later default to
+    // hidden) — TGridView::clearColumns()/addColumn() each reset the
+    // display order to identity as a side effect (see TGridView.h's
+    // comment on why), so order comes back to Name..CompletedDate left
+    // to right for free too. Nothing further to do for any of the three
+    // properties this is meant to reset.
     setupColumns({});
-    for (int i = 0; i < 7; i++) grid()->setColumnVisible(i, true);
     applyFilterAndSort(); // row count/content are unaffected by any of
                           // this, but the columns were just torn down
                           // and rebuilt, so the grid needs telling again
@@ -357,6 +480,15 @@ void TorrentListWindow::applyFilterAndSort() {
                 case SortColumn::Up:     return x.rateUpload < y.rateUpload;
                 case SortColumn::Added:  return x.addedDate < y.addedDate;
                 case SortColumn::Status: return x.status < y.status;
+                case SortColumn::Ratio:         return x.uploadRatio < y.uploadRatio;
+                case SortColumn::Uploaded:      return x.uploadedEver < y.uploadedEver;
+                case SortColumn::Downloaded:    return x.downloadedEver < y.downloadedEver;
+                case SortColumn::Location:      return x.downloadDir < y.downloadDir;
+                case SortColumn::Eta:           return x.eta < y.eta;
+                case SortColumn::Peers:         return x.peersConnected < y.peersConnected;
+                case SortColumn::QueuePosition: return x.queuePosition < y.queuePosition;
+                case SortColumn::Priority:      return x.bandwidthPriority < y.bandwidthPriority;
+                case SortColumn::CompletedDate: return x.doneDate < y.doneDate;
             }
             return false;
         });

@@ -351,6 +351,29 @@ const char* tr(Str id) {
             return pick("Status", "Stato", "État", "Status", "Estado");
         case Str::HeaderAdded:
             return pick("Added", "Aggiunto", "Ajouté", "Hinzugefügt", "Añadido");
+        case Str::HeaderRatio:
+            return pick("Ratio", "Rapporto", "Ratio", "Verhältnis", "Ratio");
+        case Str::HeaderTotalUploaded:
+            return pick("Uploaded", "Caricato", "Envoyé", "Hochgeladen", "Subido");
+        case Str::HeaderTotalDownloaded:
+            return pick("Downloaded", "Scaricato", "Reçu", "Heruntergeladen", "Descargado");
+        case Str::HeaderLocation:
+            return pick("Location", "Posizione", "Emplacement", "Speicherort", "Ubicación");
+        case Str::HeaderEta:       return "ETA"; // same abbreviation in all five
+        case Str::HeaderPeers:
+            return pick("Peers", "Peer", "Pairs", "Peers", "Pares");
+        case Str::HeaderQueuePosition:
+            return pick("Queue", "Coda", "File", "Warteschlange", "Cola");
+        case Str::HeaderPriority:
+            return pick("Priority", "Priorità", "Priorité", "Priorität", "Prioridad");
+        case Str::HeaderCompletedDate:
+            return pick("Completed", "Completato", "Terminé", "Abgeschlossen", "Completado");
+        case Str::PriorityLow:
+            return pick("Low", "Bassa", "Basse", "Niedrig", "Baja");
+        case Str::PriorityNormal:
+            return pick("Normal", "Normale", "Normale", "Normal", "Normal");
+        case Str::PriorityHigh:
+            return pick("High", "Alta", "Haute", "Hoch", "Alta");
 
         case Str::CliUsage:
             switch (g_language) {

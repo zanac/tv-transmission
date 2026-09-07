@@ -21,7 +21,20 @@ enum class Language {
 // Lives here (rather than in ui/TorrentListWindow.h, where it used to
 // be) because AppSettings needs it and ui/ headers include this one,
 // not the other way around.
-enum class SortColumn { Name = 0, Done = 1, Size = 2, Down = 3, Up = 4, Added = 5, Status = 6 };
+enum class SortColumn {
+    Name = 0, Done = 1, Size = 2, Down = 3, Up = 4, Added = 5, Status = 6,
+    // Hidden-by-default columns (see TorrentListWindow::setupColumns())
+    // — appended after the original 7 rather than interleaved, so a
+    // settings.json from before they existed still parses its
+    // sortColumn field to the same original meaning.
+    Ratio = 7, Uploaded = 8, Downloaded = 9, Location = 10, Eta = 11,
+    Peers = 12, QueuePosition = 13, Priority = 14, CompletedDate = 15,
+};
+
+// Total number of torrent-list columns (the values SortColumn takes,
+// 0..kTorrentColumnCount-1) — shared by TorrentListWindow and
+// ColumnManagerDialog instead of each hardcoding the count separately.
+constexpr int kTorrentColumnCount = 16;
 
 // Which torrents show up in the list. A torrent must satisfy ALL of
 // these to be shown (AND, not OR) — an empty/all-true filter (see

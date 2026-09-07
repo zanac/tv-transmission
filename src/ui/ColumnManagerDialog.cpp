@@ -23,6 +23,9 @@ constexpr ushort cmColMgrReset  = 253;
 const Str kColumnLabels[] = {
     Str::HeaderName, Str::HeaderDone, Str::HeaderSize,
     Str::HeaderDownload, Str::HeaderUpload, Str::HeaderAdded, Str::HeaderStatus,
+    Str::HeaderRatio, Str::HeaderTotalUploaded, Str::HeaderTotalDownloaded, Str::HeaderLocation,
+    Str::HeaderEta, Str::HeaderPeers, Str::HeaderQueuePosition, Str::HeaderPriority,
+    Str::HeaderCompletedDate,
 };
 
 class ColumnManagerDialogImpl : public TDialog {
@@ -114,7 +117,10 @@ private:
 } // namespace
 
 TDialog* createColumnManagerDialog(TorrentListWindow* target) {
-    TRect r(0, 0, 50, 18);
+    // Tall enough for the header row plus all kTorrentColumnCount rows
+    // without needing to scroll, now that the list has more than just
+    // the original 7 columns.
+    TRect r(0, 0, 50, 27);
     auto* dlg = new ColumnManagerDialogImpl(r, tr(Str::DialogTitleColumnManager), target);
     dlg->options |= ofCentered;
 
@@ -124,7 +130,7 @@ TDialog* createColumnManagerDialog(TorrentListWindow* target) {
     // (sortable/resizable/movable all false): reordering "by which
     // property" or resizing this dialog's own layout isn't something
     // this dialog needs to support.
-    TRect gridRect(2, 2, 48, 11);
+    TRect gridRect(2, 2, 48, 20);
     dlg->metaGrid = new TGridView(gridRect, gvNone);
     dlg->insert(dlg->metaGrid);
 
@@ -153,12 +159,14 @@ TDialog* createColumnManagerDialog(TorrentListWindow* target) {
     visibleCol.movable = false;
     dlg->metaGrid->addColumn(visibleCol);
 
-    dlg->metaGrid->setRowCount(7);
+    dlg->metaGrid->setRowCount(kTorrentColumnCount);
     dlg->metaGrid->setCellTextCallback([dlg](int row, int col) -> std::string {
         if (row < 0 || row >= (int)dlg->rowToLogicalCol.size()) return "";
         int logicalCol = dlg->rowToLogicalCol[row];
         switch (col) {
-            case 0: return (logicalCol >= 0 && logicalCol < 7) ? tr(kColumnLabels[logicalCol]) : "";
+            case 0:
+                return (logicalCol >= 0 && logicalCol < kTorrentColumnCount)
+                    ? tr(kColumnLabels[logicalCol]) : "";
             case 1: {
                 auto widths = dlg->targetWidths();
                 return (logicalCol < (int)widths.size()) ? std::to_string(widths[logicalCol]) : "";
@@ -173,11 +181,11 @@ TDialog* createColumnManagerDialog(TorrentListWindow* target) {
     });
     dlg->refreshRows();
 
-    dlg->insert(new TButton(TRect(2, 12, 14, 14), tr(Str::ButtonResizeColumn), cmColMgrResize, bfNormal));
-    dlg->insert(new TButton(TRect(15, 12, 25, 14), tr(Str::ButtonMoveColumn), cmColMgrMove, bfNormal));
-    dlg->insert(new TButton(TRect(26, 12, 42, 14), tr(Str::ButtonToggleVisible), cmColMgrToggle, bfNormal));
-    dlg->insert(new TButton(TRect(2, 15, 14, 17), tr(Str::ButtonReset), cmColMgrReset, bfNormal));
-    dlg->insert(new TButton(TRect(37, 15, 47, 17), tr(Str::ButtonClose), cmCancel, bfDefault));
+    dlg->insert(new TButton(TRect(2, 21, 14, 23), tr(Str::ButtonResizeColumn), cmColMgrResize, bfNormal));
+    dlg->insert(new TButton(TRect(15, 21, 25, 23), tr(Str::ButtonMoveColumn), cmColMgrMove, bfNormal));
+    dlg->insert(new TButton(TRect(26, 21, 42, 23), tr(Str::ButtonToggleVisible), cmColMgrToggle, bfNormal));
+    dlg->insert(new TButton(TRect(2, 24, 14, 26), tr(Str::ButtonReset), cmColMgrReset, bfNormal));
+    dlg->insert(new TButton(TRect(37, 24, 47, 26), tr(Str::ButtonClose), cmCancel, bfDefault));
 
     dlg->selectNext(False);
     return dlg;

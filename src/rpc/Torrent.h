@@ -59,4 +59,14 @@ struct Torrent {
     int64_t haveUnchecked = 0;     // RPC "haveUnchecked"
     int64_t desiredAvailable = 0;  // RPC "desiredAvailable"
     int64_t sizeWhenDone = 0;      // RPC "sizeWhenDone"
+
+    // Now also requested by listTorrents() itself (not just
+    // getTorrentDetails()) for the optional, hidden-by-default torrent
+    // list columns — see TorrentListWindow::setupColumns().
+    int64_t eta = -1;              // RPC "eta", seconds; Transmission's own
+                                    // sentinels: -1 = not available, -2 = unknown
+    int peersConnected = 0;        // RPC "peersConnected"
+    int queuePosition = 0;         // RPC "queuePosition", 0-based
+    int bandwidthPriority = 0;     // RPC "bandwidthPriority": -1 low, 0 normal, 1 high
+    int64_t doneDate = 0;          // RPC "doneDate", unix timestamp; 0 = not completed yet
 };

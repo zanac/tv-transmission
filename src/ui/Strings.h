@@ -70,6 +70,10 @@ enum class Str {
 
     HeaderName, HeaderDone, HeaderSize, HeaderDownload, HeaderUpload,
     HeaderId, HeaderStatus, HeaderAdded,
+    // Hidden-by-default columns — see TorrentListWindow::setupColumns()
+    HeaderRatio, HeaderTotalUploaded, HeaderTotalDownloaded, HeaderLocation, HeaderEta,
+    HeaderPeers, HeaderQueuePosition, HeaderPriority, HeaderCompletedDate,
+    PriorityLow, PriorityNormal, PriorityHigh,
 
     // Command-line interface (src/cli/Cli.cpp)
     CliUsage,

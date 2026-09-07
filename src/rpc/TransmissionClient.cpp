@@ -145,6 +145,11 @@ Torrent parseTorrent(const json& t) {
     tor.haveUnchecked = t.value("haveUnchecked", (int64_t)0);
     tor.desiredAvailable = t.value("desiredAvailable", (int64_t)0);
     tor.sizeWhenDone = t.value("sizeWhenDone", (int64_t)0);
+    tor.eta = t.value("eta", (int64_t)-1);
+    tor.peersConnected = t.value("peersConnected", 0);
+    tor.queuePosition = t.value("queuePosition", 0);
+    tor.bandwidthPriority = t.value("bandwidthPriority", 0);
+    tor.doneDate = t.value("doneDate", (int64_t)0);
     return tor;
 }
 
@@ -152,10 +157,19 @@ Torrent parseTorrent(const json& t) {
 
 std::vector<Torrent> TransmissionClient::listTorrents() {
     std::vector<Torrent> result;
+    // The extra fields here (uploadRatio through doneDate) are for the
+    // optional, hidden-by-default columns (see TorrentListWindow::
+    // setupColumns()) — requested on every periodic refresh, unlike
+    // getTorrentDetails()'s own fields, because a column has to be able
+    // to show current data the moment it's made visible, not only after
+    // the details window happens to have been opened once.
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
                               "rateDownload","rateUpload","status","errorString",
                               "addedDate","downloadLimited","downloadLimit",
-                              "uploadLimited","uploadLimit","honorsSessionLimits"]})";
+                              "uploadLimited","uploadLimit","honorsSessionLimits",
+                              "uploadRatio","uploadedEver","downloadedEver","downloadDir",
+                              "eta","peersConnected","queuePosition","bandwidthPriority",
+                              "doneDate"]})";
     std::string body = call("torrent-get", args);
     if (body.empty()) return result;
 
