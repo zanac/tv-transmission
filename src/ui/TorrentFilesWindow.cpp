@@ -193,14 +193,35 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
                 return buf;
             }
             case 3:
-                if (allWanted) return tr(Str::ValueYes);
-                if (noneWanted) return tr(Str::ValueNo);
-                return tr(Str::ValueMixed);
+                // A tri-state checkbox rather than Yes/No/Mixed text —
+                // "[-]" for partially wanted is the same convention as
+                // a native tri-state checkbox control (checked/
+                // unchecked/indeterminate), so it reads the same way at
+                // a glance as the [X]/[ ] cases either side of it.
+                if (allWanted) return "[X]";
+                if (noneWanted) return "[ ]";
+                return "[-]";
             case 4:
                 return allSamePriority ? formatFilePriority(firstPriority) : tr(Str::ValueMixed);
         }
         return "";
     });
+
+    // Without this, the focused-row/other-rows distinction relies
+    // entirely on TListViewer's own default palette colors — which,
+    // inside a TDialog, don't contrast enough to actually notice which
+    // row is focused. Same fixed black-on-white-when-focused look
+    // already used for the main torrent list and elsewhere in this app.
+    grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
+        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
+    // Double-click a row: toggles its own wanted state, the same as
+    // the "Toggle wanted" button does for whichever row is focused —
+    // a double-click already focuses the row it lands on first (see
+    // TListViewer's own click handling), so toggleWantedForFocused()
+    // already operates on the right one without needing the row index
+    // this callback receives.
+    grid_->setRowActivateCallback([this](int) { toggleWantedForFocused(); });
 
     int buttonY = r.b.y + 1;
     int x = r.a.x;

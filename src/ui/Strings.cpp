@@ -403,8 +403,6 @@ const char* tr(Str id) {
             return pick("Done", "Fatto", "Terminé", "Fertig", "Hecho");
         case Str::HeaderFileWanted:
             return pick("Wanted", "Richiesto", "Voulu", "Gewünscht", "Deseado");
-        case Str::ValueYes: return pick("Yes", "Sì", "Oui", "Ja", "Sí");
-        case Str::ValueNo:  return pick("No", "No", "Non", "Nein", "No");
         case Str::ValueMixed: return pick("Mixed", "Misto", "Mixte", "Gemischt", "Mixto");
         case Str::ButtonToggleWanted:
             return pick("~T~oggle wanted", "~A~ttiva/disattiva", "Basc~u~ler voulu",

@@ -450,11 +450,23 @@ public:
                     // Any click on the row toggles it — not just a
                     // precise hit on the tiny "[X]" itself, which would
                     // be needlessly fiddly for something meant to make
-                    // batch-selecting easier. Focus still moves there
-                    // too, via TListViewer::handleEvent() below — a
-                    // toggle is additional, not a replacement for the
-                    // normal click behavior.
-                    owner_->toggleRowSelected(row);
+                    // batch-selecting easier. The SECOND mouseDown of a
+                    // double-click also arrives here, flagged with
+                    // meDoubleClick — skipped here so a double-click
+                    // doesn't toggle twice and silently cancel itself
+                    // back to the original state.
+                    if (!(event.mouse.eventFlags & meDoubleClick)) {
+                        owner_->toggleRowSelected(row);
+                    }
+                    focusItemNum(row); // still moves focus there, same
+                                        // as an ordinary click would
+                    clearEvent(event);  // stops here — never reaches
+                                         // TListViewer::handleEvent()'s
+                                         // own double-click "activate"
+                                         // detection below, which would
+                                         // otherwise open a details
+                                         // window mid-selection
+                    return;
                 } else if (owner_->multiSelectCapable()) {
                     // Not in selection mode yet, but this grid supports
                     // entering it — watch for a long press before
