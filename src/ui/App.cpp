@@ -1,9 +1,10 @@
 #include "App.h"
 #include "TorrentListWindow.h"
+#include "TrackerListWindow.h"
 #include "AddTorrentDialog.h"
 #include "SettingsDialog.h"
 #include "FilterDialog.h"
-#include "ColumnManagerDialog.h"
+#include "../tgridview/TGridColumnManagerDialog.h"
 #include "WindowListDialog.h"
 #include "AboutDialog.h"
 #include "BandwidthStatusLine.h"
@@ -11,6 +12,7 @@
 #include "../Config.h"
 
 #define Uses_TDeskTop
+#define Uses_TGroup
 #define Uses_TWindow
 #define Uses_TSubMenu
 #define Uses_TMenuItem
@@ -112,7 +114,8 @@ void App::newTorrentListWindow() {
             settings_.sortColumn = col;
             settings_.sortAscending = asc;
             saveSettings(settings_);
-        });
+        },
+        settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible);
     deskTop->insert(listWindow_);
 }
 
@@ -251,21 +254,60 @@ void App::showFilterDialog() {
 }
 
 void App::showColumnManagerDialog() {
-    if (!listWindow_) return;
-    if (auto* dlg = createColumnManagerDialog(listWindow_)) {
+    // Acts on whichever window currently has focus — see focusedGrid()
+    // and idle() (which keeps the menu item itself disabled whenever
+    // this would come back null, so reaching here with none is only a
+    // defensive fallback against a focus change slipping in between the
+    // command firing and this running).
+    TGridView* grid = focusedGrid();
+    if (!grid) return;
+
+    // This dialog lives in tgridview/ (see its own README.md) and has
+    // no dependency on this app's tr()/Str translation system — so its
+    // text is built here, once, from what this app already has
+    // translated, rather than the dialog knowing anything about
+    // languages at all.
+    TGridColumnManagerLabels labels;
+    labels.title = tr(Str::DialogTitleColumnManager);
+    labels.columnHeader = tr(Str::LabelColumnManagerColumn);
+    labels.widthHeader = tr(Str::LabelColumnManagerWidth);
+    labels.visibleHeader = tr(Str::LabelColumnManagerVisible);
+    labels.yes = tr(Str::ValueYes);
+    labels.no = tr(Str::ValueNo);
+    labels.resizeButton = tr(Str::ButtonResizeColumn);
+    labels.moveButton = tr(Str::ButtonMoveColumn);
+    labels.toggleVisibleButton = tr(Str::ButtonToggleVisible);
+    labels.resetButton = tr(Str::ButtonReset);
+    labels.closeButton = tr(Str::ButtonClose);
+
+    if (auto* dlg = createColumnManagerDialog(grid, labels)) {
         // Unlike the Filters/Settings dialogs, there's nothing to read
         // back from this one on close: every action inside it (resize,
-        // move, toggle visible) applies straight to listWindow_ as it
-        // happens — see ColumnManagerDialog.h's own doc comment for why.
+        // move, toggle visible) applies straight to the grid as it
+        // happens — see TGridColumnManagerDialog.h's own doc comment
+        // for why.
         execView(dlg);
         destroy(dlg);
         // Persisted here as a natural "done editing" point, same
         // reasoning as App::shutDown() persisting these on exit — the
         // user might not close the app again for a while after this.
-        settings_.columnWidths = listWindow_->columnWidths();
-        settings_.columnOrder = listWindow_->columnOrder();
-        settings_.columnVisible = listWindow_->columnVisibility();
-        saveSettings(settings_);
+        // Which settings.json fields to update depends on which grid
+        // was actually just edited — checked by identity for the main
+        // list (there's only one), or by the focused window's class for
+        // the tracker list (there can be several open at once, but they
+        // all share one saved layout — see AppSettings::
+        // trackerColumnWidths's own doc comment for why).
+        if (listWindow_ && grid == listWindow_->grid()) {
+            settings_.columnWidths = listWindow_->columnWidths();
+            settings_.columnOrder = listWindow_->columnOrder();
+            settings_.columnVisible = listWindow_->columnVisibility();
+            saveSettings(settings_);
+        } else if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(TProgram::deskTop->current)) {
+            settings_.trackerColumnWidths = trackerWin->columnWidths();
+            settings_.trackerColumnOrder = trackerWin->columnOrder();
+            settings_.trackerColumnVisible = trackerWin->columnVisibility();
+            saveSettings(settings_);
+        }
     }
 }
 
@@ -318,6 +360,27 @@ void App::updateBandwidthStatus() {
     static_cast<BandwidthStatusLine*>(statusLine)->setItemText(cmBandwidthDisplay, buf);
 }
 
+TGridView* App::focusedGrid() const {
+    // deskTop->current is the currently active window — the main
+    // torrent list at startup (it's the only window there is), or
+    // whatever else has been clicked/tabbed into since. Every
+    // TGridView-based window in this app — TorrentListWindow (via its
+    // TGridWindow base), TrackerListWindow, TorrentFilesWindow —
+    // inserts its grid as a direct child, the same way any TView is
+    // inserted into its owning TGroup, so one plain child search covers
+    // all of them without needing to know which specific window class
+    // it is.
+    TView* focused = TProgram::deskTop->current;
+    if (!focused) return nullptr;
+    auto* group = dynamic_cast<TGroup*>(focused);
+    if (!group) return nullptr;
+    TGridView* grid = nullptr;
+    group->forEach([](TView* v, void* arg) {
+        if (auto* g = dynamic_cast<TGridView*>(v)) *(TGridView**)arg = g;
+    }, &grid);
+    return grid;
+}
+
 void App::handleEvent(TEvent& event) {
     TApplication::handleEvent(event);
     if (event.what != evCommand) return;
@@ -357,6 +420,10 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmShowDetails:
             if (listWindow_) listWindow_->showDetailsForSelected();
+            clearEvent(event);
+            break;
+        case cmShowFiles:
+            if (listWindow_) listWindow_->showFilesForSelected();
             clearEvent(event);
             break;
         case cmSettings:
@@ -400,6 +467,28 @@ void App::shutDown() {
         settings_.columnOrder = listWindow_->columnOrder();
         saveSettings(settings_);
     }
+    // Same backstop for the tracker list, if one happens to still be
+    // open — direct mouse/keyboard resizing or reordering on its own
+    // header (not through "Manage columns...", which already saves
+    // immediately on close) wouldn't otherwise be captured. Several
+    // tracker windows could be open at once; picks whichever one is
+    // found first, since they're meant to share a single layout anyway
+    // (see AppSettings::trackerColumnWidths's own doc comment) rather
+    // than needing to reconcile them against each other here.
+    if (TDeskTop* deskTop = TProgram::deskTop) {
+        if (deskTop->last) {
+            TView* p = deskTop->last;
+            do {
+                p = p->next;
+                if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(p)) {
+                    settings_.trackerColumnWidths = trackerWin->columnWidths();
+                    settings_.trackerColumnOrder = trackerWin->columnOrder();
+                    saveSettings(settings_);
+                    break;
+                }
+            } while (p != deskTop->last);
+        }
+    }
     TApplication::shutDown();
 }
 
@@ -416,5 +505,13 @@ void App::idle() {
     // Total bandwidth is refreshed on every idle tick: it's cheap (no
     // RPC call, just reads data already cached by listWindow_).
     updateBandwidthStatus();
+    // "Manage columns..." is a single menu entry that acts on whichever
+    // window currently has focus (see focusedGrid()) — checked here,
+    // on every idle tick, rather than only when the menu is actually
+    // opened, so the item is already greyed out (not just a no-op once
+    // clicked) the moment focus moves to a window with nothing for it
+    // to act on.
+    if (focusedGrid()) enableCommand(cmManageColumns);
+    else disableCommand(cmManageColumns);
 }
 

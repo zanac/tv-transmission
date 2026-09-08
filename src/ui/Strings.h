@@ -16,7 +16,7 @@ Language currentLanguage();
 // Identifier for every translatable piece of UI text.
 enum class Str {
     MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
-    MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails,
+    MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
@@ -74,6 +74,12 @@ enum class Str {
     HeaderRatio, HeaderTotalUploaded, HeaderTotalDownloaded, HeaderLocation, HeaderEta,
     HeaderPeers, HeaderQueuePosition, HeaderPriority, HeaderCompletedDate,
     PriorityLow, PriorityNormal, PriorityHigh,
+    // Torrent files window (src/ui/TorrentFilesWindow.cpp)
+    WindowTitleFiles,
+    HeaderFileName, HeaderFileSize, HeaderFileProgress, HeaderFileWanted,
+    ValueYes, ValueNo, ValueMixed,
+    ButtonToggleWanted, ButtonSelectAll, ButtonSelectNone,
+    ButtonPriorityLow, ButtonPriorityNormal, ButtonPriorityHigh,
 
     // Command-line interface (src/cli/Cli.cpp)
     CliUsage,

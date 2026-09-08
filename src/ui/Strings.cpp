@@ -85,6 +85,7 @@ const char* tr(Str id) {
         case Str::MenuReannounce:  return pick("Reannoun~c~e", "Ricontatta tra~c~ker", "Réannon~c~er", "Tracker neu ~a~nfragen", "Reanun~c~iar");
         case Str::MenuStartNow:    return pick("Start ~N~ow", "Avvia s~u~bito", "Démarrer ~m~aintenant", "~J~etzt starten", "Iniciar ~a~hora");
         case Str::MenuShowDetails: return pick("~D~etails", "~D~ettagli", "Détai~l~s", "~D~etails", "Detal~l~es");
+        case Str::MenuShowFiles:   return pick("~F~iles", "Fi~l~e", "~F~ichiers", "Date~i~en", "A~r~chivos");
         case Str::MenuDeleteWithData:
             return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
                         "~L~öschen (mit Dateien)", "~B~orrar (con archivos)");
@@ -376,6 +377,38 @@ const char* tr(Str id) {
             return pick("Normal", "Normale", "Normale", "Normal", "Normal");
         case Str::PriorityHigh:
             return pick("High", "Alta", "Haute", "Hoch", "Alta");
+
+        case Str::WindowTitleFiles:
+            return pick("Files: %s", "File: %s", "Fichiers : %s", "Dateien: %s", "Archivos: %s");
+        case Str::HeaderFileName:
+            return pick("File", "File", "Fichier", "Datei", "Archivo");
+        case Str::HeaderFileSize:
+            return pick("Size", "Dimensione", "Taille", "Größe", "Tamaño");
+        case Str::HeaderFileProgress:
+            return pick("Done", "Fatto", "Terminé", "Fertig", "Hecho");
+        case Str::HeaderFileWanted:
+            return pick("Wanted", "Richiesto", "Voulu", "Gewünscht", "Deseado");
+        case Str::ValueYes: return pick("Yes", "Sì", "Oui", "Ja", "Sí");
+        case Str::ValueNo:  return pick("No", "No", "Non", "Nein", "No");
+        case Str::ValueMixed: return pick("Mixed", "Misto", "Mixte", "Gemischt", "Mixto");
+        case Str::ButtonToggleWanted:
+            return pick("~T~oggle wanted", "~A~ttiva/disattiva", "Basc~u~ler voulu",
+                        "~G~ewünscht umschalten", "Alternar de~s~eado");
+        case Str::ButtonSelectAll:
+            return pick("Select ~a~ll", "Seleziona ~t~utto", "~T~out sélectionner",
+                        "~A~lle auswählen", "Seleccionar ~t~odo");
+        case Str::ButtonSelectNone:
+            return pick("Select ~n~one", "Deseleziona t~u~tto", "Tout dé~s~électionner",
+                        "Alle a~b~wählen", "Deseleccionar to~d~o");
+        case Str::ButtonPriorityLow:
+            return pick("Priority ~L~ow", "Priorità ~b~assa", "Priorité ~b~asse",
+                        "Priorität ~n~iedrig", "Prioridad ~b~aja");
+        case Str::ButtonPriorityNormal:
+            return pick("Priority ~N~ormal", "Priorità n~o~rmale", "Priorité n~o~rmale",
+                        "Priorität n~o~rmal", "Prioridad n~o~rmal");
+        case Str::ButtonPriorityHigh:
+            return pick("Priority ~H~igh", "Priorità ~a~lta", "Priorité ~h~aute",
+                        "Priorität ~h~och", "Prioridad ~a~lta");
 
         case Str::CliUsage:
             switch (g_language) {

@@ -10,6 +10,7 @@
 #include "../rpc/TransmissionClient.h"
 
 class TorrentListWindow;
+class TGridView;
 
 class App : public TApplication {
 public:
@@ -38,6 +39,16 @@ private:
     void applySettings(); // reconfigures client_ after a settings change
     void updateBandwidthStatus(); // updates the D:/U: text in the status bar
 
+    // The TGridView belonging to whichever window currently has focus
+    // (the main torrent list, or any other TGridView-based window — the
+    // tracker list, a torrent's files window, ...), or nullptr if the
+    // focused window has none. "Manage columns..." is a single menu
+    // entry that acts on this, rather than a separate entry per window —
+    // see App::idle() (enables/disables the command as focus changes)
+    // and showColumnManagerDialog() (acts on whatever this returns at
+    // the moment the command fires).
+    TGridView* focusedGrid() const;
+
     AppSettings settings_;
     TransmissionClient client_;
     TorrentListWindow* listWindow_ = nullptr;
@@ -60,3 +71,4 @@ const ushort cmDeleteTorrentWithData = 111;
 const ushort cmAbout            = 112;
 const ushort cmFilters          = 113;
 const ushort cmManageColumns    = 114;
+const ushort cmShowFiles        = 115;

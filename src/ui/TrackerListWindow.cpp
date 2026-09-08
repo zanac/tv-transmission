@@ -4,47 +4,18 @@
 #include "../TextUtil.h"
 
 #define Uses_TButton
-#define Uses_TStaticText
 #define Uses_TProgram
+#define Uses_TEvent
 #include <tvision/tv.h>
 #include <cstdio>
-#include <cstring>
 
 namespace {
-
-// Column widths shared between the header and getText(), same
-// "constants instead of hand-counting" approach as the main torrent
-// list (see TorrentListWindow.cpp) — cheaper to get right here since
-// there's no click-to-sort math depending on them, just alignment.
-constexpr int kHostW = 30;
-constexpr int kTierW = 8;   // "Tier 10" (7 chars) + 1
-constexpr int kSeedersW = 8;
-constexpr int kLeechersW = 8;
-constexpr int kDownloadedW = 10;
-constexpr int kStatusW = 8; // "Errore" (6, longest translation) + 2
-
-std::string rightAlign(const std::string& s, size_t width) {
-    if (s.size() >= width) return s;
-    return std::string(width - s.size(), ' ') + s;
-}
 
 // Transmission uses -1 for "not known yet" (e.g. before the first
 // successful announce) — show "N/A" rather than a misleading number.
 std::string formatCount(int v) {
     if (v < 0) return tr(Str::ValueNotAvailable);
     return std::to_string(v);
-}
-
-std::string buildHeaderText() {
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "%-*s %*s %*s %*s %*s  %s",
-        kHostW, tr(Str::HeaderTrackerHost),
-        kTierW, tr(Str::HeaderTier),
-        kSeedersW, tr(Str::HeaderSeeders),
-        kLeechersW, tr(Str::HeaderLeechers),
-        kDownloadedW, tr(Str::HeaderDownloaded),
-        tr(Str::HeaderTrackerStatus));
-    return buf;
 }
 
 // Local to this window: scoped to its own handleEvent (same reasoning
@@ -54,43 +25,11 @@ constexpr ushort cmCloseTrackers = 211;
 
 } // namespace
 
-TrackerListViewer::TrackerListViewer(const TRect& r, TScrollBar* vScrollBar)
-    : TListViewer(r, 1, nullptr, vScrollBar) {
-    setRange(0);
-}
-
-void TrackerListViewer::setTrackers(std::vector<TrackerStat> trackers) {
-    trackers_ = std::move(trackers);
-    setRange((short)trackers_.size());
-    if (focused >= range && range > 0) focusItem(range - 1);
-    drawView();
-}
-
-const TrackerStat* TrackerListViewer::selectedTracker() const {
-    if (focused < 0 || focused >= (int)trackers_.size()) return nullptr;
-    return &trackers_[focused];
-}
-
-void TrackerListViewer::getText(char* dest, short item, short maxLen) {
-    if (item < 0 || item >= (int)trackers_.size()) {
-        dest[0] = '\0';
-        return;
-    }
-    const TrackerStat& t = trackers_[item];
-    std::string host = padOrTruncateUtf8(t.host, kHostW);
-    std::string tierStr = rightAlign("Tier " + std::to_string(t.tier + 1), kTierW);
-    std::string seeders = rightAlign(formatCount(t.seederCount), kSeedersW);
-    std::string leechers = rightAlign(formatCount(t.leecherCount), kLeechersW);
-    std::string downloaded = rightAlign(formatCount(t.downloadCount), kDownloadedW);
-    const char* status = !t.hasAnnounced ? "" :
-        (t.lastAnnounceSucceeded ? tr(Str::TrackerStatusOk) : tr(Str::TrackerStatusError));
-    std::snprintf(dest, maxLen, "%s %s %s %s %s  %s",
-        host.c_str(), tierStr.c_str(), seeders.c_str(), leechers.c_str(),
-        downloaded.c_str(), status);
-}
-
 TrackerListWindow::TrackerListWindow(const TRect& bounds, TStringView title,
-                                      int torrentId, TransmissionClient& client)
+                                      int torrentId, TransmissionClient& client,
+                                      const std::vector<int>& initialColumnWidths,
+                                      const std::vector<int>& initialColumnOrder,
+                                      const std::vector<bool>& initialColumnVisible)
     : TWindowInit(&TDialog::initFrame),
       TDialog(bounds, title),
       torrentId_(torrentId), client_(client) {
@@ -98,62 +37,159 @@ TrackerListWindow::TrackerListWindow(const TRect& bounds, TStringView title,
 
     TRect r = getExtent();
     r.grow(-1, -1);
-
-    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 1);
-    r.a.y += 1;
     r.b.y -= 3; // room for the button row at the bottom
 
-    TRect scrollRect(r.b.x - 1, r.a.y, r.b.x, r.b.y);
-    TRect listRect(r.a.x, r.a.y, r.b.x - 1, r.b.y);
+    // Resizable and reorderable, but NOT sortable — see this class's own
+    // doc comment in the header for why: Transmission already returns
+    // trackers in tier order, which is the order that matters here, so
+    // click-to-sort would work against that rather than help. That's a
+    // row-order concern though, independent of the columns' own
+    // width/position/visibility, which is what these two options (and
+    // the "Columns..." button below) offer.
+    grid_ = new TGridView(r, gvResizableColumns | gvReorderableColumns);
+    insert(grid_);
 
-    TScrollBar* vScroll = new TScrollBar(scrollRect);
-    insert(vScroll);
+    TGridColumn hostCol;
+    hostCol.header = tr(Str::HeaderTrackerHost);
+    hostCol.width = 30;
+    hostCol.minWidth = 10;
+    hostCol.sortable = false;
+    grid_->addColumn(hostCol);
 
-    listViewer_ = new TrackerListViewer(listRect, vScroll);
-    insert(listViewer_);
+    TGridColumn tierCol;
+    tierCol.header = tr(Str::HeaderTier);
+    tierCol.width = 8;
+    tierCol.minWidth = 6;
+    tierCol.align = TGridColumn::Align::Right;
+    tierCol.sortable = false;
+    grid_->addColumn(tierCol);
 
-    insert(new TStaticText(headerRect, buildHeaderText().c_str()));
+    TGridColumn seedersCol;
+    seedersCol.header = tr(Str::HeaderSeeders);
+    seedersCol.width = 8;
+    seedersCol.minWidth = 5;
+    seedersCol.align = TGridColumn::Align::Right;
+    seedersCol.sortable = false;
+    grid_->addColumn(seedersCol);
 
+    TGridColumn leechersCol;
+    leechersCol.header = tr(Str::HeaderLeechers);
+    leechersCol.width = 8;
+    leechersCol.minWidth = 5;
+    leechersCol.align = TGridColumn::Align::Right;
+    leechersCol.sortable = false;
+    grid_->addColumn(leechersCol);
+
+    TGridColumn downloadedCol;
+    downloadedCol.header = tr(Str::HeaderDownloaded);
+    downloadedCol.width = 10;
+    downloadedCol.minWidth = 6;
+    downloadedCol.align = TGridColumn::Align::Right;
+    downloadedCol.sortable = false;
+    grid_->addColumn(downloadedCol);
+
+    TGridColumn statusCol;
+    statusCol.header = tr(Str::HeaderTrackerStatus);
+    statusCol.width = 8;
+    statusCol.minWidth = 6;
+    statusCol.sortable = false;
+    grid_->addColumn(statusCol);
+
+    // Persisted widths from a previous session (or another already-open
+    // tracker window), applied on top of the defaults above — only if
+    // there's exactly one per column: a mismatched count (first run, or
+    // a settings.json from before this window had persisted columns at
+    // all) falls back to the defaults just set rather than applying
+    // them partially or out of order. Same reasoning as
+    // TorrentListWindow::setupColumns() for the main list.
+    if (initialColumnWidths.size() == (size_t)grid_->columnCount()) {
+        for (int i = 0; i < grid_->columnCount(); i++)
+            grid_->setColumnWidth(i, initialColumnWidths[i]);
+    }
+    grid_->setColumnOrder(initialColumnOrder); // no-op if not a valid permutation — see TGridView::setColumnOrder()
+    for (int i = 0; i < grid_->columnCount(); i++) {
+        bool shown = (i < (int)initialColumnVisible.size()) ? initialColumnVisible[i] : true;
+        grid_->setColumnVisible(i, shown);
+    }
+
+    grid_->setCellTextCallback([this](int row, int col) -> std::string {
+        if (row < 0 || row >= (int)trackers_.size()) return "";
+        const TrackerStat& t = trackers_[row];
+        switch (col) {
+            case 0: return t.host;
+            case 1: return "Tier " + std::to_string(t.tier + 1);
+            case 2: return formatCount(t.seederCount);
+            case 3: return formatCount(t.leecherCount);
+            case 4: return formatCount(t.downloadCount);
+            case 5:
+                return !t.hasAnnounced ? ""
+                    : (t.lastAnnounceSucceeded ? tr(Str::TrackerStatusOk) : tr(Str::TrackerStatusError));
+        }
+        return "";
+    });
+    grid_->setRowActivateCallback([this](int) { showDetailForSelected(); });
+
+    // "Columns..." is no longer a button here — it's now the single,
+    // focus-aware "Manage columns..." menu entry (see App::
+    // focusedGrid()/showColumnManagerDialog()), which acts on this
+    // window's own grid_ automatically whenever this window has focus,
+    // the same way it does for the main torrent list or a files window.
     int buttonY = r.b.y + 1;
-    insert(new TButton(TRect(r.a.x + 10, buttonY, r.a.x + 22, buttonY + 2),
-        tr(Str::ButtonRefresh), cmRefreshTrackers, bfDefault));
-    insert(new TButton(TRect(r.a.x + 26, buttonY, r.a.x + 38, buttonY + 2),
-        tr(Str::ButtonClose), cmCloseTrackers, bfNormal));
+    int x = r.a.x;
+    insert(new TButton(TRect(x, buttonY, x + 12, buttonY + 2), tr(Str::ButtonRefresh), cmRefreshTrackers, bfDefault));
+    x += 13;
+    insert(new TButton(TRect(x, buttonY, x + 12, buttonY + 2), tr(Str::ButtonClose), cmCloseTrackers, bfNormal));
 
     refresh();
 }
 
+std::vector<int> TrackerListWindow::columnWidths() const {
+    std::vector<int> widths(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) widths[i] = grid_->column(i).width;
+    return widths;
+}
+
+std::vector<int> TrackerListWindow::columnOrder() const {
+    return grid_->columnOrder();
+}
+
+std::vector<bool> TrackerListWindow::columnVisibility() const {
+    std::vector<bool> vis(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) vis[i] = grid_->isColumnVisible(i);
+    return vis;
+}
+
 void TrackerListWindow::refresh() {
-    listViewer_->setTrackers(client_.getTrackerStats(torrentId_));
+    trackers_ = client_.getTrackerStats(torrentId_);
+    grid_->setRowCount((int)trackers_.size());
+    grid_->refresh();
 }
 
 void TrackerListWindow::showDetailForSelected() {
-    if (const TrackerStat* t = listViewer_->selectedTracker())
-        if (auto* win = createTrackerDetailWindow(*t))
-            TProgram::application->insertWindow(win);
+    int row = grid_->focusedRow();
+    if (row < 0 || row >= (int)trackers_.size()) return;
+    if (auto* win = createTrackerDetailWindow(trackers_[row]))
+        TProgram::application->insertWindow(win);
 }
 
 void TrackerListWindow::handleEvent(TEvent& event) {
     TDialog::handleEvent(event);
-    if (event.what == evCommand && event.message.command == cmRefreshTrackers) {
-        refresh();
-        clearEvent(event);
-    } else if (event.what == evCommand && event.message.command == cmCloseTrackers) {
-        close();
-        clearEvent(event);
-    } else if (event.what == evBroadcast &&
-               event.message.command == cmListItemSelected &&
-               event.message.infoPtr == listViewer_) {
-        showDetailForSelected();
-        clearEvent(event);
+    if (event.what != evCommand) return;
+    switch (event.message.command) {
+        case cmRefreshTrackers:     refresh();           clearEvent(event); break;
+        case cmCloseTrackers:       close();              clearEvent(event); break;
     }
 }
 
 TDialog* createTrackerListWindow(int torrentId, const std::string& torrentName,
-                                  TransmissionClient& client) {
-    TRect r(0, 0, 76, 20);
+                                  TransmissionClient& client,
+                                  const std::vector<int>& initialColumnWidths,
+                                  const std::vector<int>& initialColumnOrder,
+                                  const std::vector<bool>& initialColumnVisible) {
+    TRect r(0, 0, 76, 23);
     std::string shortName = truncateUtf8(torrentName, 30);
     char titleBuf[128];
     std::snprintf(titleBuf, sizeof(titleBuf), tr(Str::WindowTitleTrackerList), shortName.c_str());
-    return new TrackerListWindow(r, titleBuf, torrentId, client);
+    return new TrackerListWindow(r, titleBuf, torrentId, client,
+                                  initialColumnWidths, initialColumnOrder, initialColumnVisible);
 }

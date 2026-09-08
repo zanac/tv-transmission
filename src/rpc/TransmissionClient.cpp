@@ -217,6 +217,59 @@ Torrent TransmissionClient::getTorrentDetails(int torrentId) {
     return result;
 }
 
+std::vector<TorrentFile> TransmissionClient::getTorrentFiles(int torrentId) {
+    std::vector<TorrentFile> result;
+    json args = {
+        {"ids", json::array({torrentId})},
+        {"fields", json::array({"files", "fileStats"})},
+    };
+    std::string body = call("torrent-get", args.dump());
+    if (body.empty()) return result;
+
+    try {
+        json j = json::parse(body);
+        auto& torrents = j["arguments"]["torrents"];
+        if (torrents.empty()) return result;
+        auto& files = torrents[0]["files"];
+        auto& fileStats = torrents[0]["fileStats"];
+        // "files" and "fileStats" are two parallel arrays — same length,
+        // same order, one entry per file — not one combined array, so
+        // they're zipped together here by index rather than each read
+        // independently.
+        for (size_t i = 0; i < files.size(); i++) {
+            TorrentFile f;
+            f.name = files[i].value("name", "");
+            f.length = files[i].value("length", (int64_t)0);
+            f.bytesCompleted = files[i].value("bytesCompleted", (int64_t)0);
+            if (i < fileStats.size()) {
+                f.wanted = fileStats[i].value("wanted", true);
+                f.priority = fileStats[i].value("priority", 0);
+            }
+            result.push_back(std::move(f));
+        }
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+    }
+    return result;
+}
+
+bool TransmissionClient::setFilesWanted(int torrentId, const std::vector<int>& fileIndices, bool wanted) {
+    json args = {
+        {"ids", json::array({torrentId})},
+        {wanted ? "files-wanted" : "files-unwanted", fileIndices},
+    };
+    return !call("torrent-set", args.dump()).empty();
+}
+
+bool TransmissionClient::setFilesPriority(int torrentId, const std::vector<int>& fileIndices, int priority) {
+    const char* field = priority < 0 ? "priority-low" : priority > 0 ? "priority-high" : "priority-normal";
+    json args = {
+        {"ids", json::array({torrentId})},
+        {field, fileIndices},
+    };
+    return !call("torrent-set", args.dump()).empty();
+}
+
 TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath) {
     json args = {{"filename", urlOrPath}};
     std::string body = call("torrent-add", args.dump());

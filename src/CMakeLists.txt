@@ -10,12 +10,13 @@ add_executable(tv-transmission
     ui/AddTorrentDialog.cpp
     ui/SettingsDialog.cpp
     ui/FilterDialog.cpp
-    ui/ColumnManagerDialog.cpp
+    tgridview/TGridColumnManagerDialog.cpp
     ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
     ui/BandwidthStatusLine.cpp
     ui/TorrentDetailsWindow.cpp
+    ui/TorrentFilesWindow.cpp
     ui/TrackerListWindow.cpp
     ui/TrackerDetailWindow.cpp
     ui/Strings.cpp

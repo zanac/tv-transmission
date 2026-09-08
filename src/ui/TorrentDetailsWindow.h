@@ -5,6 +5,7 @@
 #define Uses_TCheckBoxes
 #include <tvision/tv.h>
 #include <string>
+#include <vector>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
 
@@ -32,9 +33,18 @@
 // torrent-set RPC call right away using torrentId_/client_.
 class TorrentDetailsWindow : public TDialog {
 public:
+    // `initialTrackerColumnWidths`/`Order`/`Visible`: forwarded to
+    // showTrackers()'s own createTrackerListWindow() call — from
+    // AppSettings::trackerColumnWidths/Order/Visible, so the tracker
+    // window this opens (if the user clicks "Trackers...") starts with
+    // whatever tracker column layout was last saved, the same as any
+    // other tracker window would.
     TorrentDetailsWindow(const TRect& bounds, TStringView title,
                           int torrentId, const std::string& torrentName,
-                          TransmissionClient& client);
+                          TransmissionClient& client,
+                          const std::vector<int>& initialTrackerColumnWidths = {},
+                          const std::vector<int>& initialTrackerColumnOrder = {},
+                          const std::vector<bool>& initialTrackerColumnVisible = {});
 
     void handleEvent(TEvent& event) override;
 
@@ -54,10 +64,18 @@ private:
     int torrentId_;
     std::string torrentName_;
     TransmissionClient& client_;
+    std::vector<int> initialTrackerColumnWidths_;
+    std::vector<int> initialTrackerColumnOrder_;
+    std::vector<bool> initialTrackerColumnVisible_;
 };
 
 // Creates a window with the main information about a torrent (a
 // snapshot taken when opened, it doesn't refresh itself) plus controls
 // to set or clear a per-torrent download/upload speed limit override
 // (applied immediately via `client` when confirmed).
-TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client);
+// `initialTrackerColumnWidths`/`Order`/`Visible`: forwarded to the
+// constructor — see its own doc comment.
+TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client,
+                                     const std::vector<int>& initialTrackerColumnWidths = {},
+                                     const std::vector<int>& initialTrackerColumnOrder = {},
+                                     const std::vector<bool>& initialTrackerColumnVisible = {});

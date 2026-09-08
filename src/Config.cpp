@@ -75,6 +75,15 @@ AppSettings loadSettings() {
         if (j.contains("columnVisible") && j["columnVisible"].is_array()) {
             settings.columnVisible = j["columnVisible"].get<std::vector<bool>>();
         }
+        if (j.contains("trackerColumnWidths") && j["trackerColumnWidths"].is_array()) {
+            settings.trackerColumnWidths = j["trackerColumnWidths"].get<std::vector<int>>();
+        }
+        if (j.contains("trackerColumnOrder") && j["trackerColumnOrder"].is_array()) {
+            settings.trackerColumnOrder = j["trackerColumnOrder"].get<std::vector<int>>();
+        }
+        if (j.contains("trackerColumnVisible") && j["trackerColumnVisible"].is_array()) {
+            settings.trackerColumnVisible = j["trackerColumnVisible"].get<std::vector<bool>>();
+        }
     } catch (const std::exception&) {
         // Corrupted/malformed file: better to fall back to defaults than
         // to block the app from starting.
@@ -109,6 +118,9 @@ bool saveSettings(const AppSettings& settings) {
     j["columnWidths"] = settings.columnWidths;
     j["columnOrder"] = settings.columnOrder;
     j["columnVisible"] = settings.columnVisible;
+    j["trackerColumnWidths"] = settings.trackerColumnWidths;
+    j["trackerColumnOrder"] = settings.trackerColumnOrder;
+    j["trackerColumnVisible"] = settings.trackerColumnVisible;
 
     std::string path = configFilePath();
     std::ofstream out(path, std::ios::trunc);

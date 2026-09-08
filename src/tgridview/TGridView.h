@@ -104,6 +104,16 @@ public:
         return index >= 0 && index < (int)columns_.size() && columns_[index].visible;
     }
 
+    // Restores every column's width and visibility to what they were
+    // when addColumn()/insertColumn() first defined them, and the
+    // display order back to identity — everything a "start over" button
+    // would need, and nothing else (header text/align/sortable/
+    // resizable/movable aren't things resetting layout typically means
+    // to touch, so they're left alone). The snapshot this restores from
+    // is taken automatically at the point each column is added; there's
+    // nothing separate to set up for it.
+    void resetColumns();
+
     // --- Data source ---
     // TGridView never owns or copies row data: it asks for exactly the
     // cell it's about to draw, when it's about to draw it. This avoids
@@ -239,6 +249,11 @@ private:
     int reorderArrowHitTest(int x) const;
 
     std::vector<TGridColumn> columns_;
+    // Snapshot of each column exactly as addColumn()/insertColumn() was
+    // given it — kept in lockstep (same indices) with columns_ itself,
+    // purely so resetColumns() has something to restore width/visible
+    // from. Never read anywhere else.
+    std::vector<TGridColumn> defaultColumns_;
     std::vector<int> displayOrder_; // displayOrder_[visualPos] = logical column index
     ushort options_;
     int rowCount_ = 0;

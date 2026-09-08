@@ -70,3 +70,16 @@ struct Torrent {
     int bandwidthPriority = 0;     // RPC "bandwidthPriority": -1 low, 0 normal, 1 high
     int64_t doneDate = 0;          // RPC "doneDate", unix timestamp; 0 = not completed yet
 };
+
+// One file within a torrent — from a combination of the "files" and
+// "fileStats" RPC fields (see TransmissionClient::getTorrentFiles()),
+// which Transmission returns as two parallel arrays rather than one
+// merged one.
+struct TorrentFile {
+    std::string name;             // RPC "files[].name" — path relative to the torrent's own root
+    int64_t length = 0;           // RPC "files[].length"
+    int64_t bytesCompleted = 0;   // RPC "files[].bytesCompleted" (same as "fileStats[].bytesCompleted")
+    bool wanted = true;           // RPC "fileStats[].wanted"
+    int priority = 0;             // RPC "fileStats[].priority": -1 low, 0 normal, 1 high — same
+                                   // convention as Torrent::bandwidthPriority above
+};

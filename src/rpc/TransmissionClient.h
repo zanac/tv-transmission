@@ -75,6 +75,26 @@ public:
     // refresh always carrying fields it rarely needs.
     Torrent getTorrentDetails(int torrentId);
 
+    // Fetches every file within a single torrent (torrent-get with the
+    // "files" and "fileStats" fields, merged into one TorrentFile per
+    // index — Transmission returns them as two parallel arrays, not one
+    // combined one). On demand, same reasoning as getTrackerStats():
+    // not needed until the user actually opens the files window for one
+    // specific torrent.
+    std::vector<TorrentFile> getTorrentFiles(int torrentId);
+
+    // Marks specific files (by their index within the torrent, matching
+    // getTorrentFiles()'s own order) as wanted or not — torrent-set's
+    // "files-wanted"/"files-unwanted". A file already fully downloaded
+    // isn't deleted by being marked unwanted; Transmission just stops
+    // caring about verifying/keeping it up to date.
+    bool setFilesWanted(int torrentId, const std::vector<int>& fileIndices, bool wanted);
+
+    // Sets the download priority (-1 low, 0 normal, 1 high — same
+    // convention as Torrent::bandwidthPriority) for specific files —
+    // torrent-set's "priority-low"/"priority-normal"/"priority-high".
+    bool setFilesPriority(int torrentId, const std::vector<int>& fileIndices, int priority);
+
     // Sets (or clears) a per-torrent speed limit override, and whether
     // the torrent honors the session's global limit at all.
     // downloadLimited=false/uploadLimited=false means "no limit of its

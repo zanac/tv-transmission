@@ -102,4 +102,16 @@ struct AppSettings {
     // discrete dialog choice, not a continuous drag). Empty (or a
     // mismatched count) falls back to every column shown.
     std::vector<bool> columnVisible;
+
+    // Same three fields as columnWidths/columnOrder/columnVisible
+    // above, but for TrackerListWindow's own 6 columns (Host, Tier,
+    // Seeders, Leechers, Downloaded, Status) instead of the main
+    // torrent list's. Shared across every open tracker window — there's
+    // one tracker column layout, not one per torrent — saved whenever
+    // "Manage columns..." (see App::focusedGrid()) is used while a
+    // tracker window has focus, and applied to every tracker window
+    // opened afterward, including ones for a different torrent.
+    std::vector<int> trackerColumnWidths;
+    std::vector<int> trackerColumnOrder;
+    std::vector<bool> trackerColumnVisible;
 };

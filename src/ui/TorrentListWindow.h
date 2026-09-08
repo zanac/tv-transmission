@@ -44,13 +44,22 @@ public:
     // SortColumn — from AppSettings::columnVisible, so a previous
     // session's column choices survive a restart. Empty (or a
     // mismatched count) falls back to every column shown.
+    // `initialTrackerColumnWidths`/`Order`/`Visible`: forwarded, in
+    // turn, to every TorrentDetailsWindow this opens (via
+    // showDetailsForSelected()) — from AppSettings::
+    // trackerColumnWidths/Order/Visible, so a tracker window opened
+    // from any of them starts with whatever tracker column layout was
+    // last saved.
     TorrentListWindow(const TRect& bounds, TransmissionClient& client,
                        SortColumn initialSort, bool initialAscending,
                        TorrentFilter initialFilter,
                        const std::vector<int>& initialColumnWidths,
                        const std::vector<int>& initialColumnOrder,
                        const std::vector<bool>& initialColumnVisible,
-                       SortChangedCallback onSortChanged);
+                       SortChangedCallback onSortChanged,
+                       const std::vector<int>& initialTrackerColumnWidths = {},
+                       const std::vector<int>& initialTrackerColumnOrder = {},
+                       const std::vector<bool>& initialTrackerColumnVisible = {});
 
     void refresh();       // calls listTorrents() and updates the view
     void startSelected();
@@ -61,21 +70,11 @@ public:
     void verifySelected();
     void reannounceSelected();
     void showDetailsForSelected();
+    void showFilesForSelected();
     void retranslate();   // re-applies the title + column headers in the current language
 
     void setFilter(TorrentFilter filter); // applied to already-fetched data, no re-fetch
     const TorrentFilter& filter() const { return filter_; }
-
-    // Forwards to TGridView::startKeyboardResize() for one of this
-    // window's own columns — `col` is a SortColumn value cast to int
-    // (Name=0 .. Status=6). Used by the column manager dialog's
-    // "Resize" button (see App::showColumnManagerDialog()).
-    void startColumnResize(int col);
-
-    // Forwards to TGridView::startKeyboardReorder() — same `col`
-    // convention as startColumnResize() above, used by the column
-    // manager dialog's "Move" button.
-    void startColumnReorder(int col);
 
     // Current width of every column, same order as the constructor's
     // `initialColumnWidths` — read by App::shutDown() to persist
@@ -94,11 +93,6 @@ public:
     // confirmed (see App::showColumnsDialog()).
     void setColumnVisibility(const std::vector<bool>& visible);
 
-    // Resets width, order, AND visibility all at once, back to this
-    // window's own built-in defaults — what "Reset" in the column
-    // manager dialog does (see App::showColumnManagerDialog()).
-    void resetColumnLayout();
-
     double totalDownloadRate() const; // sum over VISIBLE (filtered) torrents
     double totalUploadRate() const;
 
@@ -111,6 +105,9 @@ private:
     void showContextMenuFor(int row, TPoint screenPos);
 
     TransmissionClient& client_;
+    std::vector<int> initialTrackerColumnWidths_;
+    std::vector<int> initialTrackerColumnOrder_;
+    std::vector<bool> initialTrackerColumnVisible_;
 
     // allTorrents_ is every torrent listTorrents() last returned, in
     // server order; visible_ is the filtered-then-sorted subset actually

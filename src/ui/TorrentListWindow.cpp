@@ -1,5 +1,6 @@
 #include "TorrentListWindow.h"
 #include "TorrentDetailsWindow.h"
+#include "TorrentFilesWindow.h"
 #include "Strings.h"
 #include "../TextUtil.h"
 #include <algorithm>
@@ -143,14 +144,21 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
                                       const std::vector<int>& initialColumnWidths,
                                       const std::vector<int>& initialColumnOrder,
                                       const std::vector<bool>& initialColumnVisible,
-                                      SortChangedCallback onSortChanged)
+                                      SortChangedCallback onSortChanged,
+                                      const std::vector<int>& initialTrackerColumnWidths,
+                                      const std::vector<int>& initialTrackerColumnOrder,
+                                      const std::vector<bool>& initialTrackerColumnVisible)
     : TWindowInit(&TWindow::initFrame), // virtual base: must be initialized here,
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
       TGridWindow(bounds, tr(Str::WindowTitleTorrentList), /*fullScreen=*/true,
                   gvResizableColumns | gvReorderableColumns),
-      client_(client), filter_(std::move(initialFilter)),
+      client_(client),
+      initialTrackerColumnWidths_(initialTrackerColumnWidths),
+      initialTrackerColumnOrder_(initialTrackerColumnOrder),
+      initialTrackerColumnVisible_(initialTrackerColumnVisible),
+      filter_(std::move(initialFilter)),
       sortColumn_(initialSort), sortAscending_(initialAscending),
       onSortChanged_(std::move(onSortChanged)) {
     setupColumns(initialColumnWidths);
@@ -410,14 +418,6 @@ std::vector<int> TorrentListWindow::columnWidths() const {
     return widths;
 }
 
-void TorrentListWindow::startColumnResize(int col) {
-    grid()->startKeyboardResize(col);
-}
-
-void TorrentListWindow::startColumnReorder(int col) {
-    grid()->startKeyboardReorder(col);
-}
-
 std::vector<int> TorrentListWindow::columnOrder() const {
     return grid()->columnOrder();
 }
@@ -440,21 +440,6 @@ void TorrentListWindow::setColumnVisibility(const std::vector<bool>& visible) {
         bool shown = (i < (int)visible.size()) ? visible[i] : defaultShown;
         grid()->setColumnVisible(i, shown);
     }
-}
-
-void TorrentListWindow::resetColumnLayout() {
-    // setupColumns({}) re-adds every column fresh with its own built-in
-    // default width AND default visibility (see its own body — the
-    // original 7 default to visible, the 9 added later default to
-    // hidden) — TGridView::clearColumns()/addColumn() each reset the
-    // display order to identity as a side effect (see TGridView.h's
-    // comment on why), so order comes back to Name..CompletedDate left
-    // to right for free too. Nothing further to do for any of the three
-    // properties this is meant to reset.
-    setupColumns({});
-    applyFilterAndSort(); // row count/content are unaffected by any of
-                          // this, but the columns were just torn down
-                          // and rebuilt, so the grid needs telling again
 }
 
 void TorrentListWindow::applyFilterAndSort() {
@@ -517,6 +502,7 @@ void TorrentListWindow::updateCommandStates() {
         setCmd(this, cmReannounceTorrent, false);
         setCmd(this, cmStartNowTorrent, false);
         setCmd(this, cmShowDetails, false);
+        setCmd(this, cmShowFiles, false);
         return;
     }
     bool stopped = isStopped(*t);
@@ -531,6 +517,7 @@ void TorrentListWindow::updateCommandStates() {
     setCmd(this, cmReannounceTorrent, active);         // only meaningful while talking to trackers
     setCmd(this, cmStartNowTorrent, stopped || queued); // only useful if not already transferring
     setCmd(this, cmShowDetails, true);                 // always possible
+    setCmd(this, cmShowFiles, true);                   // always possible
 }
 
 void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
@@ -548,7 +535,8 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey)
+        *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey)
     );
     auto* popup = new TMenuPopup(r, menu);
     // execView() (inherited from TProgram/TApplication) inserts the
@@ -603,7 +591,37 @@ void TorrentListWindow::showDetailsForSelected() {
     // totals, activity/elapsed-time fields), fetched here on demand
     // rather than on every periodic refresh.
     Torrent details = client_.getTorrentDetails(id);
-    if (auto* win = createTorrentDetailsWindow(details, client_))
+    if (auto* win = createTorrentDetailsWindow(details, client_,
+                                                initialTrackerColumnWidths_,
+                                                initialTrackerColumnOrder_,
+                                                initialTrackerColumnVisible_))
+        TProgram::application->insertWindow(win);
+}
+
+void TorrentListWindow::showFilesForSelected() {
+    const Torrent* t = selectedTorrent();
+    if (!t) return;
+    int id = t->id;
+    std::string name = t->name; // copied before any refresh() invalidates the pointer above
+
+    // Same "find an already-open one for this torrent id" check as
+    // showDetailsForSelected() above, for the same reason: bring the
+    // existing files window to front instead of opening a duplicate.
+    TDeskTop* deskTop = TProgram::deskTop;
+    if (deskTop->last) {
+        TView* p = deskTop->last;
+        do {
+            p = p->next;
+            if (auto* existing = dynamic_cast<TorrentFilesWindow*>(p)) {
+                if (existing->torrentId() == id) {
+                    existing->select();
+                    return;
+                }
+            }
+        } while (p != deskTop->last);
+    }
+
+    if (auto* win = createTorrentFilesWindow(id, name, client_))
         TProgram::application->insertWindow(win);
 }
 

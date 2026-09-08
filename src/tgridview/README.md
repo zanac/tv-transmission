@@ -238,6 +238,26 @@ main window (`flags = 0` — no move/resize/zoom/close, matching that
 project's `TorrentListWindow`); `false` for an ordinary MDI child
 window.
 
+**A third piece, `TGridColumnManagerDialog`, is a ready-made "resize/
+move/show/hide columns" window for any `TGridView`** — started out as
+something specific to TV Transmission's own torrent list, then got
+generalized here once it turned out almost nothing about it actually
+was: the resize/move/toggle-visible actions were already one-line calls
+into `TGridView`'s own public API, and the meta-grid's own "Column"
+label was reading from an unnecessary local copy instead of
+`column(i).header` directly. The one real gap was "Reset" — nothing
+tracked what a column's default width/visibility had been once changed
+— filled by adding `resetColumns()` to `TGridView` itself: a
+`defaultColumns_` snapshot taken alongside `columns_` at the exact
+moment each column is `addColumn()`-ed, restored (width, visibility,
+and display order back to identity) on demand. Since this module has no
+dependency on any particular app's translation system, the dialog's
+own text (title, column headers, button labels) is a small
+`TGridColumnManagerLabels` struct with plain-English defaults,
+overridable by the caller — see TV Transmission's own `App.cpp` for an
+example of building one from an app's existing translated strings right
+before calling `createColumnManagerDialog()`.
+
 ## What this does *not* do (yet)
 
 - **Horizontal scrolling.** If columns' total width exceeds the view,
@@ -292,3 +312,18 @@ between them — is verified directly too: the swap lands on the correct
 pair (skipping the hidden one, not swapping with it by mistake), and
 showing the hidden column again afterward accounts for every column
 exactly once, none duplicated or dropped.
+
+`resetColumns()` and `TGridColumnManagerDialog` are both verified
+directly too: width, visibility, *and* order are changed away from
+their defaults first, then `resetColumns()` is confirmed to restore the
+exact original values for all three at once, not some state left over
+from whatever was changed most recently. The dialog itself is exercised
+against a plain `TGridView` with no other project code involved at
+all — confirming it's genuinely not coupled to TV Transmission
+specifically — checking that its meta-grid reads column labels live
+from the real grid (not a stale local copy), that custom
+`TGridColumnManagerLabels` are actually used when supplied and the
+English defaults apply cleanly when they're not, and that its own
+Reset button, triggered through the dialog's normal command dispatch
+rather than calling `resetColumns()` directly, produces the same
+restored values on the underlying grid.

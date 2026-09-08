@@ -407,6 +407,7 @@ TGridView::TGridView(const TRect& bounds, ushort options)
 
 int TGridView::addColumn(const TGridColumn& col) {
     columns_.push_back(col);
+    defaultColumns_.push_back(col);
     resetColumnOrder();
     relayout();
     return (int)columns_.size() - 1;
@@ -415,6 +416,7 @@ int TGridView::addColumn(const TGridColumn& col) {
 void TGridView::insertColumn(int index, const TGridColumn& col) {
     index = std::clamp(index, 0, (int)columns_.size());
     columns_.insert(columns_.begin() + index, col);
+    defaultColumns_.insert(defaultColumns_.begin() + index, col);
     resetColumnOrder();
     relayout();
 }
@@ -422,12 +424,14 @@ void TGridView::insertColumn(int index, const TGridColumn& col) {
 void TGridView::removeColumn(int index) {
     if (index < 0 || index >= (int)columns_.size()) return;
     columns_.erase(columns_.begin() + index);
+    defaultColumns_.erase(defaultColumns_.begin() + index);
     resetColumnOrder();
     relayout();
 }
 
 void TGridView::clearColumns() {
     columns_.clear();
+    defaultColumns_.clear();
     resetColumnOrder();
     relayout();
 }
@@ -440,6 +444,15 @@ void TGridView::setColumnWidth(int index, int width) {
 void TGridView::setColumnVisible(int index, bool visible) {
     if (index < 0 || index >= (int)columns_.size()) return;
     columns_[index].visible = visible;
+    relayout();
+}
+
+void TGridView::resetColumns() {
+    for (int i = 0; i < (int)columns_.size(); i++) {
+        columns_[i].width = defaultColumns_[i].width;
+        columns_[i].visible = defaultColumns_[i].visible;
+    }
+    resetColumnOrder();
     relayout();
 }
 

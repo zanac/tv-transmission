@@ -61,10 +61,16 @@ struct PendingLine { int y; std::string left, right; bool isPair; };
 
 TorrentDetailsWindow::TorrentDetailsWindow(const TRect& bounds, TStringView title,
                                             int torrentId, const std::string& torrentName,
-                                            TransmissionClient& client)
+                                            TransmissionClient& client,
+                                            const std::vector<int>& initialTrackerColumnWidths,
+                                            const std::vector<int>& initialTrackerColumnOrder,
+                                            const std::vector<bool>& initialTrackerColumnVisible)
     : TWindowInit(&TDialog::initFrame),
       TDialog(bounds, title),
-      torrentId_(torrentId), torrentName_(torrentName), client_(client) {}
+      torrentId_(torrentId), torrentName_(torrentName), client_(client),
+      initialTrackerColumnWidths_(initialTrackerColumnWidths),
+      initialTrackerColumnOrder_(initialTrackerColumnOrder),
+      initialTrackerColumnVisible_(initialTrackerColumnVisible) {}
 
 void TorrentDetailsWindow::showTrackers() {
     // Same deskTop->last/next traversal already used for the "Window
@@ -85,7 +91,10 @@ void TorrentDetailsWindow::showTrackers() {
         } while (p != deskTop->last);
     }
 
-    if (auto* win = createTrackerListWindow(torrentId_, torrentName_, client_))
+    if (auto* win = createTrackerListWindow(torrentId_, torrentName_, client_,
+                                             initialTrackerColumnWidths_,
+                                             initialTrackerColumnOrder_,
+                                             initialTrackerColumnVisible_))
         TProgram::application->insertWindow(win);
 }
 
@@ -128,7 +137,10 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
     }
 }
 
-TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client) {
+TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client,
+                                     const std::vector<int>& initialTrackerColumnWidths,
+                                     const std::vector<int>& initialTrackerColumnOrder,
+                                     const std::vector<bool>& initialTrackerColumnVisible) {
     // Layout pass: figure out every row's content and y position first,
     // without creating the window yet — its height depends on how many
     // of this torrent's optional fields (location, magnet, error, ...)
@@ -276,7 +288,10 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     std::snprintf(titleBuf, sizeof(titleBuf), "%s: %s",
         tr(Str::WindowTitleDetails), shortName.c_str());
 
-    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client);
+    auto* win = new TorrentDetailsWindow(r, titleBuf, t.id, t.name, client,
+                                          initialTrackerColumnWidths,
+                                          initialTrackerColumnOrder,
+                                          initialTrackerColumnVisible);
     win->options |= ofCentered;
 
     for (const auto& line : lines) {
