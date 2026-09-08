@@ -762,13 +762,40 @@ void TGridView::relayout() {
         // vertical scrollbar's own range being 0 when every row fits.
         // rows_'s own width (not header_'s) is the actual viewport,
         // since both are the same width by construction this is just
-        // whichever's convenient to read here.
+        // whichever's convenient to read here. Unaffected by the
+        // show/hide toggle just below — that only ever changes rows_'s
+        // HEIGHT, never its width.
         int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
         // A drag/click already past the new maximum (e.g. after
         // widening a column back down) needs pulling back in bounds —
         // setRange() alone doesn't clamp an out-of-range current value.
         if (hScrollBar_->value > maxOffset) hScrollBar_->setValue(maxOffset);
         hScrollBar_->setRange(0, maxOffset);
+
+        // Hidden — and its row handed back to the rows/vertical-
+        // scrollbar area — whenever there's nothing to scroll, rather
+        // than always reserving a row for a control that would do
+        // nothing. Toggled here (every relayout(), so on every column
+        // add/remove/resize/reorder/show-hide) rather than left for the
+        // caller to manage, the same way the vertical scrollbar's own
+        // range already updates itself without anyone asking.
+        bool needed = maxOffset > 0;
+        bool currentlyVisible = (hScrollBar_->state & sfVisible) != 0;
+        if (needed != currentlyVisible) {
+            TRect rowsBounds = rows_->getBounds();
+            TRect vScrollBounds = scrollBar_->getBounds();
+            if (needed) {
+                rowsBounds.b.y -= 1;
+                vScrollBounds.b.y -= 1;
+                hScrollBar_->show();
+            } else {
+                rowsBounds.b.y += 1;
+                vScrollBounds.b.y += 1;
+                hScrollBar_->hide();
+            }
+            rows_->changeBounds(rowsBounds);
+            scrollBar_->changeBounds(vScrollBounds);
+        }
     }
     header_->drawView();
     rows_->drawView();
