@@ -1,0 +1,526 @@
+#include "App.h"
+#include "TorrentListWindow.h"
+#include "TrackerListWindow.h"
+#include "AddTorrentDialog.h"
+#include "SettingsDialog.h"
+#include "FilterDialog.h"
+#include "../tgridview/TGridColumnManagerDialog.h"
+#include "WindowListDialog.h"
+#include "AboutDialog.h"
+#include "BandwidthStatusLine.h"
+#include "Strings.h"
+#include "../Config.h"
+
+#define Uses_TDeskTop
+#define Uses_TGroup
+#define Uses_TWindow
+#define Uses_TSubMenu
+#define Uses_TMenuItem
+#define Uses_TStatusDef
+#define Uses_TStatusItem
+#define Uses_TKeys
+#define Uses_TEvent
+#define Uses_TFileDialog
+#define Uses_MsgBox
+#include <tvision/tv.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <vector>
+
+App::App(const AppSettings& initialSettings)
+    : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
+      settings_(initialSettings),
+      client_(settings_.host, settings_.port, settings_.user, settings_.password) {
+    // The global language was already set by main() BEFORE constructing
+    // this object (see the comment in App.h): initMenuBar()/
+    // initStatusLine() have therefore already read it correctly. No need
+    // to redo it here.
+    lastRefresh_ = std::chrono::steady_clock::now();
+    newTorrentListWindow();
+}
+
+TMenuBar* App::initMenuBar(TRect r) {
+    r.b.y = r.a.y + 1;
+    return new TMenuBar(r,
+        *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
+            *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
+            *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
+            *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
+            *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
+            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
+        *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
+            // Standard tvision commands: the main window can't be closed
+            // (see TorrentListWindow, wfClose removed), but the "Torrent
+            // details" windows (double-click, non-modal) can stay open
+            // more than one at a time — hence the need to be able to
+            // tile/close/cycle through them.
+            *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
+            *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
+            *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuWindowTile), cmTile, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
+        *new TSubMenu(tr(Str::MenuColumnsMenu), kbNoKey) +
+            *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
+            // Rationalized from what used to be three separate entry
+            // points here (a "Resize columns" submenu, an "Order
+            // columns" submenu, and a standalone "Columns..." dialog —
+            // each nested with the same (TMenuItem&) cast idiom that
+            // was needed for those two submenus, no longer needed now
+            // that there's only one plain item) into the single column
+            // manager dialog — see ColumnManagerDialog.h.
+            *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
+        *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
+            *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
+        *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
+            *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
+    );
+}
+
+TStatusLine* App::initStatusLine(TRect r) {
+    r.a.y = r.b.y - 1;
+    return new BandwidthStatusLine(r,
+        *new TStatusDef(0, 0xFFFF) +
+            // Text updated at runtime by updateBandwidthStatus();
+            // kbNoKey because it's not an action, just information.
+            *new TStatusItem("D: --  U: --", kbNoKey, cmBandwidthDisplay) +
+            *new TStatusItem(tr(Str::StatusAdd), kbF2, cmAddTorrent) +
+            *new TStatusItem(tr(Str::StatusStart), kbF5, cmStartTorrent) +
+            *new TStatusItem(tr(Str::StatusStop), kbF6, cmStopTorrent) +
+            *new TStatusItem(tr(Str::StatusSettings), kbF9, cmSettings) +
+            *new TStatusItem(tr(Str::StatusQuit), kbAltX, cmQuit)
+    );
+}
+
+void App::newTorrentListWindow() {
+    // Full desktop extent and "locked" (see flags = 0 in
+    // TorrentListWindow's constructor): this is the main window, meant
+    // to always stay maximized.
+    TRect r = deskTop->getExtent();
+    listWindow_ = new TorrentListWindow(r, client_,
+        settings_.sortColumn, settings_.sortAscending, settings_.filter,
+        settings_.columnWidths, settings_.columnOrder, settings_.columnVisible,
+        [this](SortColumn col, bool asc) {
+            settings_.sortColumn = col;
+            settings_.sortAscending = asc;
+            saveSettings(settings_);
+        },
+        settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible);
+    deskTop->insert(listWindow_);
+}
+
+void App::showAddTorrentDialog(const std::string& initialValue) {
+    TInputLine* urlField = nullptr;
+    auto* dlg = createAddTorrentDialog(urlField, initialValue);
+    if (!dlg) return;
+    ushort result = execView(dlg);
+    std::string url = (result == cmOK) ? addTorrentDialogResult(urlField) : "";
+    destroy(dlg);
+
+    if (result == cmOK) {
+        if (!url.empty()) {
+            auto addResult = client_.addTorrent(url);
+            if (addResult == TransmissionClient::AddTorrentResult::Duplicate) {
+                messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
+            } else if (addResult == TransmissionClient::AddTorrentResult::Failed) {
+                // client_.lastError() carries Transmission's own reason
+                // when the RPC request itself succeeded but adding the
+                // torrent didn't (invalid/corrupt magnet or .torrent,
+                // unreachable http(s) URL, ...), or a network/curl error
+                // when the request couldn't even be made — either way,
+                // something concrete to show instead of doing nothing.
+                char buf[512];
+                std::snprintf(buf, sizeof(buf), tr(Str::MsgTorrentAddFailed),
+                    client_.lastError().c_str());
+                messageBox(buf, mfError | mfOKButton);
+            }
+        }
+        return;
+    }
+
+    if (result == cmYes) {
+        // Browse was clicked. The "Add torrent" dialog above is already
+        // destroyed at this point — deliberately, before opening
+        // TFileDialog: nesting TFileDialog *inside* an already-open
+        // dialog (as a "Browse" button used to do) rendered with wrong
+        // colors and garbled text (fragments of both dialogs bleeding
+        // into each other, readable in a screenshot the user sent).
+        // Rebuilding a whole separate custom directory-browser dialog
+        // to sidestep that turned out to be unnecessary once the real
+        // cause was found: it wasn't TFileDialog's fault specifically
+        // (the same custom replacement showed the identical corruption)
+        // — it was two dialogs being modal at once. Closing this one
+        // first, THEN opening TFileDialog directly from `this` (one
+        // level of nesting, exactly like every other dialog in this
+        // app, including "Add torrent" itself), avoids that entirely —
+        // simpler than maintaining a hand-built browser.
+        auto* fileDlg = new TFileDialog("*.torrent", tr(Str::DialogTitleBrowseTorrent),
+            tr(Str::LabelAddTorrentUrl), fdOpenButton, 0);
+        ushort fileResult = execView(fileDlg);
+        std::string chosenPath;
+        // The "Open" button's command is cmFileOpen, not cmOK (checked
+        // in tvision's tfildlg.cpp) — only double-clicking a file in the
+        // list re-emits as cmOK. Either one is a real selection; cmCancel
+        // is the only "nothing chosen" case.
+        if (fileResult == cmFileOpen || fileResult == cmOK) {
+            char buf[1024] = {0};
+            fileDlg->getFileName(buf);
+            chosenPath = buf;
+        }
+        destroy(fileDlg);
+
+        // Reopen with whatever was picked pre-filled — Browse fills the
+        // field, it doesn't add the torrent by itself; the user still
+        // confirms (or edits further, or cancels) from here.
+        showAddTorrentDialog(chosenPath);
+    }
+}
+
+void App::showSettingsDialog() {
+    // Live RPC call: the global speed limits aren't part of settings_ /
+    // settings.json, they live on the Transmission daemon itself (see
+    // TransmissionClient::getSessionLimits()). This uses whichever
+    // connection settings are active *before* this dialog changes them —
+    // if that connection doesn't work (e.g. this is the first time
+    // host/user/password are being set up), the fetch fails and
+    // `sessionLimitsFetched` says so.
+    bool sessionLimitsFetched = false;
+    SessionLimits sessionLimits = client_.getSessionLimits(&sessionLimitsFetched);
+
+    SettingsDialogFields fields;
+    if (auto* dlg = createSettingsDialog(settings_, sessionLimits, fields)) {
+        if (execView(dlg) == cmOK) {
+            Language oldLanguage = settings_.language;
+            settings_ = settingsDialogResult(fields, settings_);
+            applySettings();
+            saveSettings(settings_); // persisted right away: see Config.h
+            setLanguage(settings_.language);
+            // The main window already exists: relabel it right away.
+            // The menu bar and status bar, on the other hand, are built
+            // only once at startup (see main.cpp/App.h) and stay in
+            // whatever language was active then until the app is
+            // restarted — but from this point on restarting *works*:
+            // the config file now holds the chosen language.
+            if (listWindow_) listWindow_->retranslate();
+
+            // Told explicitly rather than left to notice on their own:
+            // most of the UI already switched (see retranslate() above
+            // and every other window/dialog, rebuilt fresh each time
+            // it's shown), so a restart looks unnecessary until they
+            // spot the still-old menu bar/status bar.
+            if (settings_.language != oldLanguage) {
+                messageBox(tr(Str::MsgLanguageChangeRestart), mfInformation | mfOKButton);
+            }
+
+            // Only pushed back if the fetch above actually succeeded.
+            // Otherwise the dialog's speed-limit fields were showing
+            // meaningless defaults (0/disabled) rather than this
+            // server's real state — most commonly on the very first
+            // time host/user/password are configured, when the *old*
+            // connection couldn't reach anything yet. Sending those
+            // defaults to the newly-configured connection (now
+            // reachable, thanks to applySettings() above) would
+            // silently wipe out real limits already set there, even
+            // though the user never touched the speed-limit fields.
+            if (sessionLimitsFetched) {
+                client_.setSessionLimits(settingsDialogSessionLimits(fields));
+            }
+        }
+        destroy(dlg);
+    }
+}
+
+void App::showFilterDialog() {
+    if (!listWindow_) return;
+    FilterDialogFields fields;
+    if (auto* dlg = createFilterDialog(settings_.filter, fields)) {
+        if (execView(dlg) == cmOK) {
+            settings_.filter = filterDialogResult(fields);
+            saveSettings(settings_); // persisted right away, same as everything else in Config.h
+            listWindow_->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
+        }
+        destroy(dlg);
+    }
+}
+
+void App::showColumnManagerDialog() {
+    // Acts on whichever window currently has focus — see focusedGrid()
+    // and idle() (which keeps the menu item itself disabled whenever
+    // this would come back null, so reaching here with none is only a
+    // defensive fallback against a focus change slipping in between the
+    // command firing and this running).
+    TGridView* grid = focusedGrid();
+    if (!grid) return;
+
+    // This dialog lives in tgridview/ (see its own README.md) and has
+    // no dependency on this app's tr()/Str translation system — so its
+    // text is built here, once, from what this app already has
+    // translated, rather than the dialog knowing anything about
+    // languages at all.
+    TGridColumnManagerLabels labels;
+    labels.title = tr(Str::DialogTitleColumnManager);
+    labels.columnHeader = tr(Str::LabelColumnManagerColumn);
+    labels.widthHeader = tr(Str::LabelColumnManagerWidth);
+    labels.visibleHeader = tr(Str::LabelColumnManagerVisible);
+    // labels.yes/labels.no left at their defaults ("[X]"/"[ ]") — a
+    // checkbox glyph doesn't need translating the way the rest of this
+    // does.
+    labels.resizeButton = tr(Str::ButtonResizeColumn);
+    labels.moveButton = tr(Str::ButtonMoveColumn);
+    labels.toggleVisibleButton = tr(Str::ButtonToggleVisible);
+    labels.resetButton = tr(Str::ButtonReset);
+    labels.closeButton = tr(Str::ButtonClose);
+
+    if (auto* dlg = createColumnManagerDialog(grid, labels)) {
+        // Unlike the Filters/Settings dialogs, there's nothing to read
+        // back from this one on close: every action inside it (resize,
+        // move, toggle visible) applies straight to the grid as it
+        // happens — see TGridColumnManagerDialog.h's own doc comment
+        // for why.
+        execView(dlg);
+        destroy(dlg);
+        // Forces `grid` to redraw now that the dialog covering it is
+        // actually gone — belt-and-suspenders alongside TGridView's own
+        // draw()-time self-correction (see its header comment on
+        // updateHScrollBarVisibility()) for the same reason: whatever
+        // changed while covered (a column shown/hidden, most commonly)
+        // should be reflected the instant this window is visible again,
+        // not only whenever its next unrelated redraw happens to occur.
+        grid->refresh();
+        // Persisted here as a natural "done editing" point, same
+        // reasoning as App::shutDown() persisting these on exit — the
+        // user might not close the app again for a while after this.
+        // Which settings.json fields to update depends on which grid
+        // was actually just edited — checked by identity for the main
+        // list (there's only one), or by the focused window's class for
+        // the tracker list (there can be several open at once, but they
+        // all share one saved layout — see AppSettings::
+        // trackerColumnWidths's own doc comment for why).
+        if (listWindow_ && grid == listWindow_->grid()) {
+            settings_.columnWidths = listWindow_->columnWidths();
+            settings_.columnOrder = listWindow_->columnOrder();
+            settings_.columnVisible = listWindow_->columnVisibility();
+            saveSettings(settings_);
+        } else if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(TProgram::deskTop->current)) {
+            settings_.trackerColumnWidths = trackerWin->columnWidths();
+            settings_.trackerColumnOrder = trackerWin->columnOrder();
+            settings_.trackerColumnVisible = trackerWin->columnVisibility();
+            saveSettings(settings_);
+        }
+    }
+}
+
+void App::showWindowListDialog() {
+    // deskTop->last/next: TGroup's public circular chain, the same
+    // traversal mechanism already used elsewhere in this project. Order
+    // isn't an issue here (unlike the SettingsDialog field bug): we're
+    // just listing windows to choose from, not remapping values by index.
+    std::vector<TWindow*> windows;
+    if (deskTop->last) {
+        TView* p = deskTop->last;
+        do {
+            p = p->next;
+            if (auto* w = dynamic_cast<TWindow*>(p))
+                windows.push_back(w);
+        } while (p != deskTop->last);
+    }
+    if (windows.empty()) return;
+
+    WindowListViewer* viewer = nullptr;
+    if (auto* dlg = createWindowListDialog(std::move(windows), viewer)) {
+        if (execView(dlg) == cmOK) {
+            if (TWindow* selected = viewer->selectedWindow())
+                selected->select(); // brings it to the front and focuses it
+        }
+        destroy(dlg);
+    }
+}
+
+void App::showAboutDialog() {
+    if (auto* dlg = createAboutDialog()) {
+        execView(dlg);
+        destroy(dlg);
+    }
+}
+
+void App::applySettings() {
+    client_.setEndpoint(settings_.host, settings_.port);
+    client_.setCredentials(settings_.user, settings_.password);
+    if (listWindow_) listWindow_->refresh();
+}
+
+void App::updateBandwidthStatus() {
+    if (!statusLine || !listWindow_) return;
+    double down = listWindow_->totalDownloadRate();
+    double up = listWindow_->totalUploadRate();
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "D: %.1f KB/s  U: %.1f KB/s",
+                  down / 1024.0, up / 1024.0);
+    static_cast<BandwidthStatusLine*>(statusLine)->setItemText(cmBandwidthDisplay, buf);
+}
+
+TGridView* App::focusedGrid() const {
+    // deskTop->current is the currently active window — the main
+    // torrent list at startup (it's the only window there is), or
+    // whatever else has been clicked/tabbed into since. Every
+    // TGridView-based window in this app — TorrentListWindow (via its
+    // TGridWindow base), TrackerListWindow, TorrentFilesWindow —
+    // inserts its grid as a direct child, the same way any TView is
+    // inserted into its owning TGroup, so one plain child search covers
+    // all of them without needing to know which specific window class
+    // it is.
+    TView* focused = TProgram::deskTop->current;
+    if (!focused) return nullptr;
+    auto* group = dynamic_cast<TGroup*>(focused);
+    if (!group) return nullptr;
+    TGridView* grid = nullptr;
+    group->forEach([](TView* v, void* arg) {
+        if (auto* g = dynamic_cast<TGridView*>(v)) *(TGridView**)arg = g;
+    }, &grid);
+    return grid;
+}
+
+void App::handleEvent(TEvent& event) {
+    TApplication::handleEvent(event);
+    if (event.what != evCommand) return;
+
+    switch (event.message.command) {
+        case cmAddTorrent:
+            showAddTorrentDialog();
+            clearEvent(event);
+            break;
+        case cmStartTorrent:
+            if (listWindow_) listWindow_->startSelected();
+            clearEvent(event);
+            break;
+        case cmStopTorrent:
+            if (listWindow_) listWindow_->stopSelected();
+            clearEvent(event);
+            break;
+        case cmRemoveTorrent:
+            if (listWindow_) listWindow_->removeSelected();
+            clearEvent(event);
+            break;
+        case cmDeleteTorrentWithData:
+            if (listWindow_) listWindow_->deleteWithDataSelected();
+            clearEvent(event);
+            break;
+        case cmStartNowTorrent:
+            if (listWindow_) listWindow_->startNowSelected();
+            clearEvent(event);
+            break;
+        case cmVerifyTorrent:
+            if (listWindow_) listWindow_->verifySelected();
+            clearEvent(event);
+            break;
+        case cmReannounceTorrent:
+            if (listWindow_) listWindow_->reannounceSelected();
+            clearEvent(event);
+            break;
+        case cmShowDetails:
+            if (listWindow_) listWindow_->showDetailsForSelected();
+            clearEvent(event);
+            break;
+        case cmShowFiles:
+            if (listWindow_) listWindow_->showFilesForSelected();
+            clearEvent(event);
+            break;
+        case cmSettings:
+            showSettingsDialog();
+            clearEvent(event);
+            break;
+        case cmFilters:
+            showFilterDialog();
+            clearEvent(event);
+            break;
+        case cmManageColumns:
+            showColumnManagerDialog();
+            clearEvent(event);
+            break;
+        case cmShowWindowList:
+            showWindowListDialog();
+            clearEvent(event);
+            break;
+        case cmAbout:
+            showAboutDialog();
+            clearEvent(event);
+            break;
+        case cmBandwidthDisplay:
+            // Purely informational item: a click should do nothing.
+            clearEvent(event);
+            break;
+        default:
+            break;
+    }
+}
+
+void App::shutDown() {
+    // Captured here rather than after every single drag/reorder step:
+    // both are live, continuous interactions (see TGridView's own
+    // README.md), so writing settings.json on every intermediate step
+    // would be far more I/O than the user's final choice actually
+    // needs. Whatever the widths/order are at the moment the app is
+    // closing is what's worth remembering for next time.
+    if (listWindow_) {
+        settings_.columnWidths = listWindow_->columnWidths();
+        settings_.columnOrder = listWindow_->columnOrder();
+        saveSettings(settings_);
+    }
+    // Same backstop for the tracker list, if one happens to still be
+    // open — direct mouse/keyboard resizing or reordering on its own
+    // header (not through "Manage columns...", which already saves
+    // immediately on close) wouldn't otherwise be captured. Several
+    // tracker windows could be open at once; picks whichever one is
+    // found first, since they're meant to share a single layout anyway
+    // (see AppSettings::trackerColumnWidths's own doc comment) rather
+    // than needing to reconcile them against each other here.
+    if (TDeskTop* deskTop = TProgram::deskTop) {
+        if (deskTop->last) {
+            TView* p = deskTop->last;
+            do {
+                p = p->next;
+                if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(p)) {
+                    settings_.trackerColumnWidths = trackerWin->columnWidths();
+                    settings_.trackerColumnOrder = trackerWin->columnOrder();
+                    saveSettings(settings_);
+                    break;
+                }
+            } while (p != deskTop->last);
+        }
+    }
+    TApplication::shutDown();
+}
+
+void App::idle() {
+    TApplication::idle();
+    // Refresh on a real interval (settings_.refreshIntervalSeconds),
+    // no longer on every single event-loop tick.
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastRefresh_).count();
+    if (elapsed >= settings_.refreshIntervalSeconds) {
+        if (listWindow_) listWindow_->refresh();
+        lastRefresh_ = now;
+    }
+    // Total bandwidth is refreshed on every idle tick: it's cheap (no
+    // RPC call, just reads data already cached by listWindow_).
+    updateBandwidthStatus();
+    // "Manage columns..." is a single menu entry that acts on whichever
+    // window currently has focus (see focusedGrid()) — checked here,
+    // on every idle tick, rather than only when the menu is actually
+    // opened, so the item is already greyed out (not just a no-op once
+    // clicked) the moment focus moves to a window with nothing for it
+    // to act on.
+    if (focusedGrid()) enableCommand(cmManageColumns);
+    else disableCommand(cmManageColumns);
+}
+
