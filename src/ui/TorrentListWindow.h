@@ -102,6 +102,15 @@ private:
     void applyFilterAndSort();  // rebuilds visible_ from allTorrents_ (filter, then sort)
     void updateCommandStates(); // enables/disables App.h's torrent commands for the focused row
     const Torrent* selectedTorrent() const;
+    // The torrents an action from the Torrent menu should apply to:
+    // every checked row, in order, if the grid is in selection mode
+    // (see TGridView::isInSelectionMode()) and at least one is checked;
+    // otherwise a single-element vector holding selectedTorrent() (or
+    // empty if nothing's focused) — the existing one-at-a-time
+    // behavior, unchanged. Every *Selected() action method below reads
+    // its targets from this, so multi-select support only had to be
+    // added here rather than separately in each one.
+    std::vector<const Torrent*> targetTorrents() const;
     void showContextMenuFor(int row, TPoint screenPos);
 
     TransmissionClient& client_;

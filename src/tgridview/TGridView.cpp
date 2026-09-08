@@ -8,6 +8,7 @@
 #include <tvision/tv.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace {
@@ -61,6 +62,10 @@ std::string fitToWidth(const std::string& s, int width, TGridColumn::Align align
 }
 
 constexpr int kSeparatorWidth = 1; // one character between adjacent columns
+// "[X] " / "[ ] " — the leftmost checkbox column shown while in
+// selection mode (see gvMultiSelect). Fixed width, fixed position,
+// never scrolled — see drawScrolled()'s prefixWidth parameter.
+constexpr int kSelectionColumnWidth = 4;
 
 // Draws `text` (already fitted to exactly `width` display columns) at
 // CONTENT-relative position `contentX`, translating it into the actual
@@ -74,12 +79,26 @@ constexpr int kSeparatorWidth = 1; // one character between adjacent columns
 // `size.x` safely — the same reason columns beyond the visible width
 // simply didn't appear at all before this widget had any horizontal
 // scrolling.
+// Draws `text` (already fitted to exactly `width` display columns) at
+// CONTENT-relative position `contentX`, translating it into the actual
+// on-screen indent by subtracting the current horizontal scroll
+// `offset` and adding `prefixWidth` — the width of any FIXED,
+// never-scrolled area reserved to its left (the selection checkbox
+// column, when in selection mode; 0 otherwise). Skipped entirely if
+// fully scrolled past; left-clipped (never handing TDrawBuffer a
+// negative indent — its `indent` parameter is a `ushort`, which can't
+// represent one, and would silently wrap into a huge value instead) if
+// only partially scrolled past; drawn normally otherwise. The right
+// edge needs no equivalent handling: TDrawBuffer's own fixed-size
+// buffer already clips anything past `size.x` safely — the same reason
+// columns beyond the visible width simply didn't appear at all before
+// this widget had any horizontal scrolling.
 void drawScrolled(TDrawBuffer& b, int contentX, int width, const std::string& text,
-                   int offset, TColorAttr color) {
-    int screenX = contentX - offset;
-    if (screenX + width <= 0) return; // fully scrolled past
-    if (screenX < 0) {
-        b.moveStr(0, skipLeadingUtf8(text, -screenX).c_str(), color);
+                   int offset, TColorAttr color, int prefixWidth = 0) {
+    int screenX = contentX - offset + prefixWidth;
+    if (screenX + width <= prefixWidth) return; // fully scrolled past
+    if (screenX < prefixWidth) {
+        b.moveStr((ushort)prefixWidth, skipLeadingUtf8(text, prefixWidth - screenX).c_str(), color);
     } else {
         b.moveStr((ushort)screenX, text.c_str(), color);
     }
@@ -139,6 +158,11 @@ public:
         TColorAttr color = getColor(1);
         b.moveChar(0, ' ', color, size.x);
         int offset = owner_->horizontalScrollOffset();
+        // Fixed, never-scrolled — see drawScrolled()'s own doc comment.
+        // Left blank in the header (there's nothing per-column to show
+        // there; the checkboxes themselves are per-ROW, drawn by
+        // TGridRowsView below) other than the space it reserves.
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
         int x = 0; // CONTENT-relative (before the scroll offset is applied) — see drawScrolled()
         auto vis = owner_->visibleDisplayOrder();
         int n = (int)vis.size();
@@ -184,7 +208,7 @@ public:
                 cellText = fitToWidth(col.header, col.width, col.align);
             }
 
-            drawScrolled(b, x, col.width, cellText, offset, color);
+            drawScrolled(b, x, col.width, cellText, offset, color, prefixWidth);
             x += col.width;
             if (visualPos < n - 1) {
                 // The separator doubles as the resize handle's visual
@@ -192,7 +216,7 @@ public:
                 // boundary visible instead of it being an invisible gap
                 // the user has to guess at.
                 const char* sep = (owner_->options_ & gvResizableColumns) ? "\xE2\x94\x82" /* │ */ : " ";
-                drawScrolled(b, x, kSeparatorWidth, sep, offset, color);
+                drawScrolled(b, x, kSeparatorWidth, sep, offset, color, prefixWidth);
                 x += kSeparatorWidth;
             }
         }
@@ -220,12 +244,21 @@ public:
         // column happens to occupy that x position.
         if (local.y != 0) return;
 
+        // The checkbox column's own reserved space (see draw()) has no
+        // column underneath it to hit-test against — nothing to sort,
+        // resize, or reorder there, so a click within it is simply
+        // ignored rather than falling through to whatever column
+        // happens to sit at that same x once scrolling is accounted
+        // for.
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
+        if (local.x < prefixWidth) return;
+
         // Every hit-test below works in CONTENT-relative x (the same
         // coordinate space draw() builds cellText positions in, before
         // horizontal scrolling shifts them on screen) — converting once
         // here means columnAtX()/isOnSortGlyph()/etc. don't need to
         // know scrolling exists at all.
-        int contentX = local.x + owner_->horizontalScrollOffset();
+        int contentX = (local.x - prefixWidth) + owner_->horizontalScrollOffset();
 
         auto vis = owner_->visibleDisplayOrder();
         int visualPos = columnAtX(contentX, vis);
@@ -356,6 +389,7 @@ public:
     void draw() override {
         TDrawBuffer b;
         auto vis = owner_->visibleDisplayOrder();
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
         for (short i = 0; i < size.y; i++) {
             short item = topItem + i;
             bool isFocused = (item == focused);
@@ -370,6 +404,13 @@ public:
                 : TColorAttr(isFocused ? getColor(2) : getColor(1));
             b.moveChar(0, ' ', rowColor, size.x);
             if (item >= 0 && item < owner_->rowCount_) {
+                if (prefixWidth > 0) {
+                    // Fixed, never scrolled — see drawScrolled()'s own
+                    // doc comment — so drawn directly rather than
+                    // through it.
+                    bool checked = item < (int)owner_->selectedRows_.size() && owner_->selectedRows_[item];
+                    b.moveStr(0, checked ? "[X] " : "[ ] ", rowColor);
+                }
                 int offset = owner_->horizontalScrollOffset();
                 int x = 0; // CONTENT-relative — see drawScrolled()
                 int n = (int)vis.size();
@@ -388,10 +429,10 @@ public:
                         cellColor = TColorAttr(cellColor.getForeground(), cellColor.getBackground(),
                                                 cellColor.getStyle() | slBold);
                     }
-                    drawScrolled(b, x, col.width, fitted, offset, cellColor);
+                    drawScrolled(b, x, col.width, fitted, offset, cellColor, prefixWidth);
                     x += col.width;
                     if (visualPos < n - 1) {
-                        drawScrolled(b, x, kSeparatorWidth, " ", offset, rowColor);
+                        drawScrolled(b, x, kSeparatorWidth, " ", offset, rowColor, prefixWidth);
                         x += kSeparatorWidth;
                     }
                 }
@@ -401,6 +442,40 @@ public:
     }
 
     void handleEvent(TEvent& event) override {
+        if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0) {
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                if (owner_->isInSelectionMode()) {
+                    // Any click on the row toggles it — not just a
+                    // precise hit on the tiny "[X]" itself, which would
+                    // be needlessly fiddly for something meant to make
+                    // batch-selecting easier. Focus still moves there
+                    // too, via TListViewer::handleEvent() below — a
+                    // toggle is additional, not a replacement for the
+                    // normal click behavior.
+                    owner_->toggleRowSelected(row);
+                } else if (owner_->multiSelectCapable()) {
+                    // Not in selection mode yet, but this grid supports
+                    // entering it — watch for a long press before
+                    // falling through to an ordinary click.
+                    if (watchForLongPress(row)) {
+                        clearEvent(event); // whole press-hold-release
+                                            // cycle consumed by entering
+                                            // selection mode
+                        return;
+                    }
+                    // Released early: falls through to the ordinary
+                    // click handling below, `event` untouched.
+                }
+            }
+        } else if (event.what == evKeyDown && owner_->isInSelectionMode() &&
+                   event.keyDown.charScan.charCode == ' ') {
+            owner_->toggleRowSelected(focused);
+            clearEvent(event);
+            return;
+        }
+
         TListViewer::handleEvent(event);
         if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0 &&
             owner_->onRowContext_) {
@@ -415,6 +490,43 @@ public:
     }
 
 private:
+    // Watches the mouse while the button stays down on `row`, entering
+    // selection mode (see TGridView::enterSelectionMode()) the moment
+    // 3 seconds pass without a release — or, if the button lifts first,
+    // does nothing and returns false so the caller can fall through to
+    // an ordinary click.
+    //
+    // Deliberately does NOT use TView::mouseEvent() the way dragResize()
+    // (in TGridHeaderView) does: mouseEvent() only returns once an event
+    // matching its mask actually occurs, so a mask like evMouseMove
+    // would leave this blocked for as long as the mouse stays perfectly
+    // still — exactly the case that matters most here (holding, not
+    // dragging). Calling getEvent() directly instead relies on
+    // TProgram::getEvent()'s own wait timeout: with nothing happening at
+    // all it still returns periodically with evNothing (idle() runs on
+    // that same path), which is what lets the elapsed-time check below
+    // actually get a chance to run rather than blocking on real input
+    // that may never come until release.
+    bool watchForLongPress(short row) {
+        auto start = std::chrono::steady_clock::now();
+        TEvent e;
+        while (true) {
+            getEvent(e);
+            if (e.what == evMouseUp) return false; // released early — ordinary click
+            auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - start).count();
+            if (elapsedMs >= 3000) {
+                owner_->enterSelectionMode(row);
+                // Drains the eventual release so it doesn't surface as
+                // a stray event once this returns — the gesture that
+                // triggered selection mode shouldn't also register as
+                // some unrelated later click.
+                do { getEvent(e); } while (e.what != evMouseUp);
+                return true;
+            }
+        }
+    }
+
     // Used by getText() (plain, used by TListViewer internals such as
     // any future type-ahead search) — draw() builds the same content
     // per-segment instead, for per-cell coloring, but the column
@@ -533,6 +645,17 @@ void TGridView::resetColumns() {
 
 void TGridView::setRowCount(int count) {
     rowCount_ = std::max(count, 0);
+    // Kept in lockstep so a mid-selection refresh (more or fewer rows
+    // than before) doesn't leave selectedRows_ shorter than rowCount_ —
+    // toggleRowSelected()/selectedRows() would then either silently
+    // reject a valid row or read past the end. Existing entries are
+    // preserved by index rather than cleared outright: whether that
+    // still means the same thing after a refresh depends on whether the
+    // caller's own data kept the same order, which is the caller's
+    // concern, not this widget's (see TorrentListWindow's own handling
+    // of this, which avoids the question by not reordering while
+    // selection mode is active).
+    if (selectionModeActive_) selectedRows_.resize(rowCount_, false);
 }
 
 void TGridView::setCellTextCallback(CellTextFn fn) { cellText_ = std::move(fn); }
@@ -540,6 +663,34 @@ void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); 
 void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
 void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }
+
+void TGridView::enterSelectionMode(int initialRow) {
+    if (!(options_ & gvMultiSelect) || selectionModeActive_) return;
+    selectionModeActive_ = true;
+    selectedRows_.assign(rowCount_, false);
+    if (initialRow >= 0 && initialRow < rowCount_) selectedRows_[initialRow] = true;
+    relayout(); // header/rows need to redraw with the new checkbox column
+}
+
+void TGridView::exitSelectionMode() {
+    if (!selectionModeActive_) return;
+    selectionModeActive_ = false;
+    selectedRows_.clear();
+    relayout();
+}
+
+void TGridView::toggleRowSelected(int row) {
+    if (!selectionModeActive_ || row < 0 || row >= (int)selectedRows_.size()) return;
+    selectedRows_[row] = !selectedRows_[row];
+    rows_->drawView();
+}
+
+std::vector<int> TGridView::selectedRows() const {
+    std::vector<int> out;
+    for (int i = 0; i < (int)selectedRows_.size(); i++)
+        if (selectedRows_[i]) out.push_back(i);
+    return out;
+}
 void TGridView::setRowFocusCallback(RowFocusFn fn) { onRowFocus_ = std::move(fn); }
 void TGridView::setSortChangedCallback(SortChangedFn fn) { onSortChanged_ = std::move(fn); }
 void TGridView::setColumnOrderChangedCallback(ColumnOrderChangedFn fn) { onColumnOrderChanged_ = std::move(fn); }
@@ -763,9 +914,17 @@ int TGridView::horizontalScrollOffset() const {
     return hScrollBar_ ? hScrollBar_->value : 0;
 }
 
+int TGridView::scrollableViewportWidth() const {
+    // The checkbox column (see kSelectionColumnWidth) is fixed and
+    // never scrolls, so it isn't part of what the horizontal
+    // scrollbar's range is computed against — only the space actually
+    // available to the real, scrollable columns is.
+    return rows_->size.x - (selectionModeActive_ ? kSelectionColumnWidth : 0);
+}
+
 void TGridView::updateHScrollBarVisibility() {
     if (!hScrollBar_) return;
-    int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
+    int maxOffset = std::max(0, totalContentWidth() - scrollableViewportWidth());
     bool needed = maxOffset > 0;
     // The resize itself only ever runs once per actual transition,
     // guarded by our own tracked flag — never by re-reading
@@ -798,12 +957,12 @@ void TGridView::relayout() {
         // Range is how far content extends past the visible width — 0
         // (nothing to scroll) once every column fits, same idea as the
         // vertical scrollbar's own range being 0 when every row fits.
-        // rows_'s own width (not header_'s) is the actual viewport,
-        // since both are the same width by construction this is just
-        // whichever's convenient to read here. Unaffected by the
-        // show/hide toggle just below — that only ever changes rows_'s
-        // HEIGHT, never its width.
-        int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
+        // scrollableViewportWidth() (not header_'s/rows_'s raw width)
+        // is the actual viewport, since it already excludes the
+        // checkbox column's own fixed space when selection mode is
+        // active. Unaffected by the show/hide toggle just below — that
+        // only ever changes rows_'s HEIGHT, never its width.
+        int maxOffset = std::max(0, totalContentWidth() - scrollableViewportWidth());
         // A drag/click already past the new maximum (e.g. after
         // widening a column back down) needs pulling back in bounds —
         // setRange() alone doesn't clamp an out-of-range current value.

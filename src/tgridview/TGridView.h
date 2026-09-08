@@ -57,6 +57,14 @@ enum TGridOptions : ushort {
     // README.md for why this needed a real visual-position/logical-
     // index split throughout the widget.
     gvReorderableColumns = 0x0002,
+    // Lets the user select more than one row at once — a leftmost
+    // "[X]"/"[ ]" checkbox column appears once selection mode is
+    // entered (see enterSelectionMode()), and stays out of the way
+    // entirely otherwise. Off by default: a grid whose rows don't map
+    // to something a caller would batch-act on (a column manager's own
+    // meta-grid, a torrent's tracker list) has no use for it, and
+    // shouldn't pay for the extra column or long-press detection.
+    gvMultiSelect = 0x0004,
 };
 
 class TGridView : public TGroup {
@@ -223,6 +231,38 @@ public:
     void focusRow(int row);
     int rowCount() const { return rowCount_; }
 
+    // --- Multi-row selection (see gvMultiSelect above) ---
+
+    // Whether this grid was constructed with gvMultiSelect at all — the
+    // long-press gesture (see TGridRowsView::watchForLongPress()) only
+    // watches for it here; a grid built without the option behaves
+    // exactly as it always has, with none of the extra hit-testing.
+    bool multiSelectCapable() const { return (options_ & gvMultiSelect) != 0; }
+
+    // True once a leftmost checkbox column is showing and rows can be
+    // individually checked — via a 3-second press-and-hold on a row
+    // (only when gvMultiSelect is set), or by calling this directly
+    // (e.g. from a menu command, so keyboard-only use works too: Space
+    // then toggles the focused row). `initialRow`, if given (and
+    // gvMultiSelect is set — silently ignored otherwise, same as this
+    // whole method), starts already checked — the row that was
+    // pressed-and-held, typically. Calling this while already in
+    // selection mode is a no-op; it does not change which rows are
+    // currently checked.
+    void enterSelectionMode(int initialRow = -1);
+    // Removes the checkbox column and forgets which rows were checked.
+    // A no-op if selection mode isn't active.
+    void exitSelectionMode();
+    bool isInSelectionMode() const { return selectionModeActive_; }
+
+    // Flips one row's own checkbox. A no-op outside selection mode, or
+    // for a row index outside [0, rowCount()) — callers don't need to
+    // range-check first.
+    void toggleRowSelected(int row);
+    // Every currently-checked row's index, in ascending order. Empty
+    // outside selection mode, or if nothing's been checked yet.
+    std::vector<int> selectedRows() const;
+
     // How many character columns of content are currently scrolled off
     // the left edge — 0 until there are more visible columns than fit
     // in the view and the user drags/clicks the horizontal scrollbar.
@@ -259,6 +299,11 @@ private:
     // the single-character separators between them — what the
     // horizontal scrollbar's range is computed from in relayout().
     int totalContentWidth() const;
+    // rows_'s own width, minus the checkbox column's fixed space when
+    // selection mode is active — what the horizontal scrollbar's range
+    // is actually computed against (see totalContentWidth()'s own use
+    // in updateHScrollBarVisibility()/relayout()).
+    int scrollableViewportWidth() const;
     int visualPositionOf(int logicalCol) const; // position within displayOrder_, -1 if not found
     // Position within the VISIBLE-only subset of displayOrder_ (what
     // every visual operation — drawing, hit-testing, reorder — actually
@@ -322,4 +367,11 @@ private:
     // growing (or shrinking) rows_ by another row every single time,
     // unboundedly, rather than exactly once per actual transition.
     bool hScrollBarRowReserved_ = true;
+
+    // --- Multi-row selection state (see gvMultiSelect / enterSelectionMode()) ---
+    bool selectionModeActive_ = false;
+    // Sized to rowCount_ whenever selectionModeActive_ (kept in sync by
+    // setRowCount() — see its own comment); empty otherwise, so there's
+    // nothing to keep updated for every grid that never uses this.
+    std::vector<bool> selectedRows_;
 };

@@ -86,6 +86,9 @@ const char* tr(Str id) {
         case Str::MenuStartNow:    return pick("Start ~N~ow", "Avvia s~u~bito", "Démarrer ~m~aintenant", "~J~etzt starten", "Iniciar ~a~hora");
         case Str::MenuShowDetails: return pick("~D~etails", "~D~ettagli", "Détai~l~s", "~D~etails", "Detal~l~es");
         case Str::MenuShowFiles:   return pick("~F~iles", "Fi~l~e", "~F~ichiers", "Date~i~en", "A~r~chivos");
+        case Str::MenuSelectMultiple:
+            return pick("Select ~M~ultiple", "Selezione ~m~ultipla", "Sélection ~m~ultiple",
+                        "~M~ehrfachauswahl", "Selección ~m~últiple");
         case Str::MenuDeleteWithData:
             return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
                         "~L~öschen (mit Dateien)", "~B~orrar (con archivos)");
@@ -101,6 +104,18 @@ const char* tr(Str id) {
                         "Supprimer '%s' ET ses fichiers sur le disque ? Cette action est irréversible.",
                         "'%s' UND die zugehörigen Dateien löschen? Dies kann nicht rückgängig gemacht werden.",
                         "¿Eliminar '%s' Y sus archivos en el disco? Esta acción no se puede deshacer.");
+        case Str::ConfirmRemoveTorrentsMulti:
+            return pick("Remove %s torrents from the list? Files on disk will be kept.",
+                        "Rimuovere %s torrent dalla lista? I file su disco resteranno.",
+                        "Retirer %s torrents de la liste ? Les fichiers sur le disque seront conservés.",
+                        "%s Torrents aus der Liste entfernen? Die Dateien auf der Festplatte bleiben erhalten.",
+                        "¿Quitar %s torrents de la lista? Los archivos en el disco se conservarán.");
+        case Str::ConfirmDeleteTorrentsWithDataMulti:
+            return pick("Delete %s torrents AND their files on disk? This cannot be undone.",
+                        "Eliminare %s torrent E i loro file su disco? L'operazione non si puo' annullare.",
+                        "Supprimer %s torrents ET leurs fichiers sur le disque ? Cette action est irréversible.",
+                        "%s Torrents UND ihre Dateien löschen? Dies kann nicht rückgängig gemacht werden.",
+                        "¿Eliminar %s torrents Y sus archivos en el disco? Esta acción no se puede deshacer.");
 
         // Standard tvision window-management menu: we just label items
         // that send tvision's own standard commands (cmZoom, cmNext,

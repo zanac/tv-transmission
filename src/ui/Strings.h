@@ -17,8 +17,10 @@ Language currentLanguage();
 enum class Str {
     MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
     MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
+    MenuSelectMultiple,
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
+    ConfirmRemoveTorrentsMulti, ConfirmDeleteTorrentsWithDataMulti,
     MenuWindow, MenuWindowZoom, MenuWindowNext, MenuWindowClose,
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,

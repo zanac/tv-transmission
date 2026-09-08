@@ -153,7 +153,7 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
       TGridWindow(bounds, tr(Str::WindowTitleTorrentList), /*fullScreen=*/true,
-                  gvResizableColumns | gvReorderableColumns),
+                  gvResizableColumns | gvReorderableColumns | gvMultiSelect),
       client_(client),
       initialTrackerColumnWidths_(initialTrackerColumnWidths),
       initialTrackerColumnOrder_(initialTrackerColumnOrder),
@@ -489,6 +489,21 @@ const Torrent* TorrentListWindow::selectedTorrent() const {
     return &visible_[row];
 }
 
+std::vector<const Torrent*> TorrentListWindow::targetTorrents() const {
+    std::vector<const Torrent*> out;
+    if (grid()->isInSelectionMode()) {
+        for (int row : grid()->selectedRows()) {
+            if (row >= 0 && row < (int)visible_.size()) out.push_back(&visible_[row]);
+        }
+        if (!out.empty()) return out;
+        // In selection mode but nothing checked yet — fall through to
+        // the focused row below, same as not being in selection mode
+        // at all, rather than an action silently doing nothing.
+    }
+    if (const Torrent* t = selectedTorrent()) out.push_back(t);
+    return out;
+}
+
 void TorrentListWindow::updateCommandStates() {
     const Torrent* t = selectedTorrent();
     if (!t) {
@@ -626,50 +641,61 @@ void TorrentListWindow::showFilesForSelected() {
 }
 
 void TorrentListWindow::startSelected() {
-    if (const Torrent* t = selectedTorrent())
-        client_.startTorrent(t->id);
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.startTorrent(t->id);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::stopSelected() {
-    if (const Torrent* t = selectedTorrent())
-        client_.stopTorrent(t->id);
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.stopTorrent(t->id);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::removeSelected() {
-    const Torrent* t = selectedTorrent();
-    if (!t) return;
-    std::string msg = formatMessage(tr(Str::ConfirmRemoveTorrent), t->name);
+    auto targets = targetTorrents();
+    if (targets.empty()) return;
+    std::string msg = (targets.size() == 1)
+        ? formatMessage(tr(Str::ConfirmRemoveTorrent), targets[0]->name)
+        : formatMessage(tr(Str::ConfirmRemoveTorrentsMulti), std::to_string(targets.size()));
     if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
-    client_.removeTorrent(t->id, /*deleteLocalData=*/false);
+    for (const Torrent* t : targets) client_.removeTorrent(t->id, /*deleteLocalData=*/false);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::deleteWithDataSelected() {
-    const Torrent* t = selectedTorrent();
-    if (!t) return;
-    std::string msg = formatMessage(tr(Str::ConfirmDeleteTorrentWithData), t->name);
+    auto targets = targetTorrents();
+    if (targets.empty()) return;
+    std::string msg = (targets.size() == 1)
+        ? formatMessage(tr(Str::ConfirmDeleteTorrentWithData), targets[0]->name)
+        : formatMessage(tr(Str::ConfirmDeleteTorrentsWithDataMulti), std::to_string(targets.size()));
     if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
-    client_.removeTorrent(t->id, /*deleteLocalData=*/true);
+    for (const Torrent* t : targets) client_.removeTorrent(t->id, /*deleteLocalData=*/true);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::startNowSelected() {
-    if (const Torrent* t = selectedTorrent())
-        client_.startTorrentNow(t->id);
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.startTorrentNow(t->id);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::verifySelected() {
-    if (const Torrent* t = selectedTorrent())
-        client_.verifyTorrent(t->id);
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.verifyTorrent(t->id);
+    grid()->exitSelectionMode();
     refresh();
 }
 
 void TorrentListWindow::reannounceSelected() {
-    if (const Torrent* t = selectedTorrent())
-        client_.reannounceTorrent(t->id);
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.reannounceTorrent(t->id);
+    grid()->exitSelectionMode();
     refresh();
 }
 

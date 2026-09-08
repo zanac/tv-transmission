@@ -55,6 +55,8 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
             newLine() +
+            *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
+            newLine() +
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
             // Standard tvision commands: the main window can't be closed
@@ -435,6 +437,19 @@ void App::handleEvent(TEvent& event) {
             if (listWindow_) listWindow_->showFilesForSelected();
             clearEvent(event);
             break;
+        case cmSelectMultiple:
+            // A toggle, not a one-way "enter": the same menu item exits
+            // selection mode again if it's already active — enterSelectionMode()/
+            // exitSelectionMode() are both already safe no-ops in the
+            // wrong state, so there's nothing extra to guard here.
+            if (listWindow_) {
+                if (listWindow_->grid()->isInSelectionMode())
+                    listWindow_->grid()->exitSelectionMode();
+                else
+                    listWindow_->grid()->enterSelectionMode(listWindow_->grid()->focusedRow());
+            }
+            clearEvent(event);
+            break;
         case cmSettings:
             showSettingsDialog();
             clearEvent(event);
@@ -504,10 +519,19 @@ void App::shutDown() {
 void App::idle() {
     TApplication::idle();
     // Refresh on a real interval (settings_.refreshIntervalSeconds),
-    // no longer on every single event-loop tick.
+    // no longer on every single event-loop tick. Skipped entirely while
+    // selection mode is active (see TGridView::enterSelectionMode()):
+    // refresh() re-fetches and re-applies the current sort/filter, which
+    // can reorder visible_ — and TorrentListWindow::targetTorrents()
+    // maps a checked row straight to visible_[row], so a reorder while
+    // rows are checked would silently apply an action to the wrong
+    // torrent. Holding the list still until the user finishes selecting
+    // (or cancels) avoids that outright rather than trying to remap
+    // indices across a refresh.
+    bool selecting = listWindow_ && listWindow_->grid()->isInSelectionMode();
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastRefresh_).count();
-    if (elapsed >= settings_.refreshIntervalSeconds) {
+    if (!selecting && elapsed >= settings_.refreshIntervalSeconds) {
         if (listWindow_) listWindow_->refresh();
         lastRefresh_ = now;
     }

@@ -72,3 +72,4 @@ const ushort cmAbout            = 112;
 const ushort cmFilters          = 113;
 const ushort cmManageColumns    = 114;
 const ushort cmShowFiles        = 115;
+const ushort cmSelectMultiple   = 116;
