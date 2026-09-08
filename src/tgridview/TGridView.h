@@ -238,18 +238,22 @@ private:
     friend class TGridRowsView;
 
     void relayout(); // repositions header/rows/scrollbar after a bounds or column change
-    // Shows/hides hScrollBar_ (growing/shrinking rows_/scrollBar_ to
-    // match) if its current state doesn't match whether there's
-    // actually anything to scroll. Idempotent — safe to call on every
-    // relayout() *and* every draw(): tvision's own view-insertion
-    // machinery (TGroup::insertBefore()'s exposure cascade, tracing it
-    // down far enough wasn't worth doing further once a robust fix
-    // existed) can reset a child's own sfVisible flag independently of
-    // this widget's own hide()/show() calls, so relayout() alone isn't
-    // reliably enough — see TGridHeaderView::draw() calling this first,
-    // before actually drawing, so a visible glitch is corrected before
-    // it would ever reach the screen rather than only the next time
-    // something structural changes.
+    // Resizes rows_/scrollBar_ by exactly one row, in whichever
+    // direction hScrollBarRowReserved_ needs to change, and re-applies
+    // hScrollBar_'s own show()/hide() to match. Safe to call on every
+    // relayout() *and* every draw() (see TGridHeaderView::draw()
+    // calling this first, before actually drawing, so a visible glitch
+    // is corrected before it would ever reach the screen) BECAUSE the
+    // resize decision is driven entirely by hScrollBarRowReserved_, our
+    // own tracked flag — never by re-reading hScrollBar_->state, which
+    // tvision's own view-insertion machinery (TGroup::insertBefore()'s
+    // exposure cascade, most likely — tracing it down further wasn't
+    // worth it once this fix existed) can flip independently of this
+    // widget's own calls. The show()/hide() call is repeated
+    // unconditionally on every invocation, harmlessly, precisely so
+    // that repeated external interference keeps getting corrected
+    // visually WITHOUT ever re-triggering the resize a second time for
+    // the same already-handled transition.
     void updateHScrollBarVisibility();
     // Total width, in character columns, of every VISIBLE column plus
     // the single-character separators between them — what the
@@ -302,4 +306,20 @@ private:
     class TGridRowsView* rows_ = nullptr;
     class TScrollBar* scrollBar_ = nullptr;
     class TScrollBar* hScrollBar_ = nullptr;
+    // Whether rows_/scrollBar_ currently have their bottom row SHRUNK
+    // to make room for hScrollBar_ — the sole authority for whether
+    // updateHScrollBarVisibility() resizes them again. Starts true:
+    // the constructor's own initial rowsRect/scrollRect already assume
+    // the row is reserved (see TGridView::TGridView()), so this must
+    // match that from the outset — starting it false would make the
+    // very first correction shrink an already-shrunk rows_ by a second
+    // row instead of recognizing nothing has changed yet. Deliberately
+    // NEVER read from hScrollBar_->state itself: something outside
+    // this widget's own control can flip that independently (see
+    // updateHScrollBarVisibility()'s own doc comment), and driving a
+    // resize off a value that can silently disagree with reality would
+    // mean every redraw re-triggers the same "needs resizing" branch —
+    // growing (or shrinking) rows_ by another row every single time,
+    // unboundedly, rather than exactly once per actual transition.
+    bool hScrollBarRowReserved_ = true;
 };

@@ -767,21 +767,30 @@ void TGridView::updateHScrollBarVisibility() {
     if (!hScrollBar_) return;
     int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
     bool needed = maxOffset > 0;
-    bool currentlyVisible = (hScrollBar_->state & sfVisible) != 0;
-    if (needed == currentlyVisible) return;
-    TRect rowsBounds = rows_->getBounds();
-    TRect vScrollBounds = scrollBar_->getBounds();
-    if (needed) {
-        rowsBounds.b.y -= 1;
-        vScrollBounds.b.y -= 1;
-        hScrollBar_->show();
-    } else {
-        rowsBounds.b.y += 1;
-        vScrollBounds.b.y += 1;
-        hScrollBar_->hide();
+    // The resize itself only ever runs once per actual transition,
+    // guarded by our own tracked flag — never by re-reading
+    // hScrollBar_->state (see this method's own doc comment for why
+    // that would cause an unbounded, repeated resize instead).
+    if (needed != hScrollBarRowReserved_) {
+        TRect rowsBounds = rows_->getBounds();
+        TRect vScrollBounds = scrollBar_->getBounds();
+        if (needed) {
+            rowsBounds.b.y -= 1;
+            vScrollBounds.b.y -= 1;
+        } else {
+            rowsBounds.b.y += 1;
+            vScrollBounds.b.y += 1;
+        }
+        rows_->changeBounds(rowsBounds);
+        scrollBar_->changeBounds(vScrollBounds);
+        hScrollBarRowReserved_ = needed;
     }
-    rows_->changeBounds(rowsBounds);
-    scrollBar_->changeBounds(vScrollBounds);
+    // Repeated unconditionally, every call — cheap, and harmless even
+    // when nothing changed — so that whatever else might have flipped
+    // hScrollBar_'s own visible/hidden appearance gets corrected every
+    // time, without that correction ever feeding back into the resize
+    // decision above.
+    if (hScrollBarRowReserved_) hScrollBar_->show(); else hScrollBar_->hide();
 }
 
 void TGridView::relayout() {
