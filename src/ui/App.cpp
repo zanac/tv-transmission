@@ -54,6 +54,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
             newLine() +
