@@ -127,6 +127,14 @@ public:
     }
 
     void draw() override {
+        // Corrected here, not only in relayout(), because tvision's own
+        // view-insertion machinery can flip a child's visibility state
+        // independently of this widget's own hide()/show() calls (see
+        // updateHScrollBarVisibility()'s own doc comment) — checking
+        // again right before every draw catches that before it would
+        // ever actually reach the screen.
+        owner_->updateHScrollBarVisibility();
+
         TDrawBuffer b;
         TColorAttr color = getColor(1);
         b.moveChar(0, ' ', color, size.x);
@@ -755,6 +763,27 @@ int TGridView::horizontalScrollOffset() const {
     return hScrollBar_ ? hScrollBar_->value : 0;
 }
 
+void TGridView::updateHScrollBarVisibility() {
+    if (!hScrollBar_) return;
+    int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
+    bool needed = maxOffset > 0;
+    bool currentlyVisible = (hScrollBar_->state & sfVisible) != 0;
+    if (needed == currentlyVisible) return;
+    TRect rowsBounds = rows_->getBounds();
+    TRect vScrollBounds = scrollBar_->getBounds();
+    if (needed) {
+        rowsBounds.b.y -= 1;
+        vScrollBounds.b.y -= 1;
+        hScrollBar_->show();
+    } else {
+        rowsBounds.b.y += 1;
+        vScrollBounds.b.y += 1;
+        hScrollBar_->hide();
+    }
+    rows_->changeBounds(rowsBounds);
+    scrollBar_->changeBounds(vScrollBounds);
+}
+
 void TGridView::relayout() {
     if (hScrollBar_) {
         // Range is how far content extends past the visible width — 0
@@ -775,27 +804,8 @@ void TGridView::relayout() {
         // Hidden — and its row handed back to the rows/vertical-
         // scrollbar area — whenever there's nothing to scroll, rather
         // than always reserving a row for a control that would do
-        // nothing. Toggled here (every relayout(), so on every column
-        // add/remove/resize/reorder/show-hide) rather than left for the
-        // caller to manage, the same way the vertical scrollbar's own
-        // range already updates itself without anyone asking.
-        bool needed = maxOffset > 0;
-        bool currentlyVisible = (hScrollBar_->state & sfVisible) != 0;
-        if (needed != currentlyVisible) {
-            TRect rowsBounds = rows_->getBounds();
-            TRect vScrollBounds = scrollBar_->getBounds();
-            if (needed) {
-                rowsBounds.b.y -= 1;
-                vScrollBounds.b.y -= 1;
-                hScrollBar_->show();
-            } else {
-                rowsBounds.b.y += 1;
-                vScrollBounds.b.y += 1;
-                hScrollBar_->hide();
-            }
-            rows_->changeBounds(rowsBounds);
-            scrollBar_->changeBounds(vScrollBounds);
-        }
+        // nothing.
+        updateHScrollBarVisibility();
     }
     header_->drawView();
     rows_->drawView();

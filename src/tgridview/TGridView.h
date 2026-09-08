@@ -238,6 +238,19 @@ private:
     friend class TGridRowsView;
 
     void relayout(); // repositions header/rows/scrollbar after a bounds or column change
+    // Shows/hides hScrollBar_ (growing/shrinking rows_/scrollBar_ to
+    // match) if its current state doesn't match whether there's
+    // actually anything to scroll. Idempotent — safe to call on every
+    // relayout() *and* every draw(): tvision's own view-insertion
+    // machinery (TGroup::insertBefore()'s exposure cascade, tracing it
+    // down far enough wasn't worth doing further once a robust fix
+    // existed) can reset a child's own sfVisible flag independently of
+    // this widget's own hide()/show() calls, so relayout() alone isn't
+    // reliably enough — see TGridHeaderView::draw() calling this first,
+    // before actually drawing, so a visible glitch is corrected before
+    // it would ever reach the screen rather than only the next time
+    // something structural changes.
+    void updateHScrollBarVisibility();
     // Total width, in character columns, of every VISIBLE column plus
     // the single-character separators between them — what the
     // horizontal scrollbar's range is computed from in relayout().
