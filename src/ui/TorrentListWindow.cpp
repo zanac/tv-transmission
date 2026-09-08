@@ -577,67 +577,86 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
 }
 
 void TorrentListWindow::showDetailsForSelected() {
-    const Torrent* t = selectedTorrent();
-    if (!t) return;
-    int id = t->id; // copy before any refresh() invalidates the pointer below
+    auto targets = targetTorrents();
+    if (targets.empty()) return;
+    // Copied before the loop below: getTorrentDetails()/refresh() calls
+    // partway through could otherwise invalidate the Torrent* pointers
+    // targetTorrents() returned (they point into visible_).
+    std::vector<int> ids;
+    for (const Torrent* t : targets) ids.push_back(t->id);
 
-    // Look for an already-open details window for this same torrent id
-    // before creating a new one — same deskTop->last/next traversal
-    // already used for the "Window list" dialog (see App.cpp). Order
-    // doesn't matter here either: we're searching for a specific id, not
-    // relying on position.
     TDeskTop* deskTop = TProgram::deskTop;
-    if (deskTop->last) {
-        TView* p = deskTop->last;
-        do {
-            p = p->next;
-            if (auto* existing = dynamic_cast<TorrentDetailsWindow*>(p)) {
-                if (existing->torrentId() == id) {
-                    existing->select(); // bring the existing one to front instead
-                    return;
+    for (int id : ids) {
+        // Look for an already-open details window for this same torrent
+        // id before creating a new one — same deskTop->last/next
+        // traversal already used for the "Window list" dialog (see
+        // App.cpp). Order doesn't matter here either: we're searching
+        // for a specific id, not relying on position.
+        bool foundExisting = false;
+        if (deskTop->last) {
+            TView* p = deskTop->last;
+            do {
+                p = p->next;
+                if (auto* existing = dynamic_cast<TorrentDetailsWindow*>(p)) {
+                    if (existing->torrentId() == id) {
+                        existing->select(); // bring the existing one to front instead
+                        foundExisting = true;
+                        break;
+                    }
                 }
-            }
-        } while (p != deskTop->last);
-    }
+            } while (p != deskTop->last);
+        }
+        if (foundExisting) continue;
 
-    // The main list only carries listTorrents()'s lightweight fields
-    // (see TransmissionClient.h) — the details window needs more
-    // (location, privacy, magnet link, piece info, all-time transfer
-    // totals, activity/elapsed-time fields), fetched here on demand
-    // rather than on every periodic refresh.
-    Torrent details = client_.getTorrentDetails(id);
-    if (auto* win = createTorrentDetailsWindow(details, client_,
-                                                initialTrackerColumnWidths_,
-                                                initialTrackerColumnOrder_,
-                                                initialTrackerColumnVisible_))
-        TProgram::application->insertWindow(win);
+        // The main list only carries listTorrents()'s lightweight fields
+        // (see TransmissionClient.h) — the details window needs more
+        // (location, privacy, magnet link, piece info, all-time transfer
+        // totals, activity/elapsed-time fields), fetched here on demand
+        // rather than on every periodic refresh.
+        Torrent details = client_.getTorrentDetails(id);
+        if (auto* win = createTorrentDetailsWindow(details, client_,
+                                                    initialTrackerColumnWidths_,
+                                                    initialTrackerColumnOrder_,
+                                                    initialTrackerColumnVisible_))
+            TProgram::application->insertWindow(win);
+    }
+    grid()->exitSelectionMode();
 }
 
 void TorrentListWindow::showFilesForSelected() {
-    const Torrent* t = selectedTorrent();
-    if (!t) return;
-    int id = t->id;
-    std::string name = t->name; // copied before any refresh() invalidates the pointer above
+    auto targets = targetTorrents();
+    if (targets.empty()) return;
+    // Copied before the loop below for the same reason
+    // showDetailsForSelected() does: names/ids point into visible_,
+    // which a refresh() partway through the loop could invalidate.
+    std::vector<std::pair<int, std::string>> idsAndNames;
+    for (const Torrent* t : targets) idsAndNames.emplace_back(t->id, t->name);
 
-    // Same "find an already-open one for this torrent id" check as
-    // showDetailsForSelected() above, for the same reason: bring the
-    // existing files window to front instead of opening a duplicate.
     TDeskTop* deskTop = TProgram::deskTop;
-    if (deskTop->last) {
-        TView* p = deskTop->last;
-        do {
-            p = p->next;
-            if (auto* existing = dynamic_cast<TorrentFilesWindow*>(p)) {
-                if (existing->torrentId() == id) {
-                    existing->select();
-                    return;
+    for (const auto& [id, name] : idsAndNames) {
+        // Same "find an already-open one for this torrent id" check as
+        // showDetailsForSelected() above, for the same reason: bring the
+        // existing files window to front instead of opening a duplicate.
+        bool foundExisting = false;
+        if (deskTop->last) {
+            TView* p = deskTop->last;
+            do {
+                p = p->next;
+                if (auto* existing = dynamic_cast<TorrentFilesWindow*>(p)) {
+                    if (existing->torrentId() == id) {
+                        existing->select();
+                        foundExisting = true;
+                        break;
+                    }
                 }
-            }
-        } while (p != deskTop->last);
-    }
+            } while (p != deskTop->last);
+        }
+        if (foundExisting) continue;
 
-    if (auto* win = createTorrentFilesWindow(id, name, client_))
-        TProgram::application->insertWindow(win);
+        if (auto* win = createTorrentFilesWindow(id, name, client_))
+            TProgram::application->insertWindow(win);
+    }
+    grid()->exitSelectionMode();
 }
 
 void TorrentListWindow::startSelected() {
