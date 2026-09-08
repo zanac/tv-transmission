@@ -289,6 +289,14 @@ void App::showColumnManagerDialog() {
         // for why.
         execView(dlg);
         destroy(dlg);
+        // Forces `grid` to redraw now that the dialog covering it is
+        // actually gone — belt-and-suspenders alongside TGridView's own
+        // draw()-time self-correction (see its header comment on
+        // updateHScrollBarVisibility()) for the same reason: whatever
+        // changed while covered (a column shown/hidden, most commonly)
+        // should be reflected the instant this window is visible again,
+        // not only whenever its next unrelated redraw happens to occur.
+        grid->refresh();
         // Persisted here as a natural "done editing" point, same
         // reasoning as App::shutDown() persisting these on exit — the
         // user might not close the app again for a while after this.

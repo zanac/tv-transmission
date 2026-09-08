@@ -173,6 +173,14 @@ TDialog* createColumnManagerDialog(TGridView* target, const TGridColumnManagerLa
     dlg->insert(new TButton(TRect(2, 24, 14, 26), labels.resetButton.c_str(), cmColMgrReset, bfNormal));
     dlg->insert(new TButton(TRect(37, 24, 47, 26), labels.closeButton.c_str(), cmCancel, bfDefault));
 
-    dlg->selectNext(False);
+    // Focuses the meta-grid explicitly rather than via selectNext(),
+    // which is a no-op unless something is already the dialog's
+    // current view — leaving initial focus on whichever view insert()
+    // happened to leave selected (unpredictable, and not necessarily
+    // the meta-grid at all), which would leave keyboard-first
+    // interaction — arrow keys to move between rows, Enter to
+    // toggle — landing nowhere useful until the user first clicks
+    // something themselves.
+    dlg->metaGrid->select();
     return dlg;
 }
