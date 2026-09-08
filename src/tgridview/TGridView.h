@@ -223,13 +223,25 @@ public:
     void focusRow(int row);
     int rowCount() const { return rowCount_; }
 
-    void handleEvent(TEvent& event) override; // catches double-click from the rows view
+    // How many character columns of content are currently scrolled off
+    // the left edge — 0 until there are more visible columns than fit
+    // in the view and the user drags/clicks the horizontal scrollbar.
+    // Read by the header and rows views to know where to start drawing
+    // from; not meant to be set directly (drive the scrollbar itself,
+    // via mouse/keyboard — same as the vertical one).
+    int horizontalScrollOffset() const;
+
+    void handleEvent(TEvent& event) override; // catches double-click from the rows view, and the horizontal scrollbar's own broadcast
 
 private:
     friend class TGridHeaderView;
     friend class TGridRowsView;
 
     void relayout(); // repositions header/rows/scrollbar after a bounds or column change
+    // Total width, in character columns, of every VISIBLE column plus
+    // the single-character separators between them — what the
+    // horizontal scrollbar's range is computed from in relayout().
+    int totalContentWidth() const;
     int visualPositionOf(int logicalCol) const; // position within displayOrder_, -1 if not found
     // Position within the VISIBLE-only subset of displayOrder_ (what
     // every visual operation — drawing, hit-testing, reorder — actually
@@ -242,10 +254,12 @@ private:
     // (keyboard) entry points — see the big comment on
     // gvReorderableColumns for why one loop handles both input methods.
     void runReorderLoop(int startVisualPos);
-    // x is in TGridHeaderView's local coordinates. Returns -1 for a
-    // click on the "<" marker, +1 for ">", 0 for anywhere else within
-    // the currently-highlighted column's own span, or -2 for a click
-    // outside it entirely. Used only while reorderVisualPos_ >= 0.
+    // x is CONTENT-relative (see TGridHeaderView::handleEvent()'s own
+    // conversion from screen-relative local.x, which accounts for
+    // horizontal scrolling). Returns -1 for a click on the "<" marker,
+    // +1 for ">", 0 for anywhere else within the currently-highlighted
+    // column's own span, or -2 for a click outside it entirely. Used
+    // only while reorderVisualPos_ >= 0.
     int reorderArrowHitTest(int x) const;
 
     std::vector<TGridColumn> columns_;
@@ -274,4 +288,5 @@ private:
     class TGridHeaderView* header_ = nullptr;
     class TGridRowsView* rows_ = nullptr;
     class TScrollBar* scrollBar_ = nullptr;
+    class TScrollBar* hScrollBar_ = nullptr;
 };

@@ -18,8 +18,8 @@ struct TGridColumnManagerLabels {
     std::string columnHeader = "Column";
     std::string widthHeader = "Width";
     std::string visibleHeader = "Visible";
-    std::string yes = "Yes";
-    std::string no = "No";
+    std::string yes = "[X]";
+    std::string no = "[ ]";
     std::string resizeButton = "Resize";
     std::string moveButton = "Move";
     std::string toggleVisibleButton = "Toggle visible";

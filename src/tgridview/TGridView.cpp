@@ -37,6 +37,18 @@ std::string truncateUtf8(const std::string& s, int maxWidth) {
     return s.substr(0, starts[maxWidth]);
 }
 
+// Drops the first `n` display columns' worth of characters — the
+// left-edge counterpart to truncateUtf8() above, used when horizontal
+// scrolling has pushed part of a cell's text off the left of the view.
+// Codepoint-aware for the same reason truncateUtf8() is: an indent
+// counted in raw bytes could land mid-character on non-ASCII content.
+std::string skipLeadingUtf8(const std::string& s, int n) {
+    if (n <= 0) return s;
+    auto starts = codepointStarts(s);
+    if (n >= (int)starts.size()) return "";
+    return s.substr(starts[n]);
+}
+
 // Pads/truncates to exactly `width` columns, aligned as requested.
 std::string fitToWidth(const std::string& s, int width, TGridColumn::Align align) {
     if (width <= 0) return "";
@@ -49,6 +61,29 @@ std::string fitToWidth(const std::string& s, int width, TGridColumn::Align align
 }
 
 constexpr int kSeparatorWidth = 1; // one character between adjacent columns
+
+// Draws `text` (already fitted to exactly `width` display columns) at
+// CONTENT-relative position `contentX`, translating it into the actual
+// on-screen indent by subtracting the current horizontal scroll
+// `offset`. Skipped entirely if fully scrolled past; left-clipped
+// (never handing TDrawBuffer a negative indent — its `indent` parameter
+// is a `ushort`, which can't represent one, and would silently wrap
+// into a huge value instead) if only partially scrolled past; drawn
+// normally otherwise. The right edge needs no equivalent handling:
+// TDrawBuffer's own fixed-size buffer already clips anything past
+// `size.x` safely — the same reason columns beyond the visible width
+// simply didn't appear at all before this widget had any horizontal
+// scrolling.
+void drawScrolled(TDrawBuffer& b, int contentX, int width, const std::string& text,
+                   int offset, TColorAttr color) {
+    int screenX = contentX - offset;
+    if (screenX + width <= 0) return; // fully scrolled past
+    if (screenX < 0) {
+        b.moveStr(0, skipLeadingUtf8(text, -screenX).c_str(), color);
+    } else {
+        b.moveStr((ushort)screenX, text.c_str(), color);
+    }
+}
 
 } // namespace
 
@@ -95,7 +130,8 @@ public:
         TDrawBuffer b;
         TColorAttr color = getColor(1);
         b.moveChar(0, ' ', color, size.x);
-        int x = 0;
+        int offset = owner_->horizontalScrollOffset();
+        int x = 0; // CONTENT-relative (before the scroll offset is applied) — see drawScrolled()
         auto vis = owner_->visibleDisplayOrder();
         int n = (int)vis.size();
         for (int visualPos = 0; visualPos < n; visualPos++) {
@@ -140,14 +176,16 @@ public:
                 cellText = fitToWidth(col.header, col.width, col.align);
             }
 
-            x += b.moveStr(x, cellText.c_str(), color);
+            drawScrolled(b, x, col.width, cellText, offset, color);
+            x += col.width;
             if (visualPos < n - 1) {
                 // The separator doubles as the resize handle's visual
                 // cue when resizing is enabled — "│" makes the grabbable
                 // boundary visible instead of it being an invisible gap
                 // the user has to guess at.
                 const char* sep = (owner_->options_ & gvResizableColumns) ? "\xE2\x94\x82" /* │ */ : " ";
-                x += b.moveStr(x, sep, color);
+                drawScrolled(b, x, kSeparatorWidth, sep, offset, color);
+                x += kSeparatorWidth;
             }
         }
         writeLine(0, 0, size.x, 1, b);
@@ -155,6 +193,9 @@ public:
         // Second row: a plain "=" rule, full width, in the same header
         // color — separates the column labels from the actual data
         // rows below, the way a printed table's header rule would.
+        // Not affected by horizontal scrolling — a rule line looks the
+        // same regardless of what's scrolled into view above it, so
+        // there's nothing to shift here.
         TDrawBuffer ruleLine;
         ruleLine.moveChar(0, '=', color, size.x);
         writeLine(0, 1, size.x, 1, ruleLine);
@@ -171,8 +212,15 @@ public:
         // column happens to occupy that x position.
         if (local.y != 0) return;
 
+        // Every hit-test below works in CONTENT-relative x (the same
+        // coordinate space draw() builds cellText positions in, before
+        // horizontal scrolling shifts them on screen) — converting once
+        // here means columnAtX()/isOnSortGlyph()/etc. don't need to
+        // know scrolling exists at all.
+        int contentX = local.x + owner_->horizontalScrollOffset();
+
         auto vis = owner_->visibleDisplayOrder();
-        int visualPos = columnAtX(local.x, vis);
+        int visualPos = columnAtX(contentX, vis);
 
         // The sort glyph has its own fixed, single-character hotspot
         // (the column's last character — see draw() above), checked
@@ -189,7 +237,7 @@ public:
         // glyph with the "<"/">" markers there instead.
         if (visualPos >= 0 && visualPos != owner_->reorderVisualPos_) {
             int logicalCol = vis[visualPos];
-            if (owner_->column(logicalCol).sortable && isOnSortGlyph(local.x, visualPos, vis)) {
+            if (owner_->column(logicalCol).sortable && isOnSortGlyph(contentX, visualPos, vis)) {
                 bool ascending = (logicalCol == owner_->sortColumn_) ? !owner_->sortAscending_ : true;
                 owner_->setSortIndicator(logicalCol, ascending);
                 if (owner_->onSortChanged_) owner_->onSortChanged_(logicalCol, ascending);
@@ -208,7 +256,7 @@ public:
             }
         }
 
-        if ((owner_->options_ & gvResizableColumns) && isOnSeparator(local.x, visualPos, vis)) {
+        if ((owner_->options_ & gvResizableColumns) && isOnSeparator(contentX, visualPos, vis)) {
             dragResize(vis[visualPos], event);
             clearEvent(event);
             return;
@@ -278,8 +326,8 @@ private:
 // ===========================================================================
 class TGridRowsView : public TListViewer {
 public:
-    TGridRowsView(const TRect& r, TScrollBar* vScroll, TGridView* owner)
-        : TListViewer(r, 1, nullptr, vScroll), owner_(owner) {
+    TGridRowsView(const TRect& r, TScrollBar* hScroll, TScrollBar* vScroll, TGridView* owner)
+        : TListViewer(r, 1, hScroll, vScroll), owner_(owner) {
         setRange(0);
     }
 
@@ -314,7 +362,8 @@ public:
                 : TColorAttr(isFocused ? getColor(2) : getColor(1));
             b.moveChar(0, ' ', rowColor, size.x);
             if (item >= 0 && item < owner_->rowCount_) {
-                int x = 0;
+                int offset = owner_->horizontalScrollOffset();
+                int x = 0; // CONTENT-relative — see drawScrolled()
                 int n = (int)vis.size();
                 for (int visualPos = 0; visualPos < n; visualPos++) {
                     int logicalCol = vis[visualPos];
@@ -331,8 +380,12 @@ public:
                         cellColor = TColorAttr(cellColor.getForeground(), cellColor.getBackground(),
                                                 cellColor.getStyle() | slBold);
                     }
-                    x += b.moveStr(x, fitted.c_str(), cellColor);
-                    if (visualPos < n - 1) x += b.moveStr(x, " ", rowColor);
+                    drawScrolled(b, x, col.width, fitted, offset, cellColor);
+                    x += col.width;
+                    if (visualPos < n - 1) {
+                        drawScrolled(b, x, kSeparatorWidth, " ", offset, rowColor);
+                        x += kSeparatorWidth;
+                    }
                 }
             }
             writeLine(0, i, size.x, 1, b);
@@ -386,18 +439,32 @@ TGridView::TGridView(const TRect& bounds, ushort options)
     TRect r = getExtent();
 
     // The header is 2 rows tall: column labels on the first, a full
-    // "=" rule line on the second — see TGridHeaderView::draw() — so
-    // everything below it (the scrollbar and the rows) starts one row
-    // further down than before.
+    // "=" rule line on the second — see TGridHeaderView::draw() — and
+    // the bottom row is reserved for the horizontal scrollbar, so the
+    // rows/vertical-scrollbar area sits between the two.
     TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 2);
-    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y);
-    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y);
+    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y - 1);
+    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y - 1);
+    TRect hScrollRect(r.a.x, r.b.y - 1, r.b.x - 1, r.b.y);
 
     scrollBar_ = new TScrollBar(scrollRect);
     scrollBar_->growMode = gfGrowLoX | gfGrowHiX | gfGrowHiY;
     insert(scrollBar_);
 
-    rows_ = new TGridRowsView(rowsRect, scrollBar_, this);
+    // A TScrollBar infers horizontal-vs-vertical from its own bounds'
+    // shape (wider than tall here, the opposite of scrollBar_ above) —
+    // see tvision's own TScrollBar constructor. Passed straight into
+    // TGridRowsView's TListViewer base below, whose own inherited
+    // handleEvent() already reacts to this specific scrollbar changing
+    // (see tlstview.cpp) and redraws the rows on its own; TGridView's
+    // own handleEvent() (further down) does the same for the header,
+    // which — unlike the rows — isn't a TListViewer and has no such
+    // built-in reaction of its own.
+    hScrollBar_ = new TScrollBar(hScrollRect);
+    hScrollBar_->growMode = gfGrowLoY | gfGrowHiY | gfGrowHiX;
+    insert(hScrollBar_);
+
+    rows_ = new TGridRowsView(rowsRect, hScrollBar_, scrollBar_, this);
     rows_->growMode = gfGrowHiX | gfGrowHiY;
     insert(rows_);
 
@@ -616,7 +683,8 @@ void TGridView::runReorderLoop(int startVisualPos) {
             }
         } else if (event.what == evMouseDown) {
             TPoint local = header_->makeLocal(event.mouse.where);
-            int hit = reorderArrowHitTest(local.x);
+            int contentX = local.x + horizontalScrollOffset();
+            int hit = reorderArrowHitTest(contentX);
             auto vis = visibleDisplayOrder();
             if (hit == -1 && reorderVisualPos_ > 0) {
                 swapVisibleNeighbors(reorderVisualPos_, reorderVisualPos_ - 1);
@@ -673,7 +741,35 @@ int TGridView::focusedRow() const { return rows_->focused; }
 
 void TGridView::focusRow(int row) { rows_->focusItem((short)row); }
 
+int TGridView::totalContentWidth() const {
+    int total = 0;
+    auto vis = visibleDisplayOrder();
+    for (size_t i = 0; i < vis.size(); i++) {
+        total += columns_[vis[i]].width;
+        if (i + 1 < vis.size()) total += kSeparatorWidth;
+    }
+    return total;
+}
+
+int TGridView::horizontalScrollOffset() const {
+    return hScrollBar_ ? hScrollBar_->value : 0;
+}
+
 void TGridView::relayout() {
+    if (hScrollBar_) {
+        // Range is how far content extends past the visible width — 0
+        // (nothing to scroll) once every column fits, same idea as the
+        // vertical scrollbar's own range being 0 when every row fits.
+        // rows_'s own width (not header_'s) is the actual viewport,
+        // since both are the same width by construction this is just
+        // whichever's convenient to read here.
+        int maxOffset = std::max(0, totalContentWidth() - rows_->size.x);
+        // A drag/click already past the new maximum (e.g. after
+        // widening a column back down) needs pulling back in bounds —
+        // setRange() alone doesn't clamp an out-of-range current value.
+        if (hScrollBar_->value > maxOffset) hScrollBar_->setValue(maxOffset);
+        hScrollBar_->setRange(0, maxOffset);
+    }
     header_->drawView();
     rows_->drawView();
 }
@@ -687,5 +783,16 @@ void TGridView::handleEvent(TEvent& event) {
         event.message.infoPtr == rows_) {
         if (onRowActivate_) onRowActivate_(rows_->focused);
         clearEvent(event);
+    }
+    // rows_ (a TListViewer) already reacts to this on its own for
+    // hScrollBar_ (see its own inherited handleEvent() in tlstview.cpp)
+    // — this is only for header_, which isn't a TListViewer and has no
+    // such built-in reaction, but still needs to redraw in sync so its
+    // column labels stay lined up with whatever the rows just scrolled
+    // to.
+    if (event.what == evBroadcast &&
+        event.message.command == cmScrollBarChanged &&
+        event.message.infoPtr == hScrollBar_) {
+        header_->drawView();
     }
 }

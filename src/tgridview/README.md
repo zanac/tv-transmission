@@ -227,6 +227,36 @@ glyph or a reorder marker one row up. No option to turn the rule line
 off currently; it's a small enough cosmetic default that it didn't seem
 worth one.
 
+**Horizontal scrolling** appears automatically once the visible
+columns' total width exceeds the view — a second `TScrollBar` along the
+bottom, the header and the rows both reading a shared offset from it
+when they draw. The two have to stay in sync (the header's labels would
+stop lining up with the rows' data the moment either scrolled
+independently of the other): the rows are a `TListViewer`, which
+already reacts to its own horizontal scrollbar changing and redraws
+itself — that's free — but the header isn't one, so `TGridView`'s own
+`handleEvent()` catches the same `cmScrollBarChanged` broadcast and
+redraws it too. Every existing hit-test (`columnAtX()`, the sort glyph,
+the resize separator, the reorder markers) already worked in *content*-
+relative coordinates rather than screen-relative ones, so none of them
+needed touching — only one conversion, from the mouse's screen-relative
+position to content-relative, added once at the top of the header's
+`handleEvent()`.
+
+The one genuinely fiddly part was the left edge. The right edge already
+clips safely on its own — `TDrawBuffer`'s fixed-size buffer just
+truncates whatever doesn't fit, the same reason extra columns used to
+silently not appear at all before this widget could scroll — but the
+left edge can't use the same trick, because `TDrawBuffer::moveStr()`'s
+indent parameter is a `ushort`, which has no way to represent a
+negative position for a column partially scrolled past. Clipping the
+*string* instead of the position sidesteps that: `skipLeadingUtf8()` (a
+codepoint-aware mirror of the `truncateUtf8()` already used for the
+right edge, for the same reason — a byte-based clip could land
+mid-character on non-ASCII content) drops however many leading display
+columns have scrolled off, and the shortened text is drawn starting at
+indent 0 instead.
+
 **Two ways to host it**: `TGridView` is a normal `TView` (a `TGroup`,
 specifically) and can be `insert()`-ed into any window you already
 have. `TGridWindow` exists only because "a window with nothing but a
@@ -260,10 +290,6 @@ before calling `createColumnManagerDialog()`.
 
 ## What this does *not* do (yet)
 
-- **Horizontal scrolling.** If columns' total width exceeds the view,
-  content past the right edge is clipped rather than scrolled into
-  view. Fine for a handful of columns at reasonable widths; would need
-  work for a genuinely wide table.
 - **Per-cell custom widgets** (buttons, checkboxes inside a cell) —
   cells are text only, optionally bold (`setCellBoldCallback`) and
   optionally colored per row (`setRowColorCallback`), not per cell.
@@ -326,4 +352,20 @@ from the real grid (not a stale local copy), that custom
 English defaults apply cleanly when they're not, and that its own
 Reset button, triggered through the dialog's normal command dispatch
 rather than calling `resetColumns()` directly, produces the same
-restored values on the underlying grid.
+restored values on the underlying grid. Its "Visible" marker showing
+`[X]`/`[ ]` and a double-click on a row toggling it are both checked
+directly too, including that a *second* double-click flips it back —
+a real toggle, not a one-way action.
+
+Horizontal scrolling is verified beyond "it visibly looks scrolled":
+the computed range is exactly zero once every column already fits (no
+behavior change for the common case) and the exact expected non-zero
+value once content exceeds the view; a real running instance, captured
+off an actual rendered terminal screen, shows the header and rows
+staying character-for-character in sync as the offset changes, with a
+multi-byte UTF-8 label correctly clipped mid-string at the left edge
+rather than corrupted or crashing. The check that matters most,
+though, isn't that anything *looks* right — it's that after scrolling,
+a click at the position where a column's sort glyph now sits actually
+sorts *that* column, confirmed by which column index the sort callback
+receives, not just that a click did something.

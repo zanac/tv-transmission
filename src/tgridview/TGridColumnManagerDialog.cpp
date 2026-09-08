@@ -47,6 +47,18 @@ public:
     TGridView* target() const { return target_; }
     const TGridColumnManagerLabels& labels() const { return labels_; }
 
+    // Public (not private, like the other do*() actions below) so
+    // double-clicking a row — wired via setRowActivateCallback() in
+    // createColumnManagerDialog(), outside this class — can trigger the
+    // exact same toggle the "Toggle visible" button does, rather than
+    // duplicating its logic.
+    void doToggle() {
+        int col = focusedLogicalCol();
+        if (col < 0) return;
+        target_->setColumnVisible(col, !target_->isColumnVisible(col));
+        refreshRows();
+    }
+
 private:
     int focusedLogicalCol() const {
         int row = metaGrid->focusedRow();
@@ -73,13 +85,6 @@ private:
         for (int i = 0; i < (int)rowToLogicalCol.size(); i++) {
             if (rowToLogicalCol[i] == col) { metaGrid->focusRow(i); break; }
         }
-    }
-
-    void doToggle() {
-        int col = focusedLogicalCol();
-        if (col < 0) return;
-        target_->setColumnVisible(col, !target_->isColumnVisible(col));
-        refreshRows();
     }
 
     void doReset() {
@@ -155,6 +160,11 @@ TDialog* createColumnManagerDialog(TGridView* target, const TGridColumnManagerLa
     dlg->metaGrid->setRowColorCallback([](int, bool focused) -> TColorAttr {
         return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
     });
+    // Double-click a row: same action as the "Toggle visible" button —
+    // TListViewer's own double-click/Enter broadcast (see TGridView's
+    // setRowActivateCallback() doc comment), so there's no need to
+    // reach for the button for the single most common thing to do here.
+    dlg->metaGrid->setRowActivateCallback([dlg](int) { dlg->doToggle(); });
     dlg->refreshRows();
 
     dlg->insert(new TButton(TRect(2, 21, 14, 23), labels.resizeButton.c_str(), cmColMgrResize, bfNormal));

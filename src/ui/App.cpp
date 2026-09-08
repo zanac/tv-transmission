@@ -272,8 +272,9 @@ void App::showColumnManagerDialog() {
     labels.columnHeader = tr(Str::LabelColumnManagerColumn);
     labels.widthHeader = tr(Str::LabelColumnManagerWidth);
     labels.visibleHeader = tr(Str::LabelColumnManagerVisible);
-    labels.yes = tr(Str::ValueYes);
-    labels.no = tr(Str::ValueNo);
+    // labels.yes/labels.no left at their defaults ("[X]"/"[ ]") — a
+    // checkbox glyph doesn't need translating the way the rest of this
+    // does.
     labels.resizeButton = tr(Str::ButtonResizeColumn);
     labels.moveButton = tr(Str::ButtonMoveColumn);
     labels.toggleVisibleButton = tr(Str::ButtonToggleVisible);
