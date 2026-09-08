@@ -128,6 +128,16 @@ TrackerListWindow::TrackerListWindow(const TRect& bounds, TStringView title,
         return "";
     });
     grid_->setRowActivateCallback([this](int) { showDetailForSelected(); });
+    // Without this, the focused-row/other-rows distinction relies
+    // entirely on TListViewer's own default palette colors (see
+    // TGridRowsView::draw()'s fallback in TGridView.cpp) — which,
+    // inside a TDialog, don't contrast enough to actually notice which
+    // row is focused. Same fixed black-on-white-when-focused look
+    // already used for the main torrent list and the column manager's
+    // own meta-grid, for the same reason.
+    grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
+        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
 
     // "Columns..." is no longer a button here — it's now the single,
     // focus-aware "Manage columns..." menu entry (see App::

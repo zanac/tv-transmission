@@ -145,6 +145,16 @@ TDialog* createColumnManagerDialog(TGridView* target, const TGridColumnManagerLa
         }
         return "";
     });
+    // Without this, the focused-row/other-rows distinction relies
+    // entirely on TListViewer's own default palette colors (see
+    // TGridRowsView::draw()'s fallback in TGridView.cpp) — which,
+    // inside a TDialog, don't contrast enough to actually notice which
+    // row is focused. Fixed black-on-white-when-focused instead, so
+    // this is guaranteed visible regardless of whatever palette the
+    // host dialog resolves colors 1/2 to.
+    dlg->metaGrid->setRowColorCallback([](int, bool focused) -> TColorAttr {
+        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
     dlg->refreshRows();
 
     dlg->insert(new TButton(TRect(2, 21, 14, 23), labels.resizeButton.c_str(), cmColMgrResize, bfNormal));
