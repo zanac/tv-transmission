@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <map>
 
 // UI language. English is the default; the numeric value (0, 1, ...)
 // matches the order of entries in the language combo box in
@@ -61,13 +62,44 @@ struct TorrentFilter {
     }
 };
 
-// Settings the user can configure from the Settings window.
-struct AppSettings {
-    int refreshIntervalSeconds = 5; // first option in the settings window
+// One server's own connection details, under whatever logical name the
+// user gave it in the Connection dialog's server combo (see
+// AppSettings::servers below) — e.g. "home", "seedbox". First step
+// toward managing more than one server: for now, exactly one of these
+// is ever actually connected to at a time (see AppSettings::
+// activeServer) — a later step is expected to let more than one be
+// active simultaneously.
+struct ServerProfile {
     std::string host = "127.0.0.1";
     int port = 9091;
     std::string user;
     std::string password;
+};
+
+// Settings the user can configure from the Connection/Server windows.
+struct AppSettings {
+    int refreshIntervalSeconds = 5; // first option in the Connection window
+
+    // Every server the user has ever named via the Connection dialog's
+    // server combo, keyed by that logical name — added/removed there
+    // via its own "[+]"/"[-]" buttons, not from a separate management
+    // screen. A std::map (not unordered_map) so iterating it — e.g. to
+    // rebuild the combo's own list on the next launch — comes out in a
+    // stable, alphabetical order rather than an arbitrary one.
+    //
+    // Replaces this struct's own former flat host/port/user/password
+    // fields directly — an older settings.json that still has those
+    // (rather than this "servers" object) simply won't populate
+    // `servers` at all when loaded (see Config.cpp's own loadSettings())
+    // rather than being migrated into a single entry here: this project
+    // is early enough that starting over instead of translating the old
+    // shape was the simpler, deliberate choice.
+    std::map<std::string, ServerProfile> servers;
+    // Which entry in `servers` is the one actually connected to right
+    // now — empty if none has been configured yet (a fresh install, or
+    // exactly the "recreate rather than migrate" case above).
+    std::string activeServer;
+
     Language language = Language::English;
 
     // Last column/direction the torrent list was sorted by, so it's
@@ -114,4 +146,16 @@ struct AppSettings {
     std::vector<int> trackerColumnWidths;
     std::vector<int> trackerColumnOrder;
     std::vector<bool> trackerColumnVisible;
+
+    // The currently active server's own connection details, or a
+    // default-constructed ServerProfile if activeServer is empty or
+    // doesn't match anything in servers — callers that just want "the
+    // connection settings to use right now" (App's own constructor, the
+    // CLI) don't each need to handle "nothing configured yet" as a
+    // special case themselves.
+    const ServerProfile& activeProfile() const {
+        static const ServerProfile empty;
+        auto it = servers.find(activeServer);
+        return it != servers.end() ? it->second : empty;
+    }
 };

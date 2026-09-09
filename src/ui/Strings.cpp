@@ -221,6 +221,11 @@ const char* tr(Str id) {
                         "Passwort (optional):", "Contraseña (opcional):");
         case Str::LabelLanguage:
             return pick("Language:", "Lingua:", "Langue :", "Sprache:", "Idioma:");
+        case Str::LabelServerName:
+            return pick("Server name:", "Nome server:", "Nom du serveur :",
+                        "Servername:", "Nombre del servidor:");
+        case Str::DefaultServerName:
+            return pick("server", "server", "serveur", "Server", "servidor");
         // Native language names: identical regardless of the currently
         // selected language, so they stay recognizable to someone
         // looking for their own language in the list.

@@ -35,6 +35,9 @@
 #define Uses_TEvent
 #include <tvision/tv.h>
 
+#include <string>
+#include <vector>
+
 // A node in a singly-linked list of combo box entries. Each entry has
 // a displayed `text` and an opaque `value` the caller may use to
 // identify the entry (e.g. an enum or an index into another array);
@@ -109,6 +112,25 @@ protected:
 // from which an entry can be chosen.
 //
 // Palette layout: 1=Normal text 2=Focused text 3=Arrow
+//
+// --- Editable mode (setEditable()) ---
+// Off by default (existing callers, e.g. LanguageComboBox, are
+// unaffected). When on, the box can also be typed into directly rather
+// than only choosing from the dropdown, and shows "[+]"/"[-]" buttons
+// to its left of the dropdown arrow: "[+]" adds whatever's currently
+// shown (typed fresh, or picked from the dropdown) as a new list entry
+// if it isn't one already; "[-]" removes the list entry matching what's
+// currently shown. allValues() reads back every entry currently in the
+// list, in order — meant for a caller that persists the list somewhere
+// (a config file, say) after the user has edited it via [+]/[-].
+//
+// Deliberately simple rather than a full TInputLine port: single-line
+// ASCII only (no UTF-8-aware cursor movement — see TGridView's own
+// skipLeadingUtf8() for what that would take), no horizontal scrolling
+// when the typed text is wider than the box (it's just clipped), no
+// text selection/clipboard. Enough for what this was built for so far
+// (typing a short name), not a general-purpose editable-combo widget
+// yet — worth revisiting if a future use needs any of the above.
 class TComboBox : public TView {
 public:
     TComboBox(const TRect& bounds, TComboItem* aItems, short aFocused = 0) noexcept;
@@ -127,7 +149,49 @@ public:
     const char* text;
     ulong value;
 
+    void setEditable(bool editable);
+    bool isEditable() const { return editable_; }
+
+    // What's currently shown in the box. In editable mode, this is
+    // whatever's been typed or picked from the dropdown (which fills
+    // this in the same way typing it would) — not necessarily an
+    // existing list entry until "[+]" is used. In non-editable mode
+    // this just mirrors `text` (the focused item's own text).
+    std::string editText() const;
+    void setEditText(const std::string& newText);
+
+    // Every entry currently in the list, in list order.
+    std::vector<std::string> allValues() const;
+
 protected:
     TComboItem* items;
     short numItems;
+
+private:
+    bool editable_ = false;
+    std::string editBuf_;
+    int cursorPos_ = 0;
+
+    // Opens the dropdown popup and applies the result — the same logic
+    // handleEvent() always ran inline, now shared between the
+    // non-editable path (Space/Enter/Down/click) and the editable one
+    // (Down/clicking the arrow specifically) rather than duplicated.
+    void openDropdown();
+    // Adds editText() as a new list entry (a no-op if empty, or already
+    // present — focuses the existing match instead of duplicating it).
+    // Bound to the "[+]" button.
+    void addCurrentValue();
+    // Removes the list entry matching editText(), if any, and focuses
+    // whatever entry (if any) ends up nearest afterward. Bound to the
+    // "[-]" button.
+    void removeCurrentValue();
+
+    // Screen-relative x positions of the "[+]"/"[-]" buttons and the
+    // dropdown arrow, given the view's current width — shared by
+    // draw() (to paint them) and handleEvent() (to hit-test clicks on
+    // them), so the two can never disagree about where a button
+    // actually is. Only meaningful when editable_ (non-editable mode
+    // only ever has the arrow, positioned as it always was).
+    struct ButtonLayout { int plusX, minusX, arrowX, textWidth; };
+    ButtonLayout computeButtonLayout() const;
 };

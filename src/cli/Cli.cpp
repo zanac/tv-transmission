@@ -56,14 +56,20 @@ int runCli(int argc, char** argv, AppSettings settings) {
     std::vector<std::string> positional;
     bool deleteData = false;
 
+    // Starts from whichever server is currently active in the saved
+    // settings (see AppSettings::activeProfile()) — the --host/--user/
+    // --password flags below only need to be given at all when
+    // overriding that, or when nothing's been configured yet.
+    ServerProfile profile = settings.activeProfile();
+
     // Global options can appear anywhere on the command line, mixed in
     // with the subcommand and its own argument.
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "--host" && i + 1 < argc) settings.host = argv[++i];
-        else if (a == "--port" && i + 1 < argc) settings.port = std::atoi(argv[++i]);
-        else if (a == "--user" && i + 1 < argc) settings.user = argv[++i];
-        else if (a == "--password" && i + 1 < argc) settings.password = argv[++i];
+        if (a == "--host" && i + 1 < argc) profile.host = argv[++i];
+        else if (a == "--port" && i + 1 < argc) profile.port = std::atoi(argv[++i]);
+        else if (a == "--user" && i + 1 < argc) profile.user = argv[++i];
+        else if (a == "--password" && i + 1 < argc) profile.password = argv[++i];
         else if (a == "--delete-data") deleteData = true;
         else if (a == "--help" || a == "-h") { printUsage(); return 0; }
         else positional.push_back(a);
@@ -77,10 +83,11 @@ int runCli(int argc, char** argv, AppSettings settings) {
     const std::string& cmd = positional[0];
     if (cmd == "help") { printUsage(); return 0; }
 
-    // Built from `settings` (loaded from disk by main(), then possibly
-    // overridden above): no need to type --host/--user/--password again
-    // if they're already saved via the TUI's Settings window.
-    TransmissionClient client(settings.host, settings.port, settings.user, settings.password);
+    // Built from `profile` (the active server from disk, loaded by
+    // main(), then possibly overridden above): no need to type
+    // --host/--user/--password again if a server's already saved and
+    // active via the TUI's Connection window.
+    TransmissionClient client(profile.host, profile.port, profile.user, profile.password);
 
     if (cmd == "list") {
         auto torrents = client.listTorrents();

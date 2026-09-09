@@ -42,6 +42,7 @@ enum class Str {
 
     DialogTitleConnection, DialogTitleServerSettings,
     LabelRefreshSeconds, LabelHost, LabelPort, LabelUser, LabelPassword, LabelLanguage,
+    LabelServerName, DefaultServerName,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
 
     WindowTitleDetails,

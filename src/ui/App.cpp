@@ -32,7 +32,8 @@
 App::App(const AppSettings& initialSettings)
     : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
       settings_(initialSettings),
-      client_(settings_.host, settings_.port, settings_.user, settings_.password) {
+      client_(settings_.activeProfile().host, settings_.activeProfile().port,
+              settings_.activeProfile().user, settings_.activeProfile().password) {
     // The global language was already set by main() BEFORE constructing
     // this object (see the comment in App.h): initMenuBar()/
     // initStatusLine() have therefore already read it correctly. No need
@@ -383,8 +384,9 @@ void App::showAboutDialog() {
 }
 
 void App::applySettings() {
-    client_.setEndpoint(settings_.host, settings_.port);
-    client_.setCredentials(settings_.user, settings_.password);
+    const ServerProfile& profile = settings_.activeProfile();
+    client_.setEndpoint(profile.host, profile.port);
+    client_.setCredentials(profile.user, profile.password);
     if (listWindow_) listWindow_->refresh();
 }
 

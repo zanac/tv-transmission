@@ -45,10 +45,25 @@ AppSettings loadSettings() {
         in >> j;
         settings.refreshIntervalSeconds =
             j.value("refreshIntervalSeconds", settings.refreshIntervalSeconds);
-        settings.host = j.value("host", settings.host);
-        settings.port = j.value("port", settings.port);
-        settings.user = j.value("user", settings.user);
-        settings.password = deobfuscatePassword(j.value("password", std::string()));
+
+        // Deliberately does NOT look at any old top-level "host"/"port"/
+        // "user"/"password" keys a pre-multi-server settings.json might
+        // still have — see AppSettings.h's own comment on "servers" for
+        // why starting over (an empty `servers` map, same as a fresh
+        // install) was the deliberate choice over migrating them into a
+        // single entry here.
+        if (j.contains("servers") && j["servers"].is_object()) {
+            for (auto& [name, sj] : j["servers"].items()) {
+                ServerProfile p;
+                p.host = sj.value("host", p.host);
+                p.port = sj.value("port", p.port);
+                p.user = sj.value("user", p.user);
+                p.password = deobfuscatePassword(sj.value("password", std::string()));
+                settings.servers[name] = p;
+            }
+        }
+        settings.activeServer = j.value("activeServer", settings.activeServer);
+
         int lang = j.value("language", static_cast<int>(settings.language));
         settings.language = static_cast<Language>(lang);
         int sortCol = j.value("sortColumn", static_cast<int>(settings.sortColumn));
@@ -98,10 +113,17 @@ bool saveSettings(const AppSettings& settings) {
 
     json j;
     j["refreshIntervalSeconds"] = settings.refreshIntervalSeconds;
-    j["host"] = settings.host;
-    j["port"] = settings.port;
-    j["user"] = settings.user;
-    j["password"] = obfuscatePassword(settings.password);
+    json serversJson = json::object();
+    for (const auto& [name, p] : settings.servers) {
+        serversJson[name] = {
+            {"host", p.host},
+            {"port", p.port},
+            {"user", p.user},
+            {"password", obfuscatePassword(p.password)},
+        };
+    }
+    j["servers"] = serversJson;
+    j["activeServer"] = settings.activeServer;
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
     j["sortAscending"] = settings.sortAscending;

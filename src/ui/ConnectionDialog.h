@@ -21,6 +21,12 @@
 // afterwards.
 struct ConnectionDialogFields {
     TInputLine* refreshInterval = nullptr;
+    // Editable combo of logical server names (see AppSettings::servers)
+    // — "[+]"/"[-]" add/remove a name from the list itself; the actual
+    // host/port/user/password below are associated with whichever name
+    // is currently shown here only when the dialog is confirmed (see
+    // connectionDialogResult()), not as each field is typed.
+    TComboBox* serverName = nullptr;
     TInputLine* host = nullptr;
     TInputLine* port = nullptr;
     TInputLine* user = nullptr;
