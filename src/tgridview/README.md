@@ -302,11 +302,17 @@ specifically) and can be `insert()`-ed into any window you already
 have. `TGridWindow` exists only because "a window with nothing but a
 grid in it" is such a common shape that it's worth not repeating the
 header/scrollbar/rows layout wiring and window-flag boilerplate every
-time. Its `fullScreen` argument mirrors the two ways TV Transmission's
-own torrent list has been used: `true` for a locked, always-maximized
-main window (`flags = 0` — no move/resize/zoom/close, matching that
-project's `TorrentListWindow`); `false` for an ordinary MDI child
-window.
+time. Its `fullScreen` argument mirrors two of the ways TV
+Transmission's own torrent list has been used: `true` for a locked,
+always-maximized window (`flags = 0` — no move/resize/zoom/close);
+`false` for an ordinary MDI child window. A separate `closable`
+argument (default `true`, ignored when `fullScreen` is `true` since
+`flags = 0` already covers it) exists for exactly the case those two
+alone don't: an MDI window the *user* still shouldn't be able to
+close — TV Transmission's own torrent-list windows, one per
+configured server, meant to always stay open for as long as that
+server is configured and only ever closed programmatically (from
+elsewhere removing that server), never from the window itself.
 
 **A third piece, `TGridColumnManagerDialog`, is a ready-made "resize/
 move/show/hide columns" window for any `TGridView`** — started out as

@@ -162,8 +162,14 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
+      // closable=false: this window only ever closes when the
+      // Connection dialog's own "[-]" removes the server (see App::
+      // showConnectionDialog()) — not from the window itself, since
+      // every configured server is meant to always have one open (see
+      // App's own constructor).
       TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/false,
-                  gvResizableColumns | gvReorderableColumns | gvMultiSelect),
+                  gvResizableColumns | gvReorderableColumns | gvMultiSelect,
+                  /*closable=*/false),
       client_(client),
       serverName_(serverName),
       initialTrackerColumnWidths_(initialTrackerColumnWidths),
@@ -530,6 +536,20 @@ std::vector<const Torrent*> TorrentListWindow::targetTorrents() const {
 }
 
 void TorrentListWindow::updateCommandStates() {
+    // enableCommand()/disableCommand() are process-wide, not per-window
+    // (see setState()'s own override below, which is what re-syncs them
+    // the moment THIS window becomes the active one) — so this only
+    // means anything when called on whichever window is CURRENTLY
+    // active. Without this guard, an unfocused window's own periodic
+    // refresh() (every open window refreshes on the same shared timer —
+    // see App::idle() — not just the focused one, and refresh() always
+    // ends by calling this) would silently clobber the focused window's
+    // own command state moments after a focus change, with whatever its
+    // own selected torrent happens to need instead — exactly the
+    // "briefly correct, then Start re-enables itself" symptom this was
+    // written to fix.
+    if ((state & sfActive) == 0) return;
+
     const Torrent* t = selectedTorrent();
     if (!t) {
         // Nothing selected (e.g. empty list): no per-torrent action
