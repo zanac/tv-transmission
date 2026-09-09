@@ -16,12 +16,12 @@ struct SessionLimits {
 
     // The "alt speed" (a.k.a. turtle-mode) limits — a second, usually
     // lower, pair of limits Transmission switches to as a whole (via
-    // alt-speed-enabled, toggled elsewhere — not exposed by this
-    // struct — rather than per-direction like the pair above) when
-    // e.g. you want bandwidth back during the day without having to
-    // remember the normal limits to restore them later. Always present
-    // regardless of whether alt-speed is currently active, same as the
+    // altSpeedEnabled below) when e.g. you want bandwidth back during
+    // the day without having to remember the normal limits to restore
+    // them later. The limit values themselves are always present
+    // regardless of whether the mode is currently active, same as the
     // official Transmission clients show them.
+    bool altSpeedEnabled = false;
     int altSpeedDown = 0;    // KB/s
     int altSpeedUp = 0;      // KB/s
 };

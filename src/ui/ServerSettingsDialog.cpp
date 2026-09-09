@@ -30,7 +30,7 @@ TInputLine* addLimitField(TDialog* dlg, TRect r, int value) {
 
 TDialog* createServerSettingsDialog(const SessionLimits& sessionLimits,
                                      ServerSettingsDialogFields& fields) {
-    TRect r(0, 0, 60, 18);
+    TRect r(0, 0, 60, 19);
     auto* dlg = new TDialog(r, tr(Str::DialogTitleServerSettings));
     dlg->options |= ofCentered;
 
@@ -53,21 +53,28 @@ TDialog* createServerSettingsDialog(const SessionLimits& sessionLimits,
 
     // --- "Speed Limit" (alt-speed / turtle) mode ---
     dlg->insert(new TStaticText(TRect(2, 7, 56, 8), tr(Str::LabelAltSpeedSection)));
+
+    fields.altSpeedEnabledCheckbox = new TCheckBoxes(TRect(2, 8, 40, 9),
+        new TSItem(tr(Str::CheckAltSpeedEnabled), nullptr));
+    ushort altSpeedChecked = sessionLimits.altSpeedEnabled ? 0x01 : 0;
+    fields.altSpeedEnabledCheckbox->setData(&altSpeedChecked);
+    dlg->insert(fields.altSpeedEnabledCheckbox);
+
     // 2 rows tall: the translated text embeds a '\n' at a natural break
     // point for each language (see Strings.cpp) rather than relying on
     // TStaticText to wrap on its own.
-    dlg->insert(new TStaticText(TRect(2, 8, 56, 10), tr(Str::LabelAltSpeedDescription)));
+    dlg->insert(new TStaticText(TRect(2, 9, 56, 11), tr(Str::LabelAltSpeedDescription)));
 
-    dlg->insert(new TStaticText(TRect(2, 11, 24, 12), tr(Str::LabelAltSpeedDownload)));
-    fields.altSpeedDownloadLimit = addLimitField(dlg, TRect(28, 11, 38, 12), sessionLimits.altSpeedDown);
-    dlg->insert(new TStaticText(TRect(39, 11, 44, 12), tr(Str::UnitKBs)));
-
-    dlg->insert(new TStaticText(TRect(2, 12, 24, 13), tr(Str::LabelAltSpeedUpload)));
-    fields.altSpeedUploadLimit = addLimitField(dlg, TRect(28, 12, 38, 13), sessionLimits.altSpeedUp);
+    dlg->insert(new TStaticText(TRect(2, 12, 24, 13), tr(Str::LabelAltSpeedDownload)));
+    fields.altSpeedDownloadLimit = addLimitField(dlg, TRect(28, 12, 38, 13), sessionLimits.altSpeedDown);
     dlg->insert(new TStaticText(TRect(39, 12, 44, 13), tr(Str::UnitKBs)));
 
-    dlg->insert(new TButton(TRect(20, 15, 30, 17), tr(Str::ButtonOK), cmOK, bfDefault));
-    dlg->insert(new TButton(TRect(32, 15, 42, 17), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    dlg->insert(new TStaticText(TRect(2, 13, 24, 14), tr(Str::LabelAltSpeedUpload)));
+    fields.altSpeedUploadLimit = addLimitField(dlg, TRect(28, 13, 38, 14), sessionLimits.altSpeedUp);
+    dlg->insert(new TStaticText(TRect(39, 13, 44, 14), tr(Str::UnitKBs)));
+
+    dlg->insert(new TButton(TRect(20, 16, 30, 18), tr(Str::ButtonOK), cmOK, bfDefault));
+    dlg->insert(new TButton(TRect(32, 16, 42, 18), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;
@@ -89,6 +96,11 @@ SessionLimits serverSettingsDialogResult(const ServerSettingsDialogFields& field
     if (fields.globalUploadLimit) {
         fields.globalUploadLimit->getData(buf);
         limits.uploadLimit = std::atoi(buf);
+    }
+    if (fields.altSpeedEnabledCheckbox) {
+        ushort checked = 0;
+        fields.altSpeedEnabledCheckbox->getData(&checked);
+        limits.altSpeedEnabled = (checked & 0x01) != 0;
     }
     if (fields.altSpeedDownloadLimit) {
         fields.altSpeedDownloadLimit->getData(buf);

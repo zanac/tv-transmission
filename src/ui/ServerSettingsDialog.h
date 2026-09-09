@@ -18,10 +18,14 @@ struct ServerSettingsDialogFields {
     TInputLine* globalDownloadLimit = nullptr;
     TInputLine* globalUploadLimit = nullptr;
 
-    // "Speed Limit" (alt-speed / turtle) mode's own limits — always
-    // editable regardless of whether that mode is currently active
-    // (there's no enable checkbox for it here; see SessionLimits'
-    // own comment on why).
+    // "Speed Limit" (alt-speed / turtle) mode — its own on/off switch,
+    // fetched/applied via the same live RPC round trip as everything
+    // else on this dialog (never settings.json — see
+    // TransmissionClient::getSessionLimits()/setSessionLimits(), and
+    // App::showServerSettingsDialog()'s own comment on why), plus the
+    // limits it switches to, always editable regardless of whether the
+    // mode is currently on.
+    TCheckBoxes* altSpeedEnabledCheckbox = nullptr;
     TInputLine* altSpeedDownloadLimit = nullptr;
     TInputLine* altSpeedUploadLimit = nullptr;
 };

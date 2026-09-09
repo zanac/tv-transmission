@@ -68,6 +68,7 @@ enum class Str {
 
     LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,
     LabelAltSpeedSection, LabelAltSpeedDescription, LabelAltSpeedDownload, LabelAltSpeedUpload,
+    CheckAltSpeedEnabled,
 
     TorrentStatusStopped, TorrentStatusCheckWait, TorrentStatusChecking,
     TorrentStatusDownloadWait, TorrentStatusDownloading, TorrentStatusSeedWait,

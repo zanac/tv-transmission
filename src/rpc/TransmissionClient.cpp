@@ -420,6 +420,7 @@ SessionLimits TransmissionClient::getSessionLimits(bool* ok) {
         limits.uploadLimit = a.value("speed-limit-up", 0);
         limits.altSpeedDown = a.value("alt-speed-down", 0);
         limits.altSpeedUp = a.value("alt-speed-up", 0);
+        limits.altSpeedEnabled = a.value("alt-speed-enabled", false);
         if (ok) *ok = true;
     } catch (const std::exception& e) {
         lastError_ = std::string("JSON parse error: ") + e.what();
@@ -435,6 +436,7 @@ bool TransmissionClient::setSessionLimits(const SessionLimits& limits) {
         {"speed-limit-up", limits.uploadLimit},
         {"alt-speed-down", limits.altSpeedDown},
         {"alt-speed-up", limits.altSpeedUp},
+        {"alt-speed-enabled", limits.altSpeedEnabled},
     };
     return !call("session-set", args.dump()).empty();
 }

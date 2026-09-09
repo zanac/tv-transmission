@@ -372,6 +372,10 @@ const char* tr(Str id) {
         case Str::LabelAltSpeedUpload:
             return pick("Upload limit:", "Limite upload:", "Limite d'envoi :",
                         "Upload-Limit:", "Límite de subida:");
+        case Str::CheckAltSpeedEnabled:
+            return pick("Enable 'Speed Limit' mode", "Abilita modalità 'Limite velocità'",
+                        "Activer le mode « Limite de vitesse »", "Modus 'Geschwindigkeitslimit' aktivieren",
+                        "Habilitar modo 'Límite de velocidad'");
 
         case Str::TorrentStatusStopped:
             return pick("Stopped", "Fermo", "Arrêté", "Gestoppt", "Detenido");
