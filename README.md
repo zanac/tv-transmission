@@ -1,6 +1,6 @@
 # TV Transmission
 
-**Version 1.1** — stable release.
+**Version 1.3** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -10,14 +10,33 @@ It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
 
-<img width="1413" height="865" alt="image" src="https://github.com/user-attachments/assets/96ab138d-f6df-40be-89f7-28e2b1f88826" />
-
 ## Features
 
-**Torrent list (main window)**
-- Always maximized and locked: can't be moved, resized, zoomed or
-  closed (it's the app's main view, kept as a raw pointer internally —
-  see "Fixed bugs" below for why closing it used to crash the app)
+**Torrent list — one window per configured server**
+- Every server named in the Connection dialog (see below) gets its own
+  torrent-list window, all open at once — an ordinary MDI window now
+  (movable, resizable, zoomable — see "Fixed bugs" below for why it
+  used to be locked to always filling the whole desktop instead, and
+  what changed), titled with that server's own logical name
+  ("home — Torrents", say) so more than one is easy to tell apart at a
+  glance. Deliberately NOT closable from the window itself (no close
+  box, Alt+F3 does nothing) — every configured server is meant to
+  always have its own window open; the only way to actually remove one
+  is the Connection dialog's own "[-]" on that server's name (see
+  below), which closes its window along with removing it
+- **Window → Tile/Cascade** arranges every open one (this app's own
+  windows *and* torrent-list windows together) the normal MDI way;
+  **Window → Window list...** (Alt+0) jumps straight to any one of them
+  by name
+- Every Torrent-menu action (Start, Stop, Queue, Select Multiple, Add,
+  ...) acts on whichever torrent-list window currently has focus — the
+  same "act on the focused one" rule "Manage columns..." already
+  followed for whichever grid had focus, now covering every torrent
+  action too, since there's more than one list to choose from
+- Each window's own position and size is saved when the app closes and
+  restored on the next launch (clamped to the current terminal size if
+  it's shrunk since — see "Fixed bugs" below), along with which one had
+  focus, so that one comes back on top of the others
 - Columns: name (bold), progress bar, size, download rate, upload
   rate, date added, status — shown by default; nine more are available
   but hidden by default (see "Manage columns..." below): ratio,
@@ -28,11 +47,20 @@ HTTP and nlohmann/json for parsing.
   (double-click a column's name — "<"/">" markers appear where a move
   is possible); **Columns → Manage columns...** does the same, plus
   showing/hiding columns, all from one place — see its own entry below.
-  Width, order, and visibility are all saved and restored across
-  launches
+  Width, order, and visibility are shared across every open torrent-list
+  window (not one set per server) and saved/restored across launches
 - Click a column header to sort by it; click again to reverse the
   direction (a `^`/`v` indicator shows the active column and direction);
-  the chosen column and direction are saved and restored on the next launch
+  the chosen column and direction — shared the same way widths/order
+  are — are saved and restored on the next launch
+- If enough columns are shown at once that they don't all fit — a wide
+  terminal helps, but with several of the optional columns turned on
+  it's easy to exceed even that — a horizontal scrollbar appears below
+  the list to reach the rest, keeping the header lined up with whatever
+  the rows have scrolled to. Hidden entirely (its row handed back to
+  the list itself, one more visible row of torrents) whenever
+  everything already fits, rather than always taking up a row for a
+  control that would have nothing to do
 - Progress bar fills up with block characters (`[████░░░░] 42%`) as the
   torrent approaches 100%, instead of a plain percentage number
 - Text color reflects the torrent's status at a glance: cyan while
@@ -79,13 +107,71 @@ HTTP and nlohmann/json for parsing.
 - "Apply" sends the change immediately (`torrent-set` RPC); "Close"
   closes the window without changing anything
 
+**Multiple selection**
+- "Torrent → Select Multiple" turns on a leftmost `[X]`/`[ ]` checkbox
+  column on the main list — the same menu entry turns it back off
+  again. The row that had focus when you turned it on starts checked
+- Click any row (not just the checkbox itself) to check or uncheck it;
+  Space does the same for whichever row is focused, so the whole thing
+  works from the keyboard alone once it's on
+- Press and hold the mouse on a row for under a second to turn it on
+  directly from there, with that row already checked — a shortcut for
+  when you're already reaching for the mouse, not a replacement for the
+  menu entry
+- Esc or Enter turns it back off, same as the menu entry — as does
+  "Cancel selection" in the right-click context menu, which only shows
+  up there while there's a selection to cancel
+- Once at least one row is checked, every Torrent-menu action (Start,
+  Stop, Remove, Delete with files, Start Now, Verify, Reannounce,
+  Details, Files) applies to every checked torrent instead of just the
+  focused one — Remove and Delete ask for confirmation once, naming how
+  many torrents rather than listing each one; Details and Files open
+  one window per checked torrent (reusing an already-open one for a
+  given torrent instead of duplicating it, same as with a single
+  selection). The list stops auto-refreshing while you're selecting, so
+  which row is which doesn't shift under you — it resumes, and the
+  checkboxes go away, the moment an action runs or you turn selection
+  off yourself
+- The checkbox column stays put at the left even if the list is
+  scrolled horizontally (see "Column resizing, reordering, and
+  visibility" above) — it's not one of the regular columns and doesn't
+  move with them
+
+**Queue reordering**
+- Transmission processes queued (not-yet-active) torrents in order —
+  "Torrent → Queue" (also on the right-click context menu) gives the
+  four standard moves: to the top, up one, down one, to the bottom.
+  With more than one torrent checked (see "Multiple selection" above),
+  it applies to all of them
+- Double-clicking a torrent's own position in the (normally hidden —
+  see "Column resizing, reordering, and visibility" above) queue
+  column cycles through those same four actions, one per double-click:
+  top, then up, then down, then bottom, then back to top — a quick way
+  to reach for whichever's needed without opening the submenu each
+  time, for that one torrent
+
 **Tracker details**
 - A "Trackers..." button in the torrent details window opens a
   separate, non-modal table listing every tracker for that torrent:
   host, tier, seeders, leechers, downloaded count, and a short status
-  (OK/Error). Turbo Vision has no tab control, so this is a dedicated
-  window rather than a second tab on the details dialog (see
-  `TrackerListWindow`)
+  (OK/Error) — built on `TGridView`, the same generic widget the main
+  list and the files window use. Turbo Vision has no tab control, so
+  this is a dedicated window rather than a second tab on the details
+  dialog (see `TrackerListWindow`)
+- Columns can be resized, reordered, and shown/hidden — through the
+  same single, focus-aware "Manage columns..." menu entry the main
+  list uses (see "Fixed bugs" below), automatically once this window
+  has focus; there's no button of its own for it here. Rows themselves
+  aren't sortable by a column click here, deliberately: Transmission
+  already returns trackers in tier order, which is the order that
+  matters, so letting a click reorder rows would work against that
+  rather than help — that's independent of the columns' own
+  width/position/visibility, which "Manage columns..." still offers
+- That column layout is saved and restored across launches, the same
+  as the main list's own — see "Configuration file" below. There's one
+  shared tracker column layout, not one per torrent: opening the
+  tracker window for a different torrent later still starts from
+  whatever was last saved or changed
 - This data (`trackerStats`, part of `torrent-get`) isn't fetched as
   part of the regular list refresh; it's requested only when this
   window is opened, and again only when you press its own "Refresh"
@@ -93,6 +179,50 @@ HTTP and nlohmann/json for parsing.
 - Double-click a tracker row for a small window with that tracker's
   full status: last/next announce time and the complete error or
   success message, which don't fit in a table row
+
+**Per-file selection ("Files" — Torrent menu, or the right-click context menu)**
+- A separate, non-modal window listing every file within a torrent —
+  name, size, download progress, whether it's wanted, and its priority
+  (Low/Normal/High) — built on `TGridView`, the same generic widget the
+  main list uses
+- Files inside subfolders are shown as a real tree, indented under a
+  folder row for each directory level (however deep) — not a flat list
+  of full paths. A torrent with no subfolders at all (every file at the
+  top level) shows exactly one row per file and no folder rows, same as
+  before folders were handled specifically
+- A folder row shows *aggregated* values across every file beneath it,
+  however many levels deep: combined size, combined download
+  percentage, and a `[X]`/`[ ]` checkbox for wanted — `[-]` when
+  descendants disagree — or the priority level only when every
+  descendant agrees ("Mixed" when they don't)
+- Double-clicking a row does something specific to the column it lands
+  on — the wanted column toggles it; the priority column cycles
+  Low→Normal→High→Low (a "Mixed" folder resolves to Low first, same
+  rule the wanted toggle already uses for its own ambiguous case).
+  Right-click for the same two actions instead, plus jumping straight
+  to a specific priority level the cycling can't reach directly — no
+  buttons for either, both are mouse-driven only
+- On a folder, "toggle wanted" turns every descendant off if they're
+  all currently on, or turns them *all* on otherwise (including when
+  they disagree) — so a folder in a "Mixed" state always resolves to
+  "all wanted" first, never something ambiguous like flipping each file
+  independently. Setting a priority on a folder (from the context menu)
+  is simpler: it's just set on every descendant, no toggle involved.
+  "Select all"/"Select none" (the two remaining buttons) do the wanted
+  toggle for every file in the torrent at once — useful for quickly
+  narrowing a large multi-folder torrent (a season of a show, say) down
+  to just the files actually wanted, one folder at a time instead of
+  one file at a time
+- Every action applies immediately (`torrent-set`'s `files-wanted`/
+  `files-unwanted`/`priority-low`/`priority-normal`/`priority-high`,
+  addressed by file index — a folder simply lists every real file index
+  beneath it) — there's no separate "Apply" step
+- Marking an already fully-downloaded file "not wanted" doesn't delete
+  it; Transmission just stops treating it as something to keep verifying
+  and download further copies of
+- This data (`files`/`fileStats`, part of `torrent-get`) is fetched only
+  when this window is opened, the same as the details and tracker
+  windows above, not as part of the periodic list refresh
 
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
@@ -125,7 +255,7 @@ HTTP and nlohmann/json for parsing.
   (`messageBox`, showing the torrent's name) before doing anything —
   Delete's confirmation spells out that the operation can't be undone
 - Right-click a row for a context menu: Start, Start Now, Stop, Verify,
-  Reannounce, Remove, Delete (with files), Details — right-clicking
+  Reannounce, Remove, Delete (with files), Details, Files — right-clicking
   also selects that row first, even if it wasn't already focused
 - Start Now (bypasses the download queue), Verify (rechecks local data
   against piece hashes), and Reannounce (asks trackers for more peers
@@ -138,21 +268,61 @@ HTTP and nlohmann/json for parsing.
   disabling an action grays it out everywhere it appears at once (the
   Torrent menu, the status bar, and the context menu) rather than each
   needing to be kept in sync separately
-- A status bar shows the combined download/upload rate across all
-  torrents, refreshed on every UI tick (no extra RPC calls)
+- A status bar shows the combined download/upload rate across every
+  torrent in whichever torrent-list window currently has focus (not a
+  grand total across every open server — see "Torrent list" above),
+  refreshed on every UI tick (no extra RPC calls); shows placeholder
+  dashes when no torrent-list window has focus at all
 
-**Settings (F9, "Settings" menu)**
-- Refresh interval (seconds), host, port, RPC username/password,
-  interface language — applied immediately and saved to disk (see
-  "Configuration file" below for where and how)
-- Global (session-wide) download/upload speed limits — read from and
-  written straight to the Transmission daemon itself (`session-get` /
-  `session-set`), not stored in this app's own settings file; these are
-  the defaults any torrent without its own override (above) follows
+**Connection (F9, "Settings" menu)**
+- Server name, refresh interval (seconds), host, port, RPC
+  username/password, interface language
+- "Server name" is an editable combo (see "Fixed bugs" below for the
+  widget itself) — the logical name a set of host/port/user/password is
+  saved under, e.g. "home" or "seedbox". Picking a different existing
+  name from the dropdown loads that server's own saved details into the
+  other fields automatically; typing a new one and clicking "[+]" adds
+  it to the list (with a confirmation popup naming it) without touching
+  what's saved until OK is actually confirmed — at which point
+  whatever's currently in the other fields is saved under whichever
+  name is currently shown, and that becomes the active server. "[-]"
+  removes a name (and its saved details) from the list entirely, with
+  its own confirmation popup — and, once confirmed, closes that
+  server's torrent-list window along with every Details/Files/Tracker
+  window still open for one of its torrents (see "Fixed bugs" below)
+- First step toward managing more than one server — right now exactly
+  one is ever connected to at a time (whichever is active when OK is
+  pressed); switching to a different saved one and confirming is what
+  "quickly switching between servers" means at this stage, not yet
+  several running side by side
+- OK tests the connection with whatever's currently in the fields
+  before anything is saved — a real RPC round trip (`session-get`),
+  the same kind of check "Server Configuration" already relies on for
+  its own fetch. Only on success does the dialog actually close and the
+  server's details get written to disk; a failed test shows the error
+  and leaves everything exactly as it was, dialog still open, nothing
+  saved — never silently keeps a set of details that don't actually
+  work
 - Changing the language shows a popup noting that a restart is needed
   for the menu bar and status bar to relabel — everything else already
   has (see "Internationalization" below for why those two specifically
   lag behind)
+
+**Server Configuration ("Server..." — "Settings" menu)**
+- Global (session-wide) download/upload speed limits — read from and
+  written straight to the Transmission daemon itself (`session-get` /
+  `session-set`), not stored in this app's own settings file; these are
+  the defaults any torrent without its own override (above) follows
+- "Speed Limit" mode's own on/off switch and its own pair of (usually
+  lower) limits — Transmission switches to these instead of the pair
+  above as a whole while the mode is on
+- A separate dialog from Connection above: this one's fields all live
+  on the daemon rather than in this app's own settings file, fetched
+  fresh with a live RPC call each time it's opened — never saved
+  locally and reloaded from there, so it always reflects whatever the
+  daemon's actual state is at the moment the dialog opens, including
+  changes made some other way (another client, a script) since this
+  app last checked
 
 **Filters ("Columns" menu)**
 - Narrows the main list to torrents matching ALL active filters (AND,
@@ -169,14 +339,27 @@ HTTP and nlohmann/json for parsing.
   and restored on the next launch
 
 **Manage columns... ("Columns" menu)**
-- One window for everything about the main list's columns, replacing
-  what used to be three separate entry points (a "Resize columns"
-  submenu, an "Order columns" submenu, and a standalone "Columns..."
-  checkbox dialog) — see "Fixed bugs" below for why
-- Shown as a small grid of its own — one row per real column (16 in
-  total: the 7 shown by default, plus 9 more hidden by default — see
-  below), with its label, current width, and a `[X]`/`[ ]` visibility
-  marker — select a row, then:
+- One window for everything about a grid's columns, replacing what
+  used to be three separate entry points for the main list alone (a
+  "Resize columns" submenu, an "Order columns" submenu, and a
+  standalone "Columns..." checkbox dialog) — see "Fixed bugs" below for
+  why
+- A single menu entry, not one per window: it acts on whichever
+  `TGridView`-based window currently has focus — the main torrent list,
+  the tracker list, or any future window built the same way — rather
+  than needing a separate "Manage columns" of its own in each one. Only
+  enabled while a compatible window is focused; greyed out otherwise
+  (a dialog like Settings or Filters, or a window with no grid in it at
+  all, like the torrent details window)
+- The dialog itself lives in `src/tgridview/` — it's not specific to
+  the torrent list, or to this app at all: it operates on any
+  `TGridView`, with this app just passing in its own translated text
+  (see "Fixed bugs" below)
+- Shown as a small grid of its own — one row per real column of
+  whichever grid is focused (16 for the main list: the 7 shown by
+  default, plus 9 more hidden by default — see below; 6 for the
+  tracker list), with its label, current width, and a `[X]`/`[ ]`
+  visibility marker — select a row, then:
   - **Resize**: the same keyboard-driven resize (Left/Right live,
     Enter confirms, Esc cancels) that dragging a column header
     separator does
@@ -184,10 +367,12 @@ HTTP and nlohmann/json for parsing.
     that double-clicking a column's header does
   - **Toggle visible**: shows or hides it immediately — hiding doesn't
     lose its width or position, it just takes no screen space until
-    shown again, reappearing exactly where it was
-  - **Reset**: puts width, order, AND visibility back to this list's
-    built-in defaults, all at once (the 9 columns below go back to
-    hidden, not shown)
+    shown again, reappearing exactly where it was. Double-clicking a row
+    (or pressing Enter on it) does the same thing directly, without
+    needing the button
+  - **Reset**: puts width, order, AND visibility back to that grid's
+    built-in defaults, all at once (the main list's 9 optional columns
+    go back to hidden, not shown)
 - Every change applies to the actual list immediately, so there's
   nothing to separately confirm — closing the window (or the app
   exiting) is what persists the current state to `settings.json`
@@ -227,10 +412,10 @@ Transmission's own 0-based internal numbering).
 
 **Internationalization**
 - English (default), Italian, French, German, and Spanish, selectable
-  from the Settings dialog via a real `TComboBox` (see "Building" and
-  "Fixed bugs" below — tvision itself has no built-in combo/dropdown
-  control; this project currently points at a fork that adds one,
-  pending a PR upstream)
+  from the Connection dialog via `TComboBox` — vendored into this
+  project directly (see `src/tvision-ext/TComboBox.h` and "Fixed bugs"
+  below) rather than pulled in from the tvision fork this project still
+  points at; tvision itself has no built-in combo/dropdown control
 - Windows and dialogs that get rebuilt each time they're shown (Add
   torrent, Settings, Torrent details, the main list's title) update
   immediately; the menu bar and status bar are only built once at
@@ -281,9 +466,13 @@ rows don't need aren't carried on every refresh tick for every torrent.
 
 ## Configuration file
 
-Settings (host, port, user, password, refresh interval, language, the
-torrent list's last sort column/direction, column widths/order/
-visibility, and the active filter) are stored in:
+Settings (every saved server's own host/port/user/password — see
+"Connection" above — plus which one is active, each server's own
+torrent-list window position/size and which one had focus when the
+app last closed — see "Torrent list" above — refresh interval,
+language, the torrent list's last sort column/direction, column
+widths/order/visibility for both the torrent list and the tracker
+list, and the active filter) are stored in:
 
 ```
 $XDG_CONFIG_HOME/tv-transmission/settings.json
@@ -302,7 +491,14 @@ would be far more disk I/O than the final choice actually needs — all
 three are instead captured and saved together once, when "Manage
 columns..." closes, and again on exit as a backstop (`App::shutDown()`)
 in case the app quits without that window ever being opened after the
-last change.
+last change. The tracker list's own columns are saved and restored the
+same way, in their own separate `settings.json` fields — there's one
+shared tracker column layout, not one per torrent, so opening a tracker
+window for a different torrent later still starts from whatever was
+last saved. If several tracker windows happen to be open at once when
+the app exits, the shutdown backstop just picks whichever one it finds
+first, since they're meant to share one layout rather than needing to
+be reconciled against each other.
 
 Global and per-torrent speed limits are **not** in this file — they
 live on the Transmission daemon itself and are read/written through the
@@ -331,16 +527,16 @@ used from.
    git submodule update --init --recursive
    ```
    This points at [zanac/tvision](https://github.com/zanac/tvision), a
-   fork of the real upstream ([magiblot/tvision](https://github.com/magiblot/tvision))
-   that adds `TComboBox` (a proper drop-down combo box — tvision has none
+   fork of the real upstream ([magiblot/tvision](https://github.com/magiblot/tvision)).
+   It originally added `TComboBox` (tvision has no drop-down combo box
    built in; see [issue #173](https://github.com/magiblot/tvision/issues/173),
-   open since 2025 with no resolution). It's otherwise identical to
-   upstream — no other changes, nothing removed or renamed — so this is
-   purely additive and temporary: once that PR is merged upstream,
-   switch this line back to `https://github.com/magiblot/tvision` and
-   nothing else in this project needs to change (`Uses_TComboBox` and
-   the rest of the `TComboBox`/`TComboWindow`/`TComboViewer`/
-   `TComboItem` API are exactly what the real upstream will provide).
+   open since 2025 with no resolution) — that class is now vendored
+   directly into this project instead (`src/tvision-ext/TComboBox.h`,
+   see "Fixed bugs" below for why), so building against this fork isn't
+   about `TComboBox` anymore specifically. Whether anything else in this
+   fork still differs from upstream in a way this project depends on
+   hasn't been re-audited since — this note is only about the one thing
+   that changed.
 2. Install dependencies (Debian/Ubuntu):
    ```
    sudo apt install cmake libcurl4-openssl-dev libncursesw5-dev libgpm-dev
@@ -416,13 +612,13 @@ src/
     Strings.h/.cpp              Translation strings (English/Italian)
     TorrentListWindow.h/.cpp    Main window: list, header, sorting, colors, context menu
     TorrentDetailsWindow.h/.cpp Per-torrent details window
+    TorrentFilesWindow.h/.cpp   Per-file selection/priority window (built on TGridView)
     TrackerListWindow.h/.cpp    Per-torrent tracker table (opened from the details window)
     TrackerDetailWindow.h/.cpp  Full status for a single tracker (double-click a row)
     AddTorrentDialog.h/.cpp     "Add torrent" dialog
-    SettingsDialog.h/.cpp       "Settings" dialog
+    ConnectionDialog.h/.cpp     "Connection" dialog
+    ServerSettingsDialog.h/.cpp "Server Configuration" dialog
     FilterDialog.h/.cpp         "Filters" dialog
-    ColumnManagerDialog.h/.cpp  "Manage columns" window (resize/move/show/hide,
-                                all in one place — built on TGridView itself)
     LanguageComboBox.h/.cpp      Compact custom combo box for the language picker
     WindowListDialog.h/.cpp     "Window list" dialog
     AboutDialog.h/.cpp          "About" dialog
@@ -442,7 +638,20 @@ packaging/
     TGridWindow.h/.cpp          Optional TWindow wrapper (fullscreen-locked or
                                 ordinary MDI child) hosting one TGridView —
                                 TorrentListWindow (ui/) derives from this
+    TGridColumnManagerDialog.h/.cpp  Reusable "resize/move/show/hide columns"
+                                window for any TGridView — text customizable via
+                                TGridColumnManagerLabels (this module has no
+                                dependency on any app's own translation system);
+                                used by App.cpp (ui/) with this app's own
+                                translated strings passed in
     README.md                   Full design writeup for this standalone module
+  tvision-ext/
+    TComboBox.h/.cpp             Vendored TComboBox + TComboItem/TComboViewer/
+                                TComboWindow, plus an editable mode (typed text,
+                                "[+]"/"[-]" list buttons) added on top — see the
+                                file's own header comment. Used by LanguageComboBox
+                                (ui/, non-editable) and ConnectionDialog (ui/,
+                                editable — the server-name combo).
 ```
 
 ## Known limitations
@@ -497,6 +706,1103 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Removing a server via the Connection dialog's "[-]" didn't actually
+close anything.** Two gaps, found together: the server's own torrent-
+list window wasn't reliably closing, and even where it did, any
+Details/Files/Tracker window still open for one of that server's
+torrents was left behind entirely — each holding a `TransmissionClient&`
+reference to a client `App` was about to erase, which would have been
+a genuine dangling-reference hazard the next time any of them tried to
+refresh or apply a change, not just a leftover window cluttering the
+desktop.
+
+`TorrentDetailsWindow` already had exactly the right tool for this,
+unused: a `clientPtr()` accessor and a comment describing precisely
+this scenario — apparently added ahead of actually needing it, then
+never wired up on the `App` side. `TorrentFilesWindow` and
+`TrackerListWindow` got the same accessor added to match (`TrackerDetailWindow`
+didn't: it holds no `TransmissionClient` reference at all, just a
+`TrackerStat` snapshot passed by value, so it isn't a safety hazard —
+left open when its server is removed, if one happens to be, showing
+whatever it already had rather than closing along with the rest).
+`App` gained `closeWindowsForClient()`, matching every other "find
+this on the desktop instead of caching a pointer" helper already in
+this file: walks every window, closes whichever of the three types
+above points at the client being removed. `showConnectionDialog()`
+now calls it, in the order that actually matters — every other window
+first (while the client is still alive, so `clientPtr()` still has
+something valid to compare against), then the torrent-list window
+itself, and only then the client is erased.
+
+Verified the mechanism directly: three windows (Details, Files,
+Tracker) built against one client, a fourth Details window built
+against a completely different one, confirmed all four exist, then
+confirmed closing "for" the first client took out exactly those three
+and left the fourth alone — the actual risk here was ever closing the
+wrong one (or missing one), not whether `close()` itself works.
+
+**Two follow-ups to the MDI multi-server work just above, both real
+gaps in it rather than new features.**
+
+**Start/Stop and the rest of the Torrent menu would briefly show the
+right state after switching focus, then drift to some other window's
+state moments later.** Reported precisely: consistent right after
+switching, wrong "a few instants" afterward, as if something on a
+timer kept moving the goalposts — which is exactly what was happening.
+`updateCommandStates()`'s own `setState()`-triggered fix (see further
+up this file) only handled *changing which window has focus*; it never
+accounted for `TorrentListWindow::refresh()` (via
+`applyFilterAndSort()`) calling the exact same method unconditionally
+on every window, focused or not — and `App::idle()` refreshes every
+open window on one shared timer, not just the focused one.
+`enableCommand`/`disableCommand` are process-wide, not per-window, so
+an unfocused window's own periodic refresh would silently overwrite
+whatever the focused window's own refresh (or its `setState()`) had
+just set, with its own selected torrent's state instead. Fixed at the
+source rather than in every caller: `updateCommandStates()` itself now
+returns immediately unless `state & sfActive` — the window pushing
+values into that shared state has to actually be the current one, no
+matter which of its own code paths got it there. Verified with the
+scenario that exposed it in the first place: two mock servers, one
+stopped (Start should stay enabled) and given focus, the other
+downloading (Start should stay disabled) and left to refresh
+unattended on a 1-second interval for several cycles — then confirmed
+Start was *still* enabled by pressing it and checking the RPC actually
+reached the stopped one, not silently dropped.
+
+**Every per-server window could be closed from the window itself,
+which shouldn't be possible** — every configured server is meant to
+always have one open; the only real "close" is the Connection dialog's
+own "[-]" removing the server entirely (see the multi-server work
+above), not something the window's own close box should also do.
+`TGridWindow` (the generic, reusable base this sits on — deliberately
+left alone otherwise, along with `TGridView` underneath it, so this
+stays a base-level, opt-in flag rather than special-cased for one
+caller) gained a `closable` parameter, independent of `fullScreen`:
+the two used to be conflated (`fullScreen=true` implied *and only ever
+meant* non-closable, `fullScreen=false` implied *and only ever meant*
+closable), but an MDI window that shouldn't be user-closable is exactly
+what this app's own torrent-list windows needed and neither existing
+combination covered. `TorrentListWindow` now passes `closable=false`
+alongside its existing `fullScreen=false` — confirmed
+`TWindow::close()` itself only checks `valid(cmClose)`, not `wfClose`,
+so the *programmatic* close the Connection dialog's own "[-]" still
+needs (see `App::showConnectionDialog()`) keeps working exactly as
+before; only the *user-facing* close box and Alt+F3 go away, gated by
+`wfClose` alone. Verified visually (no close box rendered where one
+used to be) and functionally (clicking that exact spot, and the
+process staying alive with the window still there, rather than only
+checking that a click compiled without incident).
+
+**Turned the torrent list into one MDI window per configured server.**
+The single biggest architectural change so far — every server named in
+the Connection dialog now gets its own always-open torrent-list window,
+titled with that server's own name, rather than one shared window
+whose connection changed underneath it.
+
+The underlying pieces mostly already existed. `TGridWindow` (the base
+this window sits on) already had a `fullScreen` parameter switching
+between "locked, always-maximized" and "ordinary MDI child window
+(movable, resizable, closable, zoomable)" — the torrent list had just
+never actually been built with `fullScreen=false`. `App` already had a
+`focusedGrid()` helper for "Manage columns..." to act on whichever
+grid-based window has focus; the same idea generalizes to
+`focusedListWindow()`/`allListWindows()` for every Torrent-menu action.
+`App` also already searched the desktop directly for tracker windows
+rather than caching a pointer to them (see `shutDown()`'s own tracker
+backstop) — turned out to be exactly the right instinct to follow here
+too, for a concrete reason: `fullScreen=false` means `wfClose` is now
+set, and `TWindow::close()` destroys the window outright — a cached
+`TorrentListWindow*` held across event-loop turns (the way the old
+single `listWindow_` member was) would go dangling the moment its
+window was closed. Nothing in `App` keeps one anymore; every action
+looks a window up fresh from the desktop's own child chain at the
+moment it's needed.
+
+`AppSettings`'s single `host`/`port`/`user`/`password` (already
+replaced by the `servers` map — see the multi-server work further up
+this file) gained a `windowLayouts` map (position/size, keyed by server
+name) and a `focusedServerAtClose` string, saved in `shutDown()` and
+restored in the constructor — clamped against the *current* terminal
+size on restore (`TRect::intersect()`), since a saved layout from a
+larger terminal would otherwise open something bigger than what's
+actually there, or an offscreen sliver if the saved position doesn't
+fit at all; falls back to the full desktop extent if what's left after
+clamping is too small to be useful.
+
+Two real bugs surfaced along the way, neither exotic once found, both
+only mattering because there's now more than one of these windows:
+
+- `TGridWindow` set `ofTileable` (required for `TDeskTop::tile()`/
+  `cascade()` to include a window at all — confirmed by reading
+  `tdesktop.cpp`, not assumed from the name) only on the `fullScreen`
+  branch — backwards from what actually needed it, since a `flags=0`
+  fullscreen window being tileable would risk `tile()`/`cascade()`
+  elsewhere on the desktop forcibly repositioning it via `locate()`
+  (which doesn't check `wfMove`/`wfGrow` — those only gate *interactive*
+  move/resize). Moved to the non-fullscreen branch, where it belongs.
+- `TorrentListWindow::updateCommandStates()` (enables/disables Start,
+  Stop, and the rest of the Torrent menu based on the selected torrent)
+  only ever ran from the grid's own row-focus callback. `enableCommand`/
+  `disableCommand` are process-wide, not per-window — so a window that
+  gained focus *without* also changing its own row focus (the usual
+  trigger) would silently keep showing whichever other window's state
+  was set last. Fixed with a `setState()` override reacting to
+  `sfActive` turning on (confirmed via `twindow.cpp`/`tgroup.cpp` that
+  this is exactly the flag a window's own gain-of-focus sets) — the
+  same "override setState for a redraw/resync tvision doesn't trigger
+  on its own" pattern already used by `TComboBox` and `TCheckBoxes`-like
+  controls elsewhere.
+
+Verified in layers, each isolating a different piece rather than one
+big end-to-end pass: two mock servers with distinguishable torrents
+confirmed separate windows show separate data (not one leaking into
+the other) and correct per-server titles; `Window → Tile` confirmed
+both windows actually exist and get arranged (not just the newest one
+visible on top of an identical stack); F5 (Start) with a mock tracking
+which server received the RPC call confirmed the action follows
+whichever window has focus, re-checked after switching focus by mouse
+click; closing the focused window (clicking its own close box)
+confirmed the app stays alive and focus falls back to what's left,
+directly addressing the dangling-pointer risk above rather than just
+hoping it doesn't happen; a full close/reopen cycle against a real
+`settings.json` confirmed both windows' positions (post-Tile) and which
+one had focus came back exactly as saved. The `updateCommandStates()`
+fix specifically was checked with a small standalone harness rather
+than through the interactive TUI — flipping a command's state by hand,
+then calling `setState(sfActive, True)` on the *other* window directly
+and confirming the shared command state changed to match it — precise
+and immediate in a way that clicking through a live session, already
+fragile for pinpointing exact window regions in earlier sessions (see
+elsewhere in this file), wouldn't have been for this specific question.
+
+**Connection dialog: confirmation popups for "[+]"/"[-]", and a
+connection test before OK actually saves anything.** Two additions to
+the multi-server work just above.
+
+The confirmations needed `TComboBox` itself to say a *little* more than
+it used to: `addCurrentValue()`/`removeCurrentValue()` already knew
+when they'd actually changed the list versus done nothing (an already-
+present name for "[+]", no match for "[-]" — see their own comments),
+but had no way to tell a caller *what* changed, since `message()`'s own
+broadcast only carries a `void*` back, not a string. Two new commands
+(`cmComboBoxItemAdded`/`cmComboBoxItemRemoved`, 60/61 — the next free
+values after `cmComboBoxSelectionChanged`'s own 59, picked to stay
+clear of both tvision's reserved low range and this project's own
+`cmUserBase`-area commands starting at 100) fire only on an actual
+change, alongside a new `lastChangedValue()` accessor a caller reads
+from inside its own broadcast handler — set right before the item is
+actually added or (for removal) right before it's freed, so it's never
+stale by the time anything asks. `ConnectionDialogImpl` (already
+catching one broadcast, for auto-populating fields on selection change)
+just gained two more cases in the same handler.
+
+The connection test needed the OK button itself to stop being a plain
+`cmOK` button — tvision's own `TButton`/`TDialog` machinery treats
+`cmOK` (along with `cmCancel`/`cmYes`/`cmNo`) specially, validating
+every field and calling `endModal()` directly the moment it's clicked,
+before this dialog's own `handleEvent()` ever gets a look at it. A new
+local command (`cmTestConnectionAndOK`, 62 — grouped with the two
+above) lets the dialog intercept the click itself: run every field's
+own validator first (`valid(cmOK)` — the argument only matters for
+telling `cmCancel` apart from everything else, which skips validation
+entirely; it's not literally what happens next), then a throwaway
+`TransmissionClient` built straight from whatever's currently in the
+fields (not the app's own shared one, which stays pointed at the
+*previous* connection until this one actually succeeds) makes the same
+kind of `session-get` round trip "Server Configuration" already relies
+on for its own fetch. Only on success does the handler call
+`endModal(cmOK)` itself; a failure shows the error and leaves the
+dialog open, `connectionDialogResult()` (and so any actual save) never
+reached at all.
+
+Verified without needing to click through an actual interactive
+message box for any of this — the box blocking, once reached, is
+already the confirmation something got that far, so a synthetic
+`handleEvent()` call left waiting past a short timeout is treated as a
+pass, not a hang to work around: sending `cmTestConnectionAndOK`
+against a host nothing was listening on left the call blocked past that
+timeout (the error box, reached and waiting); the identical call
+against a real mock server returned immediately (no box — the success
+path, `endModal(cmOK)`, taken instead); and a synthetic click on "[+]"
+left the call blocked the same way (the confirmation, reached and
+waiting) rather than returning immediately.
+
+**`TComboBox` gained an editable mode, and the Connection dialog now
+manages more than one named server with it.** Two pieces, built and
+verified in that order.
+
+The widget change first: `setEditable(true)` turns the box from a
+pure picker into something that can also be typed into directly, with
+"[+]"/"[-]" buttons appended before the dropdown arrow to add/remove
+whatever's currently shown as a list entry. Deliberately a minimal text
+editor rather than a full `TInputLine` port — single-line ASCII,
+clipped rather than scrolled when the text is wider than the box, no
+selection or clipboard (see the class's own header comment for the
+reasoning) — enough for what it was built for (typing a short name).
+One design choice worth calling out: `focusItem()` (called from
+picking an entry in the dropdown, "[+]", "[-]", and `newList()` alike)
+is the single place that syncs the edit buffer to whatever's now
+focused, rather than each caller doing it themselves — the alternative
+(each of those four call sites remembering to sync it) is exactly the
+kind of thing that stays correct for a while and then silently doesn't
+once a fifth call site is added later without the same care.
+`allValues()` reads back the full list in order, for a caller that
+wants to persist whatever the user has built up via "[+]"/"[-]"
+somewhere.
+
+`AppSettings`' own flat `host`/`port`/`user`/`password` fields became a
+`std::map<std::string, ServerProfile>` (`servers`) plus `activeServer`,
+with an `activeProfile()` accessor so `App`'s constructor, `applySettings()`,
+and the CLI (`Cli.cpp`) didn't each need their own "which server" logic
+— they already all just wanted "the currently active one's details".
+Deliberately not migrated from the old shape: an older `settings.json`
+that still has flat `host`/`port`/etc. simply doesn't populate
+`servers` at all once loaded (nothing in `loadSettings()` looks at
+those keys anymore), which in practice means starting over with an
+empty server list — asked for explicitly rather than assumed, given how
+early this project still is.
+
+The Connection dialog itself needed one more thing beyond just adding
+the combo: reacting when the user picks a *different* saved server from
+the dropdown, by loading that server's own details into the other
+fields automatically (typing a brand new name, not yet saved, leaves
+the fields alone instead — see `TComboBox::cmComboBoxSelectionChanged`'s
+own broadcast). That needed a small `TDialog` subclass local to
+`ConnectionDialog.cpp` to catch the broadcast, rather than the plain
+`TDialog` this dialog used to be built from directly. On confirming
+with OK, the combo's own current entry list (not the settings passed
+in) decides which saved servers survive into the result — a name
+removed via "[-]" needs to actually disappear from what gets saved, and
+only what's still in the combo (not what's missing from the old
+settings) can tell that.
+
+Verified in layers again: the combo's own edit-mode mechanics in
+isolation first — typing, backspace, "[+]" (no duplicate created when
+the current text already matches an entry), "[-]" (a no-op, not a
+crash, when the current text matches nothing) — each confirmed via
+direct event injection rather than a live interactive session (faster
+and more precise for this kind of check, and this project already has
+plenty of live-session coverage elsewhere in this file for whether
+clicking a button in a real running dialog actually reaches it). Then
+the full flow through `ConnectionDialog` itself: a fresh install
+showing no servers and a placeholder name; confirming one populates
+`servers` and `activeServer` correctly; reopening the dialog against
+that result starts the combo on the right name with the right list;
+adding a second server via "[+]" and confirming preserves the first
+one's own details untouched while saving the second's; and — the
+broadcast-driven auto-populate specifically — selecting a previously-
+saved name back on a dialog opened with a *different* one active
+correctly refills host/user/etc. from that server's own saved profile.
+Finally the actual file round trip: `saveSettings()`/`loadSettings()`
+against a real `settings.json`, confirming both servers' fields
+(including the password surviving obfuscation and back) and
+`activeServer` came back exactly as saved.
+
+**Vendored TComboBox into the project**, at the request of wanting to
+keep evolving it without every change going through the tvision fork
+first. Combined the four classes involved — `TComboItem`,
+`TComboViewer`, `TComboWindow`, `TComboBox` — spread across the fork's
+own `dialogs.h` (declarations) and three separate `.cpp` files
+(`tcombobo.cpp`/`tcmbovie.cpp`/`tcmbowin.cpp`) into a single
+`src/tvision-ext/TComboBox.h`+`.cpp` pair, using an ordinary
+`#pragma once` rather than tvision's own `Uses_X`/`__TComboBox`
+include-guard convention — those classes are no longer declared
+anywhere behind `Uses_TComboBox` at all now, so nothing needs that
+macro defined to reach them. `LanguageComboBox.h` (the only thing in
+this project that used to) now includes the new header directly. One
+piece stayed as a dependency on the fork rather than getting copied in:
+`cmComboBoxSelectionChanged` itself, which the fork added directly to
+`views.h`'s own command enum unconditionally — not gated behind
+`Uses_TComboBox` — so redeclaring it here collided outright rather than
+needing vendoring; noted in the header's own comment rather than left
+unexplained. This project's `external/tvision` submodule still points
+at the same fork — whether anything else there still differs from
+upstream in a way this project actually depends on hasn't been
+re-audited as part of this change (see "Building" above); this was
+specifically about combo box work no longer needing to go through the
+fork.
+
+Verified the vendored version behaves identically to the fork's own,
+not just that it compiles: opened the popup on a real running instance,
+confirmed all five languages render with a working scrollbar, picked a
+different one, and confirmed the combo box's own displayed text updated
+to match — the same round trip `LanguageComboBox` has always relied on,
+now running entirely on this project's own copy of the code.
+
+**Added the "Speed Limit" mode's own on/off checkbox to Server
+Configuration**, deliberately left out when the screenshot that
+prompted the dialog split (see further down this file) didn't show
+one — turned out that omission was worth reconsidering rather than
+assuming the screenshot was the last word on it. Wired through exactly
+the same way every other field on that dialog already was: `SessionLimits`
+gained `altSpeedEnabled`, read from and written straight to
+`alt-speed-enabled` via `session-get`/`session-set` — asked for
+explicitly as a reminder that these fields are live daemon state, never
+something to cache into this app's own settings.json and reload from
+there instead. That reminder matched what the code already did (nothing
+on this dialog was ever being saved locally to begin with), so nothing
+needed correcting on that front — but it's exactly the assumption worth
+double-checking before adding anything new to this particular dialog,
+since getting it wrong here specifically would mean silently showing
+stale state instead of what the server actually has.
+
+Verified with a mock server as before: the checkbox opened checked
+against a mocked `alt-speed-enabled: true`, confirmed on a real rendered
+screen, and confirmed `alt-speed-enabled: true` was among the fields
+sent back in `session-set` after clicking OK — the same live round trip
+already relied on for the limits sitting right next to it.
+
+**Connection dialog field order and spacing**, tweaked after seeing it
+rendered: Language moved to the top (above Refresh, where it used to
+sit last, right before the buttons), and the dialog grew by one row so
+there's a blank line above OK/Cancel instead of them sitting right
+under Password. Confirmed off a real rendered capture rather than
+trusting the coordinate math alone — worth a specific note since a
+first attempt at capturing it looked like the lower half of the dialog
+(User, Password, the buttons) wasn't rendering at all, which turned out
+to be an incomplete read in the test itself: a single blind `os.read()`
+some time after the keypress doesn't guarantee every byte the terminal
+sent has actually arrived by then, since output can land in more than
+one chunk. Draining the pty with `select()` until nothing new arrives
+for a short stretch, rather than one fixed-size read after a fixed
+delay, showed the dialog was actually complete and correctly laid out
+the whole time.
+
+**Split the combined Settings dialog into Connection and Server
+Configuration**, matching a screenshot from the official Transmission
+Android app showing global speed limits alongside a "Speed Limit" mode
+section this app didn't have yet. The two dialogs' fields genuinely
+live in different places — Connection's in this app's own
+settings.json, Server Configuration's on the Transmission daemon itself
+via `session-get`/`session-set` — so the split also removed the one
+case where opening a single combined dialog needed a live RPC call just
+to show fields that had nothing to do with the connection being
+configured. `SessionLimits` gained `altSpeedDown`/`altSpeedUp`
+alongside the existing global limit fields, read/written via
+`alt-speed-down`/`alt-speed-up`; no `alt-speed-enabled` field was added
+anywhere, matching the screenshot itself — enabling that mode is a
+toggle that lives elsewhere in the real Transmission clients, not
+something this particular dialog exposes.
+
+Verified with the same care the original combined dialog's own field
+pointers got (see "Settings dialog fields silently swapped" further
+down this file, the reason both dialogs return direct field pointers
+rather than scanning for them after the fact): Connection's own
+pre-fill and result-extraction logic checked directly (construct with a
+known host, confirm the field shows it, change it, confirm the
+extracted result reflects the change) rather than through the
+interactive dialog itself — closing a `TDialog` via its OK button is
+generic tvision behavior already exercised throughout this app, not
+new code worth re-proving through a fragile simulated click. Server
+Configuration's fetch-populate-confirm-send round trip *was* worth
+checking end to end, since the RPC shape itself changed: a mock
+tracking `session-set` calls confirmed the dialog opened pre-filled
+with the mock's own values (including the two new alt-speed fields),
+and that clicking OK sent back exactly those values, unmodified,
+alt-speed included. Along the way, ran into a case worth noting for any
+future interactive dialog test: a `select()`-free `os.read()` on the
+pty blocks indefinitely once a click stops producing *new* terminal
+output, even when the app itself is behaving completely normally (just
+not drawing anything new right that instant) — not a hang in the app,
+a hazard in the test technique itself, worth guarding against
+proactively rather than only after hitting it.
+
+**Queue reordering**, added the same three ways priority already works
+in the files window: a cycling double-click, a menu with the specific
+choices, and the same on the right-click context menu. Two things
+specific to this one, beyond just repeating that pattern:
+
+`CellActivateFn` (see the files window's own priority cycling) needed a
+real change, not just a new use: it used to always let the event fall
+through to `TListViewer::handleEvent()` afterward regardless, on the
+reasoning that a pre-flagged double-click never blocks there anyway
+(true, and still true) — but the main list already has `RowActivateFn`
+wired up for opening details on double-click, for every column, and
+letting that still fire *in addition to* the queue column's own cycling
+would mean double-clicking the queue column both cycled it and popped
+open a details window every time — not what anyone would want.
+`CellActivateFn` now returns whether it considered the double-click its
+own to handle; true consumes the event outright (skipping
+`RowActivateFn` for that one double-click), false leaves it alone
+exactly as before. The files window's own callback just always returns
+true (it never had `RowActivateFn` set to begin with, so nothing
+changes there); the main list's returns true only for the queue column,
+false for every other one, so details still open normally everywhere
+else.
+
+Nesting a submenu (the menu bar's "Torrent" needed to contain "Queue",
+which itself contains the four moves) was something this project's own
+tvision fork already had a known problem with (see the `TSubMenu +
+TSubMenu` note further down this file) — `operator+` picks the
+`TSubMenu&`-`TSubMenu&` overload automatically when both sides are
+submenus, which chains them as two *separate* top-level menus in the
+bar rather than nesting one inside the other. Worked around by casting
+the inner submenu to `TMenuItem&` explicitly before the `+`, forcing
+the other overload (`TSubMenu&`-`TMenuItem&`) that actually appends it
+as an item within the outer menu's own list — a `TSubMenu` still
+qualifies for that one too, since it inherits from `TMenuItem`, it's
+just not the overload the compiler reaches for on its own. Confirmed
+nested rather than sibling by checking the actual rendered menu bar:
+"Queue" shows up as a single extra line inside the already-open
+Torrent dropdown (with the small "►" tvision draws for anything that
+opens a further submenu) rather than as a whole new top-level entry
+next to Torrent and Window — and clicking it opens exactly the four
+expected moves, not the wrong menu's contents.
+
+While testing the double-click cycle specifically, ran into something
+that looked at first like the click itself just not registering at
+all — no RPC calls reaching the mock server, the test process simply
+hanging. Traced to a real, if narrow, gap: the long-press watch that
+kicks off multi-select mode (see "Multiple selection" above) didn't
+check for `meDoubleClick` at all, so the second half of a double-click
+— which still arrives as its own `evMouseDown` — could fall into
+*that* code path and start watching for an all-new long-press on a
+button that, as far as this specific event was concerned, was never
+freshly pressed to begin with. Fixed by excluding an event that already
+carries the flag from ever starting that watch. Once that was in place,
+the actual "nothing happening" turned out to be a mistake in the test
+itself, not the feature: the queue column is hidden by default (see
+"Column resizing, reordering, and visibility"), and the test had only
+ever hidden every *other* column rather than separately making this
+one visible — so it was clicking into empty space past the only column
+that was actually showing.
+
+Verified in the same layered way as the rest of this file: the double-
+click cycle end to end through a mock server tracking which of the four
+`queue-move-*` RPC calls arrived and in what order (confirmed exactly
+top→up→down→bottom, for the double-clicked torrent specifically); that
+double-clicking any other column still opens details as before,
+unaffected by any of this; that the queue menu — reached the normal
+way, through a real running instance — applies to every checked torrent
+when more than one is selected, not just the focused one; and the
+nested-submenu structure itself both by inspecting the rendered menu
+bar directly and by clicking through to its four items and reading back
+which command each one actually sends.
+
+**Usability pass on the files window and multiple selection.** Several
+changes requested together: on the files window, double-click behaving
+differently by which column it lands on (wanted toggles, priority
+cycles), the same two actions on right-click too, and the four buttons
+that used to be the only way to reach them gone entirely. On the main
+list's multi-select, a shorter press-and-hold, Esc/Enter to leave
+selection mode, and a "Cancel selection" entry in the context menu.
+
+The column-aware double-click needed a new piece of `TGridView` itself:
+the existing `RowActivateFn` (used elsewhere for "double-click or Enter
+opens details") only ever carries a row, since it's driven by
+`TListViewer`'s own generic `cmListItemSelected` broadcast — no
+column info reaches it because nothing at that point in tvision's own
+handling knows *where* the click landed, only what row is now focused.
+Added `CellActivateFn` alongside it instead of replacing it — fired
+directly from `TGridRowsView`'s own mouse handling (where the exact
+click position is still available), only for a genuine double-click
+(checked via `meDoubleClick`) and only outside selection mode. Reused
+the header's own column-hit-test (`columnAtX()`, promoted from a
+private detail of the header view to a method on `TGridView` itself so
+both the header and the rows can call it) rather than duplicating that
+math a second time. Confirmed safe to still let the event fall through
+to `TListViewer::handleEvent()` afterward (unlike a plain single click,
+which blocks synthetic tests without a live queue) by reading
+`tlstview.cpp` itself: its own press-tracking loop checks for
+`meDoubleClick` *before* ever calling `mouseEvent()`, so an event that
+already carries the flag on arrival exits that loop immediately rather
+than blocking on it.
+
+The right-click context menu on the files window is new — this window
+never had one before — built the same way `TorrentListWindow`'s own
+already does, and deliberately checked against the exact mistake fixed
+there in the previous round (handling the right-click check *before*
+calling `TListViewer::handleEvent()`, not after) rather than trusting
+"looks the same as the working one" on sight.
+
+The long-press threshold (`kLongPressMs`) went from 3000 to 800 —
+functionally a constant-value change, but it demonstrated something
+about testing time-based UI that's worth a note either way: 3 seconds
+had already been verified once with genuine elapsed time on a live
+terminal, and this change re-ran that same verification rather than
+assuming a simple number swap couldn't have broken the surrounding
+logic (the elapsed-time comparison, the drain-the-eventual-release loop
+afterward) on its own.
+
+"Cancel selection" only appears in the context menu while a selection
+is active, built by conditionally appending one more `TMenuItem` to the
+chain already being built — worth noting because `operator+` for
+`TMenuItem` (see tvision's own `menu.cpp`) returns a reference to the
+*first* item in the chain, not the one just added, having walked to the
+tail and linked the new item on there; the natural-looking `items =
+items + newItem` assigns *through* that reference instead of rebinding
+it (since `items` is declared as a reference, not a pointer), which
+would silently corrupt the first item's own fields rather than extend
+the chain. The mutation already happens as a side effect of the `+`
+call itself, so the fix was to drop the assignment entirely, not to
+find a different way to reassign.
+
+Verified in the same layered way as the last several changes here:
+the column-routing itself in isolation (a double-click at a specific
+content-x lands on the column actually under it, checked at two
+different x positions in the same grid); the wanted toggle and the
+priority cycle end to end through a mock server with real mutable
+state, driven by the exact same double-click mechanism a real click
+would use — including catching a mistake in the test itself along the
+way (a wrong x coordinate landing on a separator's hit-test range
+rather than the intended column, since a column's clickable span
+includes its trailing separator — the toggle test's initial "nothing
+changed" result was that, not a bug in the toggle); the files window's
+own context menu confirmed to fire without blocking, same test shape as
+the main list's; Esc and Enter each confirmed to actually flip
+`isInSelectionMode()` off; the reduced long-press threshold confirmed
+against real elapsed time on both sides (entering at just past 800ms,
+not entering at 300ms); and "Cancel selection" confirmed present in a
+real rendered context menu, opened for real while a selection was
+active.
+
+**Right-click never opened the context menu on the torrent list — on
+any terminal, not a PuTTY-specific issue as first suspected.** Asked
+directly whether this was really a client-side setting, backed by two
+pieces of concrete counter-evidence: right-click worked fine elsewhere
+(clicking menus), and tvision's own `tvedit` sample opens a context
+menu on right-click with the same terminal — both pointed at this
+app's own code rather than the terminal or PuTTY's mouse-button
+configuration. The actual bug: the right-click check ran *after*
+calling `TListViewer::handleEvent()` (the base class), but that base
+method's own click-tracking never checks which button was pressed at
+all — it unconditionally enters its own internal loop for any
+`evMouseDown`, blocking until the button is released and overwriting
+`event.what` to `evMouseUp` in the process. Checking "was this
+`evMouseDown` with the right button" afterward could never succeed,
+regardless of which button was actually pressed or which terminal sent
+it — by the time control returned there, `event.what` was never still
+`evMouseDown`. Fixed by moving the right-click handling to run before
+the base class ever sees the event, the same way the left-click
+handling added for multiple selection already had to.
+
+Worth being honest about here: an earlier reply confidently reported
+verifying this worked, based on a synthetic test blocking for close to
+the expected duration and the desktop's window count increasing while
+it did. That evidence was real, but didn't actually distinguish the
+context menu genuinely opening from the *old, buggy* code's own
+internal block inside `TListViewer::handleEvent()`'s click-tracking
+loop happening to look the same from outside — both block for a
+similar-looking duration when nothing arrives to end them. The fix
+this time is checked with a test that can't be confused that way: a
+grid built without going through the wider application at all, with a
+callback that does nothing but record that it fired and which row it
+got — completing instantly, with no blocking involved, which is only
+possible if the base class's own loop was never entered in the first
+place. Confirmed it fires for the exact row clicked, and confirmed
+left-click and left-click-during-selection still behave exactly as
+before after reordering the checks around it.
+
+**The files window had the same missing-row-highlight bug already fixed
+elsewhere, still showed "Yes"/"No"/"Mixed" text for wanted instead of a
+checkbox, and had no double-click shortcut for toggling it.** Reported
+together, but turned out to be a different window than the one just
+worked on (the main list's own multi-select checkboxes already showed
+`[X]`/`[ ]` correctly) — the files window (`TorrentFilesWindow`) had
+simply never gotten any of these three passes. Fixed the same way each
+was fixed elsewhere: an explicit `setRowColorCallback()` (black-on-white
+when focused, the same fixed look used everywhere else in this app);
+the wanted column now returns `[X]`/`[ ]`/`[-]` instead of translated
+Yes/No/Mixed text — a tri-state checkbox convention for the case where
+a folder's descendants disagree, rather than trying to squeeze that
+into a two-state glyph (the now-unused `Str::ValueYes`/`ValueNo`
+translations were removed, though `ValueMixed` stays — the priority
+column's own "Mixed" case still needs it); and `setRowActivateCallback()`
+now calls the same `toggleWantedForFocused()` the button already used,
+so a double-click does what the button does without needing to reach
+for it.
+
+While verifying the files window's double-click, checked the main
+list's own multi-select double-click too and found a real bug there:
+clicking a row toggles it, but the *second* mouseDown of a double-click
+also arrives as its own `evMouseDown` — un-checked by the same code,
+toggling it right back off — and, since nothing stopped the event from
+also reaching `TListViewer`'s own double-click detection afterward,
+opened a details window mid-selection on top of that. Fixed by
+recognizing the second click (`meDoubleClick` in `event.mouse.
+eventFlags`) and skipping the toggle for it, then consuming the event
+outright — never letting it reach the base class's own activate logic
+at all while in selection mode, rather than only suppressing part of
+what it would otherwise do.
+
+Verified each of the four fixes concretely rather than by inspection
+alone: the row-focus color and the checkbox glyphs off real rendered
+terminal output; the double-click's actual effect by sending the exact
+command the button and the row-activate callback both funnel into and
+then re-querying a stateful mock server afterward, confirming the file
+that started "not wanted" really did flip to wanted rather than just
+trusting that the command fired; and the main list's double-click fix
+by simulating a first click (checked, confirmed) followed by a second
+with `meDoubleClick` set, confirming the checked state doesn't change
+back *and* that no details window was requested. Two dead ends along
+the way, both artifacts of the test harness rather than the
+application: the same non-recursive-search mistake already made and
+caught earlier this session (`forEach()` only visits direct children,
+so a `TListViewer` nested one level inside the grid needs the search to
+recurse into any `TGroup` it finds, not just scan the window's own
+immediate children), and a mouse-click test that hung because the test
+itself never called `refresh()` after `setRowCount()` — meaning the
+row-count `range` a synthetic click gets checked against was still 0,
+routing the click into a fallback path that (correctly, if that path
+were ever really reached with no live event queue behind it) blocks
+waiting for input that a synthetic test has no way to supply.
+
+**"Files" had no entry in the Torrent menu bar**, only in the right-
+click context menu — `cmShowFiles` was already fully wired up (the
+command handler, the keyboard-accessible batch-selection path just
+fixed above), but no `TMenuItem` for it had ever been added to the
+menu bar's own Torrent submenu, so it simply wasn't reachable from
+there. Added right after "Details", matching where it already sits in
+the context menu. Verified by actually opening the real menu on a live
+running instance and checking "Files" shows up in it, not just that
+the command itself still works when triggered some other way.
+
+**"Details" and "Files" were left out of multiple selection** — every
+other Torrent-menu action already read its targets from
+`targetTorrents()` (see the multi-select entry below), but these two
+still called `selectedTorrent()` directly, so checking several torrents
+and opening either one only ever affected the focused row, same as
+before multi-select existed at all. Fixed by rewriting both the same
+way: loop over `targetTorrents()`, keeping each one's own existing
+"reuse an already-open window for this torrent id instead of
+duplicating it" check per torrent rather than just once — a user
+picking Details with three torrents checked, one of which already has
+its details window open, should get two new windows and the existing
+one brought to front, not one of those three silently skipped or
+duplicated. Both exit selection mode afterward, matching every other
+action. Verified with a mock server exactly the way the batch actions
+were: checking two specific torrents and firing the real Details
+command opens exactly two details windows — confirmed by counting them
+on the desktop before and after, not just assuming — and the same for
+Files; selection mode exits on its own in both cases. Caught a
+mismatched mock server field check while narrowing this down (checking
+for a field name to distinguish an on-demand torrent-details fetch from
+the periodic full-list refresh, when the full list already requests
+that same field for its own optional "Location" column) that made an
+earlier test run look like the real bug was still there — worth noting
+since it's the kind of thing that would produce a false "still broken"
+result if not caught, distinguishing the two request types by whether
+`ids` is present instead resolved it.
+
+**Added multiple selection**, in three layers, each verified before
+moving to the next rather than all at once. First, in `TGridView`
+itself (see `src/tgridview/README.md` for the design notes — opt-in via
+a new `gvMultiSelect` option, so every other grid in this app keeps
+behaving exactly as before): a leftmost `[X]`/`[ ]` checkbox column,
+shown only once `enterSelectionMode()` is called, fixed in place and
+never affected by horizontal scrolling the way a regular column would
+be. Getting there via a 3-second press-and-hold turned out to need a
+different approach than the drag-tracking already used elsewhere in
+this widget (see `dragResize()`): `TView::mouseEvent()` only returns
+once an event matching its mask actually occurs, which would leave a
+"holding still, not moving" gesture blocked indefinitely waiting for a
+move event that never comes. Calling `getEvent()` directly instead
+relies on `TProgram::getEvent()`'s own wait timeout — it still returns
+periodically with `evNothing` even with nothing happening at all (the
+same path `idle()` runs on) — which is what lets an elapsed-time check
+actually get a chance to run.
+
+Second, wiring it into `TorrentListWindow`: every existing Torrent-menu
+action (Start, Stop, Remove, Delete with files, Start Now, Verify,
+Reannounce) already funneled through its own dedicated `*Selected()`
+method, so adding a shared `targetTorrents()` — every checked row if
+selection mode is active and at least one is checked, the existing
+single focused-row behavior otherwise — meant each of those seven
+methods only needed a loop added, not separate logic apiece. Third, the
+periodic list refresh (`App::idle()`) now skips itself entirely while
+selection mode is active: it re-fetches and re-applies the current
+sort/filter, which can reorder the underlying list, and a checked row
+is tracked by index — reordering while rows are checked would silently
+apply an action to whatever torrent now sits at that index instead of
+the one actually checked. Holding the list still until the user
+finishes (or cancels) avoids that outright rather than trying to remap
+indices across a refresh.
+
+Verified in layers matching the implementation: the widget's own
+mechanics (enter/exit, toggling, the checkbox staying fixed through
+horizontal scrolling, the 3-second gesture specifically distinguishing
+a long hold from a short click — captured off a live terminal with real
+elapsed time, not simulated) directly, before touching the application
+at all; then, with a mock server, that checking two specific torrents
+and firing Start from the real menu command sends the RPC call for
+*both* of their actual IDs, not just the focused one, and that
+selection mode exits on its own once the action runs; and that holding
+the app in selecting state across several seconds of repeated `idle()`
+ticks leaves the checked row exactly where it was, confirming the
+refresh pause actually holds rather than just usually not mattering.
+
+**The previous fix for the scrollbar's own visibility being reset by
+tvision's insertion machinery (see the entry just below) introduced a
+worse bug of its own: repeatedly toggling columns visible/hidden could
+grow the grid's rows area without bound, eventually overlapping the
+application's own status line** — reported as the status bar being
+replaced by a torrent's name, restored only by resizing the window
+(which forces a fresh layout pass). Root cause: that fix's correction
+ran on every single `draw()` call — necessary, since the previous bug
+was tvision re-flipping the scrollbar's visibility independently of
+this widget's own calls — but it decided WHETHER to resize by
+re-reading that same externally-flippable `sfVisible` state. If
+something keeps flipping it back between draws, every single draw sees
+a "mismatch" again and grows (or shrinks) the rows area by another row,
+every time — not just once per actual transition. Fixed by never
+reading that state for the resize decision at all: a new, private
+`hScrollBarRowReserved_` flag, updated only by this widget's own code
+and never touched by anything external, is now the sole authority for
+whether a resize happens. The scrollbar's own `show()`/`hide()` call is
+still repeated unconditionally on every `draw()` (so external
+interference with its on-screen appearance keeps getting corrected),
+but that call no longer feeds back into whether the row gets
+resized — decoupling "does this look right" from "do we resize",
+which is what let the two keep re-triggering each other before.
+Verified far more rigorously than the visibility fix alone required,
+given the severity: 50 consecutive redraws with no column changes
+leave the row count exactly unchanged (not just "still looks about
+right"); toggling a column visible and hidden 20 times in a row lands
+on the exact same two row-count values every single time, with no
+drift in either direction; and, in the real application with real
+`refresh()` calls (not a synthetic single check), 30 rapid visibility
+toggles leave the window's own border and the application's status
+line exactly where they belong, with the horizontal scrollbar itself
+still fully contained inside the window rather than having crept
+outside it.
+
+**Adding or removing columns through "Manage columns..." didn't
+reliably recalculate the horizontal scrollbar.** Two real, separate
+issues found along the way, though a full end-to-end keyboard-driven
+reproduction inside the dialog itself wasn't achievable in this
+environment (see the note below) — verified as thoroughly as that
+allowed instead:
+- The dialog's initial focus used `selectNext(False)`, which is a
+  no-op unless something is already the dialog's current view. Left
+  initial keyboard focus wherever `insert()` happened to leave it —
+  not necessarily the meta-grid at all — meaning arrow keys and Enter
+  right after opening the dialog could land on nothing useful until
+  the user clicked something themselves first. Fixed with an explicit
+  `metaGrid->select()` instead, so keyboard-first interaction has a
+  predictable starting point regardless of insertion order.
+- `App::showColumnManagerDialog()` didn't force a redraw of the target
+  grid once the dialog closed. The underlying recalculation itself
+  turned out to be correct and synchronous — confirmed directly, calling
+  `TGridView::setColumnVisible()` the exact same way the dialog's own
+  "Toggle visible" does, in both directions (hiding columns until
+  content fits, and revealing columns until it doesn't) — but nothing
+  guaranteed the now-revealed window actually got told to repaint the
+  instant the covering dialog was gone, rather than at its next
+  unrelated redraw. Added an explicit `grid->refresh()` right after the
+  dialog closes as a belt-and-suspenders alongside `TGridView`'s own
+  draw()-time self-correction (see the entry above) — the same
+  "whatever the state should be, re-validate it before it would ever
+  reach the screen" principle, applied at the point most likely to
+  matter for this specific interaction.
+
+Reproducing the reported symptom itself — toggling a column's
+visibility *through the dialog's own keyboard navigation* and observing
+whether the scrollbar updated — wasn't achievable through this
+environment's terminal automation; every attempt to drive the dialog
+with simulated keystrokes either failed to actually move focus onto a
+row (confirmed separately: the state was provably unchanged afterward,
+not just unconfirmed) or didn't reliably close the dialog afterward.
+Rather than claim a full reproduction that didn't actually happen,
+verification here rests on the two fixes above, each confirmed directly
+and independently — the recalculation logic itself, and this window's
+own redraw once revealed — covering what's realistically checkable
+without that missing piece.
+
+**The horizontal scrollbar's hide-when-not-needed (see the entry just
+below) worked right after construction but not once the window was
+actually inserted onto the desktop** — reported with two screenshots
+after the previous fix, showing it still visible with several columns
+turned on. First checked whether it was actually a bug at all: the
+specific columns shown do add up to more width than a common terminal
+size, so the scrollbar being visible there was correct — but the same
+setup, reproduced directly with a wider terminal where the columns
+genuinely all fit, showed the scrollbar staying visible anyway, range
+correctly computed as `[0, 0]` (nothing to scroll) but never actually
+hidden. Traced to `relayout()`'s hide/show logic running correctly
+during construction — confirmed directly by reading the scrollbar's own
+`sfVisible` state right after building the window, off — but something
+in tvision's own view-insertion internals (`TGroup::insertBefore()`'s
+exposure cascade is the most likely path, though pinning down the exact
+mechanism further wasn't worth it once a solid fix existed) flips it
+back on independently of this widget's own `hide()`/`show()` calls,
+confirmed by reading that same state again immediately after
+`deskTop->insert()` — with no `relayout()` call happening in between.
+Fixed defensively rather than by chasing the exact tvision internals
+further: the header's own `draw()` now re-validates and corrects the
+scrollbar's visibility every time it actually draws, not only when
+`relayout()` runs — so whatever tvision's insertion machinery did gets
+silently corrected before it would ever reach the screen, regardless of
+the precise reason it happened. Verified directly, in the real running
+application rather than a synthetic reproduction: a 100-column terminal
+(too narrow for the specific columns reported) shows the scrollbar, a
+150-column and a 160-column one (both wide enough) don't — with no
+special handling needed to trigger the correction, exercised purely by
+the application's own normal draw cycle.
+
+**The horizontal scrollbar (see the entry just below for how it was
+added) stayed visible even when every column already fit** — asked
+directly whether it made sense to hide it rather than always reserving
+a row for a control with nothing to do. It does; `TGridView::relayout()`
+now hides it (and hands its row back to the rows/vertical-scrollbar
+area, which grow to fill it) whenever the content no longer exceeds the
+view, and shows it again (shrinking rows/vertical-scrollbar back down
+by one) the moment it would. Both directions run through the same
+check on every `relayout()` — every column add/remove/resize/
+reorder/show-hide already calls it — rather than needing a caller to
+remember to ask. Verified two ways: directly, by reading the
+scrollbar's own visibility state and range before and after a column
+resize that pushes content from fitting to not fitting (and the
+reverse), confirming both the show/hide and the row reclaimed/
+surrendered actually happen, not just that content becomes clipped or
+not; and in the real application itself — an 100-column terminal (too
+narrow for the default 7 columns' combined width) shows the scrollbar,
+a 160-column one (wide enough) doesn't, with one more row of torrents
+visible where it would have sat.
+
+**The column manager's "Visible" marker showed "Yes"/"No" text and had
+no double-click shortcut**, unlike the files window's own similar
+"wanted" toggle. Both fixed: the marker is now `[X]`/`[ ]` — a checkbox
+glyph doesn't need translating the way the rest of this app's text
+does, so `TGridColumnManagerLabels`' own defaults changed rather than
+adding new translated strings for it — and double-clicking a row (or
+pressing Enter on it) triggers the same toggle the "Toggle visible"
+button already did, reusing its exact logic rather than a second copy
+of it.
+
+**Added horizontal scrolling to `TGridView` itself** — previously,
+columns past whatever fit the view simply didn't appear at all, with no
+way to reach them; asked directly after enough optional columns had
+been turned on in the main list to run past a normal terminal's width.
+A second `TScrollBar`, laid out along the bottom the same way the
+existing one runs down the right edge, drives a shared horizontal
+offset that both the header and the rows read from when drawing —
+matters because they have to redraw in *sync*: reusing
+`TListViewer`'s own built-in reaction to its horizontal scrollbar
+changing handles that automatically for the rows, but the header isn't
+a `TListViewer`, so `TGridView`'s own `handleEvent()` catches the same
+broadcast for it too, or the two would drift out of alignment the
+moment either redrew independently. The genuinely fiddly part was the
+left edge: `TDrawBuffer::moveStr()`'s indent parameter is a `ushort`,
+which can't represent a negative position, so a column partially
+scrolled past the left edge can't just be drawn at a negative x the way
+the right edge already safely clips on its own (the buffer's own fixed
+size already handles overflow there, which is exactly why extra
+columns used to just silently vanish instead of corrupting anything).
+Solved by clipping the *string* instead of the position — a small
+codepoint-aware `skipLeadingUtf8()` (the mirror image of the
+`truncateUtf8()` already used for the right edge) drops however many
+leading display columns have scrolled past, then the shortened text is
+drawn starting at indent 0. Every existing hit-testing helper
+(`columnAtX()`, the sort glyph, the resize separator, the reorder
+markers) needed no internal changes at all — they already worked in
+content-relative coordinates; only the one conversion from screen-
+relative mouse position to content-relative, done once at the top of
+the header's `handleEvent()`, needed adding. Verified directly: the
+computed scroll range is exactly zero when everything already fits (no
+behavior change for the overwhelmingly common case); it's the exact
+expected non-zero value once content exceeds the viewport; a header
+label straddling the scroll boundary clips correctly at a multi-byte
+UTF-8 character (a plain byte-based clip would have corrupted it) with
+no crash; and — the check that actually matters, not just that
+something *looks* scrolled — after scrolling, a click at the position
+where a column's sort glyph now sits lands on that *column specifically*
+(verified by which column the sort callback fires for), not
+whatever used to be there before the offset was accounted for.
+
+**Neither the tracker list's own rows nor the column manager's meta-grid
+were visibly highlighting the focused row.** Same root cause each time
+this has come up before (the main torrent list, then the column
+manager's own meta-grid the first time it existed): without an explicit
+row-color callback, `TGridView` falls back to `TListViewer`'s inherited
+palette colors, which don't contrast enough inside a `TDialog` to
+actually notice which row is focused — even though the underlying focus
+tracking itself was working correctly the whole time. Fixed both the
+same way as before: an explicit `setRowColorCallback()` returning a
+fixed black-on-white for the focused row regardless of the host
+dialog's own palette. Verified this time by reading the actual rendered
+color attributes off a live terminal screen (a real pty, foreground/
+background per cell), not just the text content: the focused row comes
+back black-on-white, every other row white-on-blue, genuinely distinct
+— rather than trusting that matching the same code pattern used
+elsewhere was enough on its own.
+
+**The tracker list's column layout wasn't saved anywhere** — every time
+you opened a tracker window it started from scratch, unlike the main
+list's own columns. Fixed the same way the main list's own layout is:
+three new `AppSettings` fields (`trackerColumnWidths`/`Order`/
+`Visible`), loaded/saved in `Config.cpp` the same way, and threaded as
+constructor parameters all the way from `App` down through
+`TorrentListWindow` and `TorrentDetailsWindow` to wherever a tracker
+window actually gets created — the same explicit, one-piece-at-a-time
+parameter passing this project already uses throughout, rather than
+handing the whole `AppSettings` down the chain. `App::
+showColumnManagerDialog()`'s existing "was the grid just edited the
+main list's own?" check gained a second branch: if the focused window
+is a `TrackerListWindow` instead, its layout is persisted to the
+tracker-specific fields, not the main list's. Unlike the main list
+(exactly one, so identity comparison is enough), several tracker
+windows can be open simultaneously — they're designed to share a single
+saved layout rather than one per torrent, so `App::shutDown()`'s own
+backstop (for direct header drags/reorders that never went through
+"Manage columns...") just persists whichever tracker window it finds
+first, rather than needing to reconcile several against each other.
+Verified directly: the settings file round-trips all three tracker
+fields correctly, independently of the main list's own (and separately
+from it, confirmed by checking both sets of values, not just one);
+resizing and hiding a tracker column and then closing "Manage
+columns..." while that window has focus writes the exact values
+changed into `settings.json`, not just *some* update; and — the part
+most likely to have been wrong — opening a **new** tracker window
+afterward, for a **different** torrent than the one that was just
+edited, actually starts from that saved layout rather than this
+window's own hardcoded defaults.
+
+**"Manage columns..." became a single, focus-aware menu entry** instead
+of one per `TGridView`-based window — asked directly, after the tracker
+list got its own "Columns..." button (see the migration entry just
+below): wasn't a separate entry per window exactly the kind of thing
+that had already been rationalized once before, for the main list's
+own resize/reorder/visibility? Added `App::focusedGrid()`: walks
+`deskTop->current` (whichever window has focus) for a `TGridView` among
+its own children — which covers every shape this app builds one in,
+`TorrentListWindow`'s `TGridWindow` base as much as a plain `TDialog`
+with one embedded directly, like the tracker list — without needing to
+know which specific window class it's looking at. `App::idle()` (which
+already ran every event-loop tick for the periodic refresh) enables or
+disables the menu command based on what that returns, so the item is
+visibly greyed out — not just a silent no-op once clicked — the moment
+focus moves to a window with no grid in it at all, or a modal dialog.
+The tracker list's own now-redundant "Columns..." button was removed
+in the same change, along with its dedicated command and translated
+label. Only the main list's own column layout is ever persisted to
+`settings.json`; a different grid's changes apply live but aren't
+saved, checked by comparing the acted-on grid against the main list's
+own by identity rather than by which window it came from. Verified
+directly, inside an actual running application rather than only
+checked for compiling: the command is enabled while the main list has
+focus, becomes disabled the moment a window with no grid (torrent
+details) takes focus, and re-enables once the tracker list — a
+different grid entirely — takes focus in turn; confirmed by reading
+tvision's own `commandEnabled()` at each step, not inferred from
+whether a click happened to do something.
+
+**Migrated the tracker list window to `TGridView`** too, the same way
+the main torrent list and the files window already had — asked directly
+whether it made sense, given `TGridColumnManagerDialog` (see the
+generalization entry below) already existed and had nothing torrent-
+specific left in it. Replaced the hand-rolled `TrackerListViewer` (a
+custom `TListViewer` with its own `getText()` string-building and a
+separate `TStaticText` for the header) with a plain `TGridView`
+carrying 6 columns. Originally reachable through a "Columns..." button
+of its own, since folded into the single focus-aware menu entry above —
+the button existed only briefly, replaced once the same need showed up
+in a second window and made the pattern worth generalizing rather than
+repeating. One deliberate choice carried over unchanged from the
+original design: every column has `sortable = false`, since
+Transmission already returns trackers in tier order and that's the
+order that matters here — resizing/reordering/hiding the columns
+themselves is still offered, since that's independent of row order.
+Verified against a mock server: the rendered rows match the underlying
+data for every column, including the `-1` → "N/A" case Transmission
+uses for counts it doesn't have yet; every column actually has
+`sortable = false` while still being resizable and movable; and
+double-clicking a row still opens the tracker detail window through the
+new chain, confirmed by watching the desktop's window count go up by
+exactly one.
+
+**"Manage columns..." moved into `tgridview/`, generalized to operate on
+any `TGridView` instead of specifically `TorrentListWindow`.** Asked
+directly whether it made sense as a reusable piece — analyzed first
+(before writing anything) how much of it was actually torrent-list-
+specific: almost none, it turned out. `TorrentListWindow::
+startColumnResize()`/`startColumnReorder()` were already one-line
+forwards to `TGridView::startKeyboardResize()`/`startKeyboardReorder()`;
+"Toggle visible" was already just `setColumnVisible()`; and the meta-
+grid's own "Column" label column was reading from a locally-duplicated
+`kColumnLabels[]` array instead of `column(i).header` directly, which
+turned out to be unnecessary rather than something reset actually
+needed. The one genuine gap was "Reset": nothing on `TGridView` knew
+what a column's *default* width/visibility had been once it was
+changed, because nothing had ever needed to remember that before.
+Added a small, generic fix rather than an app-specific one: `TGridView`
+now keeps a `defaultColumns_` snapshot alongside `columns_`, taken at
+the exact moment each column is `addColumn()`-ed, and a new
+`resetColumns()` restores width/visibility from it (plus resetting
+order to identity) — independent of anything the app-level `Torrent
+ListWindow::setupColumns()` used to do by tearing down and rebuilding
+every column from scratch. The other real design question was text:
+this module has no dependency on any particular app's translation
+system by design, so the dialog's title/column headers/button labels
+are a small `TGridColumnManagerLabels` struct with plain-English
+defaults, overridable by the caller — this app's own `App.cpp` builds
+one from its existing `tr()`-translated strings right before calling
+`createColumnManagerDialog()`, so the generic version stays genuinely
+app-agnostic while this app's own copy is still fully translated.
+Verified directly: `resetColumns()` restores the *original* defaults
+even after every property (width, visibility, order) has been changed,
+not some intermediate state; the dialog works standalone against a
+plain `TGridView` with no `TorrentListWindow` involved at all, correctly
+reading column labels live from the real columns rather than a
+duplicated array; custom labels passed in are actually used, and
+omitting them falls back to the English defaults without crashing; and
+the Reset button, exercised through the dialog's own command dispatch
+(not called directly), produces the same restored values on the real
+grid.
+
+**The files window originally showed every file as one flat row**,
+full relative path and all — asked directly whether folders were
+handled specially, and they weren't: a torrent with subfolders (a TV
+season, say) would show every file with its whole
+`Season1/Episode01.mkv`-style path crammed into the name column, with
+no way to act on a whole folder at once. Fixed by actually building a
+tree from the files' own paths (split on `/`, which is what
+Transmission's RPC always uses regardless of the daemon's own host OS)
+rather than treating `files_` (the flat, RPC-order list `torrent-set`
+addresses files by index in) as the display order directly. A separate
+`rows_` list — one row per real file *or* per synthetic folder,
+indented by depth, each carrying the real file indices it represents
+(one for a file, every descendant's for a folder, collected recursively
+so a sub-subfolder's files still count toward every ancestor folder
+above it) — is what the grid actually renders and what every action
+reads from, leaving `files_` itself untouched as the thing indices are
+still resolved against. A torrent with no folders at all produces
+exactly the same flat one-row-per-file list this had before, which is
+what most of the testing before this point had already exercised
+without anyone noticing the gap. Verified directly, with a torrent
+built specifically to have a nested folder (`Season1/Extras/`, two
+levels deep) and files in different states: a folder row's size/percent
+are genuinely summed across every descendant, not just its direct
+children; "wanted" and "priority" show "Mixed" only when descendants
+actually disagree, not for a folder with just one file under it;
+toggling a folder in a mixed wanted-state turns every descendant *on*
+(never leaves it ambiguous which way "toggle" should go when they
+already disagree); and — the part most likely to have a bug — the exact
+file indices sent to `torrent-set` for a folder action are the real,
+original RPC indices of every file beneath it, however deep, not
+positions within the display list.
+
+**Added per-file selection and priority** (`TorrentFilesWindow`,
+reachable from "Files..." in the torrent list's right-click menu),
+requested with an example screenshot from another Transmission client's
+own files view. Built on `TGridView` for the list itself — another data
+point for the widget holding up outside the main torrent list it was
+generalized from. Required two new `torrent-get` fields Transmission
+returns as parallel arrays rather than one combined one (`files` for
+name/size, `fileStats` for wanted/priority/completed bytes, both in the
+same per-file order) — `TransmissionClient::getTorrentFiles()` zips them
+together by index into one `TorrentFile` per file, and the "Toggle
+wanted"/priority buttons/"Select all"/"Select none" actions all address
+files the same way, by that index, via `torrent-set`'s `files-wanted`/
+`files-unwanted`/`priority-low`/`priority-normal`/`priority-high`.
+Verified directly against a mock server: the merge produces the correct
+combined data per file (not just each array read independently); each
+action sends exactly the RPC call it should — the right field name, the
+right file index (or *every* index, for Select all/none) — not simply
+that some request went out; and the grid's rendered cells match the
+underlying data for every column, including a partially-downloaded
+file's percentage.
 
 **Moved "Filters..." and "Manage columns..." into their own "Columns"
 menu**, out of "Settings" (which now holds just the "Settings..." item

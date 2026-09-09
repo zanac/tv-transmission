@@ -52,6 +52,14 @@ public:
     // window for a given torrent instead of opening a duplicate.
     int torrentId() const { return torrentId_; }
 
+    // Identifies which server's TransmissionClient this window is
+    // talking to, by address — used when a server is removed (see
+    // App::showConnectionDialog()) to find every window still pointing
+    // at that client (this one among them) and close them BEFORE the
+    // client itself is destroyed, rather than leaving a dangling
+    // reference behind.
+    TransmissionClient* clientPtr() const { return &client_; }
+
     // Set by createTorrentDetailsWindow() once the controls are built.
     TCheckBoxes* limitCheckboxes = nullptr;
     TInputLine* downloadLimitField = nullptr;
