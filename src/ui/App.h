@@ -75,6 +75,15 @@ private:
     // refresh, shutDown()'s layout save), for the same "don't cache
     // pointers across turns" reason as focusedListWindow() above.
     std::vector<TorrentListWindow*> allListWindows() const;
+    // Closes every OTHER kind of window (Details, Files, Tracker — not
+    // torrent-list windows themselves, which the caller closes
+    // separately) still pointing at `client`'s own TransmissionClient
+    // — see each of their own clientPtr() comments for why this is
+    // needed before a server's client is actually destroyed (see
+    // showConnectionDialog()): any of them left open past that point
+    // would hold a dangling reference to a client that no longer
+    // exists.
+    void closeWindowsForClient(TransmissionClient* client) const;
 
     AppSettings settings_;
     // One TransmissionClient per configured server, keyed by the same

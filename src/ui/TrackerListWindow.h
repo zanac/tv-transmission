@@ -51,6 +51,11 @@ public:
     // tracker list for this torrent instead of opening a duplicate.
     int torrentId() const { return torrentId_; }
 
+    // Identifies which server's TransmissionClient this window is
+    // talking to, by address — see TorrentDetailsWindow::clientPtr()'s
+    // own comment for what this is for.
+    TransmissionClient* clientPtr() const { return &client_; }
+
     // Current column widths/order/visibility, same conventions as the
     // constructor's own initial* parameters — read by App::
     // showColumnManagerDialog() to persist whatever was last changed

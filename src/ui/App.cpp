@@ -1,5 +1,7 @@
 #include "App.h"
 #include "TorrentListWindow.h"
+#include "TorrentDetailsWindow.h"
+#include "TorrentFilesWindow.h"
 #include "TrackerListWindow.h"
 #include "AddTorrentDialog.h"
 #include "ConnectionDialog.h"
@@ -282,13 +284,22 @@ void App::showConnectionDialog() {
 
             // Any server no longer in settings_.servers after this edit
             // (removed via the combo's own "[-]" and confirmed) loses
-            // its window and its client — see connectionDialogResult()'s
-            // own comment on why the combo's current list, not the old
-            // settings, is what decides what survives.
+            // every window that was open for it — its own torrent-list
+            // window, and any Details/Files/Tracker window opened from
+            // it, whichever torrent they were about — plus the client
+            // itself. Order matters here: the OTHER windows first
+            // (closeWindowsForClient(), which points at this server's
+            // still-live client to identify them), then the torrent-
+            // list window, and only THEN the client itself erased —
+            // erasing it any earlier would leave whichever of those
+            // hadn't been closed yet holding a dangling reference the
+            // next time they tried to do anything.
             for (TorrentListWindow* w : allListWindows()) {
                 if (settings_.servers.find(w->serverName()) == settings_.servers.end()) {
-                    clients_.erase(w->serverName());
+                    auto clientIt = clients_.find(w->serverName());
+                    if (clientIt != clients_.end()) closeWindowsForClient(clientIt->second.get());
                     w->close();
+                    clients_.erase(w->serverName());
                 }
             }
 
@@ -551,6 +562,27 @@ std::vector<TorrentListWindow*> App::allListWindows() const {
         } while (p != TProgram::deskTop->last);
     }
     return result;
+}
+
+void App::closeWindowsForClient(TransmissionClient* client) const {
+    // Collected first, closed after: TWindow::close() calls destroy(this),
+    // which would mutate deskTop's own child chain out from under this
+    // same walk if done while still iterating it.
+    std::vector<TWindow*> toClose;
+    if (TProgram::deskTop->last) {
+        TView* p = TProgram::deskTop->last;
+        do {
+            p = p->next;
+            if (auto* w = dynamic_cast<TorrentDetailsWindow*>(p)) {
+                if (w->clientPtr() == client) toClose.push_back(w);
+            } else if (auto* w = dynamic_cast<TorrentFilesWindow*>(p)) {
+                if (w->clientPtr() == client) toClose.push_back(w);
+            } else if (auto* w = dynamic_cast<TrackerListWindow*>(p)) {
+                if (w->clientPtr() == client) toClose.push_back(w);
+            }
+        } while (p != TProgram::deskTop->last);
+    }
+    for (TWindow* w : toClose) w->close();
 }
 
 void App::handleEvent(TEvent& event) {

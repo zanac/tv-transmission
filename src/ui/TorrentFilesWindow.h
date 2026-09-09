@@ -47,6 +47,11 @@ public:
     // TrackerListWindow::torrentId().
     int torrentId() const { return torrentId_; }
 
+    // Identifies which server's TransmissionClient this window is
+    // talking to, by address — see TorrentDetailsWindow::clientPtr()'s
+    // own comment for what this is for.
+    TransmissionClient* clientPtr() const { return &client_; }
+
 private:
     void refresh();
     void toggleWantedForFocused();
