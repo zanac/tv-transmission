@@ -332,10 +332,11 @@ void TComboBox::addCurrentValue() {
     short idx = 0;
     for (TComboItem* p = items; p != 0; p = p->next, idx++) {
         if (editBuf_ == p->text) {
-            focusItem(idx); // already there — just select it, no duplicate
-            return;
+            focusItem(idx); // already there — just select it, no duplicate,
+            return;         // and no broadcast: nothing actually changed
         }
     }
+    lastChangedValue_ = editBuf_; // captured before anything else touches editBuf_
     TComboItem* newItem = new TComboItem(editBuf_.c_str(), 0, nullptr);
     if (items == nullptr) {
         items = newItem;
@@ -346,6 +347,7 @@ void TComboBox::addCurrentValue() {
     }
     numItems++;
     focusItem((short)(numItems - 1)); // the newly-appended entry
+    message(owner, evBroadcast, cmComboBoxItemAdded, this);
 }
 
 void TComboBox::removeCurrentValue() {
@@ -358,7 +360,9 @@ void TComboBox::removeCurrentValue() {
         p = p->next;
         idx++;
     }
-    if (p == nullptr) return; // current text doesn't match any entry
+    if (p == nullptr) return; // current text doesn't match any entry — no broadcast
+
+    lastChangedValue_ = p->text; // captured before the entry is freed below
 
     if (prev == nullptr) items = p->next;
     else prev->next = p->next;
@@ -378,6 +382,7 @@ void TComboBox::removeCurrentValue() {
         // syncs editBuf_ via focusItem() itself.
         focusItem(idx < numItems ? idx : (short)(numItems - 1));
     }
+    message(owner, evBroadcast, cmComboBoxItemRemoved, this);
 }
 
 std::string TComboBox::editText() const {

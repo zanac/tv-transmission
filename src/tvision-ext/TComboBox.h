@@ -107,6 +107,19 @@ protected:
 // available from <tvision/tv.h> without needing anything specific to
 // this file included first.
 
+// Broadcast when "[+]"/"[-]" (editable mode — see below) actually add
+// or remove a list entry — not fired for the no-op cases (adding text
+// that already matches an entry, or "[-]" with nothing matching the
+// current text; see addCurrentValue()/removeCurrentValue()'s own
+// comments). Unlike cmComboBoxSelectionChanged, these two are this
+// project's own addition, not something the tvision fork already
+// provides — picked the next two free values after 59 in the same
+// enum's own numbering (see views.h), rather than reusing anything
+// from cmUserBase upward, which is reserved for application-level
+// commands, not widget-level ones like this.
+constexpr ushort cmComboBoxItemAdded = 60;
+constexpr ushort cmComboBoxItemRemoved = 61;
+
 // A single-line, single-selection drop-down combo box. Clicking it, or
 // pressing Space/Enter/Down while it is focused, opens a TComboWindow
 // from which an entry can be chosen.
@@ -163,6 +176,16 @@ public:
     // Every entry currently in the list, in list order.
     std::vector<std::string> allValues() const;
 
+    // The name that was just added or removed by "[+]"/"[-]" — valid
+    // (and meaningful) only while handling the matching
+    // cmComboBoxItemAdded/cmComboBoxItemRemoved broadcast; a caller
+    // reads this from within its own handleEvent() override right after
+    // TView::handleEvent() (or the dialog's own base handleEvent())
+    // delivers that broadcast to it. Not cleared afterward, so reading
+    // it at any other time just returns whatever the last add/remove
+    // happened to be, which usually isn't meaningful.
+    const std::string& lastChangedValue() const { return lastChangedValue_; }
+
 protected:
     TComboItem* items;
     short numItems;
@@ -171,6 +194,7 @@ private:
     bool editable_ = false;
     std::string editBuf_;
     int cursorPos_ = 0;
+    std::string lastChangedValue_;
 
     // Opens the dropdown popup and applies the result — the same logic
     // handleEvent() always ran inline, now shared between the

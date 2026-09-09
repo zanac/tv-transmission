@@ -76,6 +76,16 @@ struct ServerProfile {
     std::string password;
 };
 
+// A saved torrent-list window's own position and size — in character
+// cells (tvision's own coordinate unit), not pixels. Not clamped to
+// the current desktop here (that only makes sense against a live
+// terminal size, known only once the app is actually running — see
+// App's own constructor for where restoring one of these against
+// deskTop->getExtent() actually happens).
+struct WindowLayout {
+    int x = 0, y = 0, w = 100, h = 30;
+};
+
 // Settings the user can configure from the Connection/Server windows.
 struct AppSettings {
     int refreshIntervalSeconds = 5; // first option in the Connection window
@@ -95,10 +105,31 @@ struct AppSettings {
     // is early enough that starting over instead of translating the old
     // shape was the simpler, deliberate choice.
     std::map<std::string, ServerProfile> servers;
-    // Which entry in `servers` is the one actually connected to right
-    // now — empty if none has been configured yet (a fresh install, or
-    // exactly the "recreate rather than migrate" case above).
+    // Which entry in `servers` the Connection dialog treats as "the"
+    // one by default (pre-selected when it opens, and what the CLI
+    // connects to when no server is otherwise specified) — empty if
+    // none has been configured yet. Since every configured server now
+    // gets its own torrent-list window on startup (see App's own
+    // constructor and "Multiple servers" below) rather than only ever
+    // one being connected to, this is no longer "the" active
+    // connection in the way it originally was — it's now closer to a
+    // default than an exclusive choice.
     std::string activeServer;
+
+    // Every configured server's own torrent-list window opens on
+    // startup at whatever position/size it last had, keyed by the same
+    // logical server name as `servers` above — saved on exit (see
+    // App::shutDown()). A server with no entry here yet (never opened
+    // before, or an older settings.json predating this) falls back to
+    // an automatically arranged position instead.
+    std::map<std::string, WindowLayout> windowLayouts;
+    // Which server's window had focus at the moment the app was last
+    // closed — that's the one brought to the front on the next launch,
+    // ahead of every other configured server's own window (all of them
+    // still open, just not the one on top). Empty falls back to
+    // whichever window ends up first once every configured server's
+    // own window has been created.
+    std::string focusedServerAtClose;
 
     Language language = Language::English;
 
@@ -147,12 +178,11 @@ struct AppSettings {
     std::vector<int> trackerColumnOrder;
     std::vector<bool> trackerColumnVisible;
 
-    // The currently active server's own connection details, or a
-    // default-constructed ServerProfile if activeServer is empty or
-    // doesn't match anything in servers — callers that just want "the
-    // connection settings to use right now" (App's own constructor, the
-    // CLI) don't each need to handle "nothing configured yet" as a
-    // special case themselves.
+    // `activeServer`'s own connection details, or a default-constructed
+    // ServerProfile if it's empty or doesn't match anything in servers
+    // — the CLI's own fallback when no server is given on the command
+    // line (see Cli.cpp), so it doesn't need to handle "nothing
+    // configured yet" as a special case itself.
     const ServerProfile& activeProfile() const {
         static const ServerProfile empty;
         auto it = servers.find(activeServer);

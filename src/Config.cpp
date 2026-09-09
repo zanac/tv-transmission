@@ -63,6 +63,17 @@ AppSettings loadSettings() {
             }
         }
         settings.activeServer = j.value("activeServer", settings.activeServer);
+        if (j.contains("windowLayouts") && j["windowLayouts"].is_object()) {
+            for (auto& [name, wj] : j["windowLayouts"].items()) {
+                WindowLayout w;
+                w.x = wj.value("x", w.x);
+                w.y = wj.value("y", w.y);
+                w.w = wj.value("w", w.w);
+                w.h = wj.value("h", w.h);
+                settings.windowLayouts[name] = w;
+            }
+        }
+        settings.focusedServerAtClose = j.value("focusedServerAtClose", settings.focusedServerAtClose);
 
         int lang = j.value("language", static_cast<int>(settings.language));
         settings.language = static_cast<Language>(lang);
@@ -124,6 +135,12 @@ bool saveSettings(const AppSettings& settings) {
     }
     j["servers"] = serversJson;
     j["activeServer"] = settings.activeServer;
+    json layoutsJson = json::object();
+    for (const auto& [name, w] : settings.windowLayouts) {
+        layoutsJson[name] = {{"x", w.x}, {"y", w.y}, {"w", w.w}, {"h", w.h}};
+    }
+    j["windowLayouts"] = layoutsJson;
+    j["focusedServerAtClose"] = settings.focusedServerAtClose;
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
     j["sortAscending"] = settings.sortAscending;

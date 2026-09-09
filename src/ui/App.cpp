@@ -31,15 +31,42 @@
 
 App::App(const AppSettings& initialSettings)
     : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
-      settings_(initialSettings),
-      client_(settings_.activeProfile().host, settings_.activeProfile().port,
-              settings_.activeProfile().user, settings_.activeProfile().password) {
+      settings_(initialSettings) {
     // The global language was already set by main() BEFORE constructing
     // this object (see the comment in App.h): initMenuBar()/
     // initStatusLine() have therefore already read it correctly. No need
     // to redo it here.
     lastRefresh_ = std::chrono::steady_clock::now();
-    newTorrentListWindow();
+
+    // Every configured server gets its own window on startup — see
+    // AppSettings::servers' own comment on why there's no longer just
+    // one "active" connection. Whichever one had focus when the app was
+    // last closed (see shutDown()) ends up on top again; if that name
+    // no longer matches anything (removed since, or a first run),
+    // whichever opens first just stays wherever TWindow::insert() put it.
+    TorrentListWindow* toFocus = nullptr;
+    for (const auto& [name, profile] : settings_.servers) {
+        (void)profile; // only the name is needed here — openServerWindow() looks up the profile itself
+        TRect bounds = deskTop->getExtent();
+        auto layoutIt = settings_.windowLayouts.find(name);
+        if (layoutIt != settings_.windowLayouts.end()) {
+            const WindowLayout& saved = layoutIt->second;
+            TRect r(saved.x, saved.y, saved.x + saved.w, saved.y + saved.h);
+            // Clamped against the CURRENT terminal size, which may well
+            // be different from whatever it was when this was saved —
+            // TRect::intersect() shrinks `r` to whatever overlap exists
+            // with the desktop's own extent. If that leaves basically
+            // nothing usable (the terminal's a lot smaller now, or the
+            // saved rect was degenerate to begin with), falls back to
+            // the full desktop extent already in `bounds` instead of
+            // opening something too small to actually use.
+            r.intersect(deskTop->getExtent());
+            if (r.b.x - r.a.x >= 40 && r.b.y - r.a.y >= 10) bounds = r;
+        }
+        TorrentListWindow* win = openServerWindow(name, bounds);
+        if (win && name == settings_.focusedServerAtClose) toFocus = win;
+    }
+    if (toFocus) toFocus->select();
 }
 
 TMenuBar* App::initMenuBar(TRect r) {
@@ -81,11 +108,11 @@ TMenuBar* App::initMenuBar(TRect r) {
             newLine() +
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
-            // Standard tvision commands: the main window can't be closed
-            // (see TorrentListWindow, wfClose removed), but the "Torrent
-            // details" windows (double-click, non-modal) can stay open
-            // more than one at a time — hence the need to be able to
-            // tile/close/cycle through them.
+            // Standard tvision commands. Every torrent-list window is
+            // now closable and tileable (see TGridWindow's own
+            // fullScreen=false path) alongside the "Torrent details"/
+            // files/tracker windows that already were — Tile/Cascade
+            // arranges all of them together, not just the latter.
             *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
             *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
             *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
@@ -116,8 +143,9 @@ TStatusLine* App::initStatusLine(TRect r) {
     r.a.y = r.b.y - 1;
     return new BandwidthStatusLine(r,
         *new TStatusDef(0, 0xFFFF) +
-            // Text updated at runtime by updateBandwidthStatus();
-            // kbNoKey because it's not an action, just information.
+            // Text updated at runtime by updateBandwidthStatus(), from
+            // whichever torrent-list window currently has focus — kbNoKey
+            // because it's not an action, just information.
             *new TStatusItem("D: --  U: --", kbNoKey, cmBandwidthDisplay) +
             *new TStatusItem(tr(Str::StatusAdd), kbF2, cmAddTorrent) +
             *new TStatusItem(tr(Str::StatusStart), kbF5, cmStartTorrent) +
@@ -127,12 +155,35 @@ TStatusLine* App::initStatusLine(TRect r) {
     );
 }
 
-void App::newTorrentListWindow() {
-    // Full desktop extent and "locked" (see flags = 0 in
-    // TorrentListWindow's constructor): this is the main window, meant
-    // to always stay maximized.
-    TRect r = deskTop->getExtent();
-    listWindow_ = new TorrentListWindow(r, client_,
+TorrentListWindow* App::openServerWindow(const std::string& name, const TRect& bounds) {
+    // Already open: bring it forward instead of duplicating — this is
+    // also how a server just added/edited in the Connection dialog
+    // (see showConnectionDialog()) reaches an existing window rather
+    // than always opening a new one.
+    for (TorrentListWindow* w : allListWindows()) {
+        if (w->serverName() == name) {
+            w->select();
+            return w;
+        }
+    }
+
+    auto profileIt = settings_.servers.find(name);
+    if (profileIt == settings_.servers.end()) return nullptr; // stays defensive; callers only ever pass a name that's actually in settings_.servers
+    const ServerProfile& profile = profileIt->second;
+
+    // Each window gets its own TransmissionClient rather than sharing
+    // one — see App.h's own comment on clients_ for why a std::map
+    // specifically. The reference TorrentListWindow holds (client_ in
+    // its own header) stays valid for as long as this entry does, which
+    // is until the corresponding server is removed via the Connection
+    // dialog's "[-]" (see showConnectionDialog()) — never while its own
+    // window still exists.
+    auto client = std::make_unique<TransmissionClient>(profile.host, profile.port,
+                                                         profile.user, profile.password);
+    TransmissionClient& clientRef = *client;
+    clients_[name] = std::move(client);
+
+    auto* win = new TorrentListWindow(bounds, name, clientRef,
         settings_.sortColumn, settings_.sortAscending, settings_.filter,
         settings_.columnWidths, settings_.columnOrder, settings_.columnVisible,
         [this](SortColumn col, bool asc) {
@@ -141,10 +192,19 @@ void App::newTorrentListWindow() {
             saveSettings(settings_);
         },
         settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible);
-    deskTop->insert(listWindow_);
+    deskTop->insert(win); // TorrentListWindow's own constructor already calls refresh() at the end — nothing more needed here
+    return win;
 }
 
 void App::showAddTorrentDialog(const std::string& initialValue) {
+    // Adds to whichever server's window currently has focus — the same
+    // "act on the focused one" rule every other Torrent-menu command
+    // follows now that there's more than one to choose from.
+    TorrentListWindow* target = focusedListWindow();
+    if (!target) return;
+    auto clientIt = clients_.find(target->serverName());
+    if (clientIt == clients_.end()) return;
+
     TInputLine* urlField = nullptr;
     auto* dlg = createAddTorrentDialog(urlField, initialValue);
     if (!dlg) return;
@@ -154,19 +214,19 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
 
     if (result == cmOK) {
         if (!url.empty()) {
-            auto addResult = client_.addTorrent(url);
+            auto addResult = clientIt->second->addTorrent(url);
             if (addResult == TransmissionClient::AddTorrentResult::Duplicate) {
                 messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
             } else if (addResult == TransmissionClient::AddTorrentResult::Failed) {
-                // client_.lastError() carries Transmission's own reason
-                // when the RPC request itself succeeded but adding the
-                // torrent didn't (invalid/corrupt magnet or .torrent,
-                // unreachable http(s) URL, ...), or a network/curl error
-                // when the request couldn't even be made — either way,
-                // something concrete to show instead of doing nothing.
+                // lastError() carries Transmission's own reason when the
+                // RPC request itself succeeded but adding the torrent
+                // didn't (invalid/corrupt magnet or .torrent, unreachable
+                // http(s) URL, ...), or a network/curl error when the
+                // request couldn't even be made — either way, something
+                // concrete to show instead of doing nothing.
                 char buf[512];
                 std::snprintf(buf, sizeof(buf), tr(Str::MsgTorrentAddFailed),
-                    client_.lastError().c_str());
+                    clientIt->second->lastError().c_str());
                 messageBox(buf, mfError | mfOKButton);
             }
         }
@@ -217,16 +277,57 @@ void App::showConnectionDialog() {
         if (execView(dlg) == cmOK) {
             Language oldLanguage = settings_.language;
             settings_ = connectionDialogResult(fields, settings_);
-            applySettings();
             saveSettings(settings_); // persisted right away: see Config.h
             setLanguage(settings_.language);
-            // The main window already exists: relabel it right away.
+
+            // Any server no longer in settings_.servers after this edit
+            // (removed via the combo's own "[-]" and confirmed) loses
+            // its window and its client — see connectionDialogResult()'s
+            // own comment on why the combo's current list, not the old
+            // settings, is what decides what survives.
+            for (TorrentListWindow* w : allListWindows()) {
+                if (settings_.servers.find(w->serverName()) == settings_.servers.end()) {
+                    clients_.erase(w->serverName());
+                    w->close();
+                }
+            }
+
+            // The server actually shown when OK was pressed: an
+            // existing window for it gets its client's credentials
+            // refreshed in place (host/port/user/password may have
+            // just changed) and a re-fetch; one that isn't open yet
+            // (a brand new name, or switching to a previously-saved
+            // one that was never opened this session) gets opened the
+            // same way startup does. Either way it's brought to the
+            // front, so confirming this dialog always ends with the
+            // server it was just pointed at visible.
+            if (!settings_.activeServer.empty()) {
+                TorrentListWindow* target = nullptr;
+                for (TorrentListWindow* w : allListWindows()) {
+                    if (w->serverName() == settings_.activeServer) { target = w; break; }
+                }
+                if (target) {
+                    const ServerProfile& profile = settings_.activeProfile();
+                    auto clientIt = clients_.find(settings_.activeServer);
+                    if (clientIt != clients_.end()) {
+                        clientIt->second->setEndpoint(profile.host, profile.port);
+                        clientIt->second->setCredentials(profile.user, profile.password);
+                        target->refresh();
+                    }
+                    target->select();
+                } else {
+                    openServerWindow(settings_.activeServer, deskTop->getExtent());
+                }
+            }
+
             // The menu bar and status bar, on the other hand, are built
             // only once at startup (see main.cpp/App.h) and stay in
             // whatever language was active then until the app is
             // restarted — but from this point on restarting *works*:
-            // the config file now holds the chosen language.
-            if (listWindow_) listWindow_->retranslate();
+            // the config file now holds the chosen language. Every
+            // still-open torrent-list window gets relabeled right away,
+            // not just the one just opened/edited above.
+            for (TorrentListWindow* w : allListWindows()) w->retranslate();
 
             // Told explicitly rather than left to notice on their own:
             // most of the UI already switched (see retranslate() above
@@ -242,15 +343,25 @@ void App::showConnectionDialog() {
 }
 
 void App::showServerSettingsDialog() {
+    // Acts on whichever server's window currently has focus — global
+    // (session-wide) speed limits are the connected Transmission
+    // daemon's OWN state, and with more than one daemon possibly
+    // connected to at once now, "the" limits only makes sense per
+    // server, the same way "Manage columns..." already acts on
+    // whichever grid has focus (see focusedGrid()).
+    TorrentListWindow* focused = focusedListWindow();
+    if (!focused) return;
+    auto clientIt = clients_.find(focused->serverName());
+    if (clientIt == clients_.end()) return;
+    TransmissionClient& client = *clientIt->second;
+
     // Live RPC call: none of these fields are part of settings_ /
     // settings.json, they live on the Transmission daemon itself (see
-    // TransmissionClient::getSessionLimits()). Uses whichever
-    // connection is already active — if it doesn't work (e.g. host/
-    // user/password were never set up successfully, see
-    // showConnectionDialog()), the fetch fails and `sessionLimitsFetched`
-    // says so.
+    // TransmissionClient::getSessionLimits()). If it doesn't work (e.g.
+    // this server's own host/user/password were never set up
+    // successfully), the fetch fails and `sessionLimitsFetched` says so.
     bool sessionLimitsFetched = false;
-    SessionLimits sessionLimits = client_.getSessionLimits(&sessionLimitsFetched);
+    SessionLimits sessionLimits = client.getSessionLimits(&sessionLimitsFetched);
 
     ServerSettingsDialogFields fields;
     if (auto* dlg = createServerSettingsDialog(sessionLimits, fields)) {
@@ -263,7 +374,7 @@ void App::showServerSettingsDialog() {
             // limits already set there, even though the user never
             // touched any of these fields.
             if (sessionLimitsFetched) {
-                client_.setSessionLimits(serverSettingsDialogResult(fields));
+                client.setSessionLimits(serverSettingsDialogResult(fields));
             }
         }
         destroy(dlg);
@@ -271,13 +382,18 @@ void App::showServerSettingsDialog() {
 }
 
 void App::showFilterDialog() {
-    if (!listWindow_) return;
+    // Shared across every open window (see AppSettings::filter's own
+    // comment — the same "one setting, every window" choice as column
+    // widths/order), so confirming this applies it everywhere at once
+    // rather than only to whichever window has focus.
     FilterDialogFields fields;
     if (auto* dlg = createFilterDialog(settings_.filter, fields)) {
         if (execView(dlg) == cmOK) {
             settings_.filter = filterDialogResult(fields);
             saveSettings(settings_); // persisted right away, same as everything else in Config.h
-            listWindow_->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
+            for (TorrentListWindow* w : allListWindows()) {
+                w->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
+            }
         }
         destroy(dlg);
     }
@@ -331,15 +447,15 @@ void App::showColumnManagerDialog() {
         // reasoning as App::shutDown() persisting these on exit — the
         // user might not close the app again for a while after this.
         // Which settings.json fields to update depends on which grid
-        // was actually just edited — checked by identity for the main
-        // list (there's only one), or by the focused window's class for
-        // the tracker list (there can be several open at once, but they
-        // all share one saved layout — see AppSettings::
-        // trackerColumnWidths's own doc comment for why).
-        if (listWindow_ && grid == listWindow_->grid()) {
-            settings_.columnWidths = listWindow_->columnWidths();
-            settings_.columnOrder = listWindow_->columnOrder();
-            settings_.columnVisible = listWindow_->columnVisibility();
+        // was actually just edited — checked by the focused window's
+        // own class: any torrent-list window (there can be several open
+        // at once now, but they all share one saved layout — see
+        // AppSettings::columnWidths' own doc comment), or the tracker
+        // list (same sharing, for its own separate layout).
+        if (auto* listWin = dynamic_cast<TorrentListWindow*>(TProgram::deskTop->current)) {
+            settings_.columnWidths = listWin->columnWidths();
+            settings_.columnOrder = listWin->columnOrder();
+            settings_.columnVisible = listWin->columnVisibility();
             saveSettings(settings_);
         } else if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(TProgram::deskTop->current)) {
             settings_.trackerColumnWidths = trackerWin->columnWidths();
@@ -383,27 +499,27 @@ void App::showAboutDialog() {
     }
 }
 
-void App::applySettings() {
-    const ServerProfile& profile = settings_.activeProfile();
-    client_.setEndpoint(profile.host, profile.port);
-    client_.setCredentials(profile.user, profile.password);
-    if (listWindow_) listWindow_->refresh();
-}
-
 void App::updateBandwidthStatus() {
-    if (!statusLine || !listWindow_) return;
-    double down = listWindow_->totalDownloadRate();
-    double up = listWindow_->totalUploadRate();
+    // Whichever torrent-list window has focus, per the decision that
+    // this reflects "the open window", not every open window's combined
+    // total — shows the placeholder "--"/"--" (see initStatusLine())
+    // when no torrent-list window has focus at all (some other kind of
+    // window does, or none does).
+    if (!statusLine) return;
+    TorrentListWindow* focused = focusedListWindow();
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "D: %.1f KB/s  U: %.1f KB/s",
-                  down / 1024.0, up / 1024.0);
+    if (focused) {
+        double down = focused->totalDownloadRate();
+        double up = focused->totalUploadRate();
+        std::snprintf(buf, sizeof(buf), "D: %.1f KB/s  U: %.1f KB/s", down / 1024.0, up / 1024.0);
+    } else {
+        std::snprintf(buf, sizeof(buf), "D: --  U: --");
+    }
     static_cast<BandwidthStatusLine*>(statusLine)->setItemText(cmBandwidthDisplay, buf);
 }
 
 TGridView* App::focusedGrid() const {
-    // deskTop->current is the currently active window — the main
-    // torrent list at startup (it's the only window there is), or
-    // whatever else has been clicked/tabbed into since. Every
+    // deskTop->current is the currently active window. Every
     // TGridView-based window in this app — TorrentListWindow (via its
     // TGridWindow base), TrackerListWindow, TorrentFilesWindow —
     // inserts its grid as a direct child, the same way any TView is
@@ -421,6 +537,22 @@ TGridView* App::focusedGrid() const {
     return grid;
 }
 
+TorrentListWindow* App::focusedListWindow() const {
+    return dynamic_cast<TorrentListWindow*>(TProgram::deskTop->current);
+}
+
+std::vector<TorrentListWindow*> App::allListWindows() const {
+    std::vector<TorrentListWindow*> result;
+    if (TProgram::deskTop->last) {
+        TView* p = TProgram::deskTop->last;
+        do {
+            p = p->next;
+            if (auto* w = dynamic_cast<TorrentListWindow*>(p)) result.push_back(w);
+        } while (p != TProgram::deskTop->last);
+    }
+    return result;
+}
+
 void App::handleEvent(TEvent& event) {
     TApplication::handleEvent(event);
     if (event.what != evCommand) return;
@@ -431,39 +563,39 @@ void App::handleEvent(TEvent& event) {
             clearEvent(event);
             break;
         case cmStartTorrent:
-            if (listWindow_) listWindow_->startSelected();
+            if (auto* w = focusedListWindow()) w->startSelected();
             clearEvent(event);
             break;
         case cmStopTorrent:
-            if (listWindow_) listWindow_->stopSelected();
+            if (auto* w = focusedListWindow()) w->stopSelected();
             clearEvent(event);
             break;
         case cmRemoveTorrent:
-            if (listWindow_) listWindow_->removeSelected();
+            if (auto* w = focusedListWindow()) w->removeSelected();
             clearEvent(event);
             break;
         case cmDeleteTorrentWithData:
-            if (listWindow_) listWindow_->deleteWithDataSelected();
+            if (auto* w = focusedListWindow()) w->deleteWithDataSelected();
             clearEvent(event);
             break;
         case cmStartNowTorrent:
-            if (listWindow_) listWindow_->startNowSelected();
+            if (auto* w = focusedListWindow()) w->startNowSelected();
             clearEvent(event);
             break;
         case cmVerifyTorrent:
-            if (listWindow_) listWindow_->verifySelected();
+            if (auto* w = focusedListWindow()) w->verifySelected();
             clearEvent(event);
             break;
         case cmReannounceTorrent:
-            if (listWindow_) listWindow_->reannounceSelected();
+            if (auto* w = focusedListWindow()) w->reannounceSelected();
             clearEvent(event);
             break;
         case cmShowDetails:
-            if (listWindow_) listWindow_->showDetailsForSelected();
+            if (auto* w = focusedListWindow()) w->showDetailsForSelected();
             clearEvent(event);
             break;
         case cmShowFiles:
-            if (listWindow_) listWindow_->showFilesForSelected();
+            if (auto* w = focusedListWindow()) w->showFilesForSelected();
             clearEvent(event);
             break;
         case cmSelectMultiple:
@@ -471,28 +603,28 @@ void App::handleEvent(TEvent& event) {
             // selection mode again if it's already active — enterSelectionMode()/
             // exitSelectionMode() are both already safe no-ops in the
             // wrong state, so there's nothing extra to guard here.
-            if (listWindow_) {
-                if (listWindow_->grid()->isInSelectionMode())
-                    listWindow_->grid()->exitSelectionMode();
+            if (auto* w = focusedListWindow()) {
+                if (w->grid()->isInSelectionMode())
+                    w->grid()->exitSelectionMode();
                 else
-                    listWindow_->grid()->enterSelectionMode(listWindow_->grid()->focusedRow());
+                    w->grid()->enterSelectionMode(w->grid()->focusedRow());
             }
             clearEvent(event);
             break;
         case cmQueueMoveTop:
-            if (listWindow_) listWindow_->queueMoveTopForSelected();
+            if (auto* w = focusedListWindow()) w->queueMoveTopForSelected();
             clearEvent(event);
             break;
         case cmQueueMoveUp:
-            if (listWindow_) listWindow_->queueMoveUpForSelected();
+            if (auto* w = focusedListWindow()) w->queueMoveUpForSelected();
             clearEvent(event);
             break;
         case cmQueueMoveDown:
-            if (listWindow_) listWindow_->queueMoveDownForSelected();
+            if (auto* w = focusedListWindow()) w->queueMoveDownForSelected();
             clearEvent(event);
             break;
         case cmQueueMoveBottom:
-            if (listWindow_) listWindow_->queueMoveBottomForSelected();
+            if (auto* w = focusedListWindow()) w->queueMoveBottomForSelected();
             clearEvent(event);
             break;
         case cmSettings:
@@ -529,17 +661,37 @@ void App::handleEvent(TEvent& event) {
 }
 
 void App::shutDown() {
-    // Captured here rather than after every single drag/reorder step:
-    // both are live, continuous interactions (see TGridView's own
-    // README.md), so writing settings.json on every intermediate step
-    // would be far more I/O than the user's final choice actually
-    // needs. Whatever the widths/order are at the moment the app is
-    // closing is what's worth remembering for next time.
-    if (listWindow_) {
-        settings_.columnWidths = listWindow_->columnWidths();
-        settings_.columnOrder = listWindow_->columnOrder();
-        saveSettings(settings_);
+    // Column widths/order (shared across every window — see
+    // AppSettings::columnWidths' own comment) captured from whichever
+    // window is found first, since they should all match anyway — the
+    // same reasoning as the tracker-list backstop just below.
+    std::vector<TorrentListWindow*> windows = allListWindows();
+    if (!windows.empty()) {
+        settings_.columnWidths = windows[0]->columnWidths();
+        settings_.columnOrder = windows[0]->columnOrder();
     }
+
+    // Every still-open window's own position/size, keyed by its server
+    // name — rebuilt from scratch each time (not just updated in place)
+    // so a server closed this session, or removed via the Connection
+    // dialog, doesn't leave a stale entry behind from a previous run.
+    settings_.windowLayouts.clear();
+    for (TorrentListWindow* w : windows) {
+        TRect r = w->getBounds();
+        WindowLayout layout;
+        layout.x = r.a.x;
+        layout.y = r.a.y;
+        layout.w = r.b.x - r.a.x;
+        layout.h = r.b.y - r.a.y;
+        settings_.windowLayouts[w->serverName()] = layout;
+    }
+    // Whichever window has focus right now is the one brought back to
+    // the front on the next launch (see the constructor).
+    if (TorrentListWindow* focused = focusedListWindow()) {
+        settings_.focusedServerAtClose = focused->serverName();
+    }
+    if (!windows.empty()) saveSettings(settings_);
+
     // Same backstop for the tracker list, if one happens to still be
     // open — direct mouse/keyboard resizing or reordering on its own
     // header (not through "Manage columns...", which already saves
@@ -568,24 +720,29 @@ void App::shutDown() {
 void App::idle() {
     TApplication::idle();
     // Refresh on a real interval (settings_.refreshIntervalSeconds),
-    // no longer on every single event-loop tick. Skipped entirely while
-    // selection mode is active (see TGridView::enterSelectionMode()):
-    // refresh() re-fetches and re-applies the current sort/filter, which
-    // can reorder visible_ — and TorrentListWindow::targetTorrents()
-    // maps a checked row straight to visible_[row], so a reorder while
-    // rows are checked would silently apply an action to the wrong
-    // torrent. Holding the list still until the user finishes selecting
-    // (or cancels) avoids that outright rather than trying to remap
-    // indices across a refresh.
-    bool selecting = listWindow_ && listWindow_->grid()->isInSelectionMode();
+    // no longer on every single event-loop tick — applied to EVERY open
+    // torrent-list window on the same shared timer (there's one
+    // refreshIntervalSeconds, not one per server), each independently
+    // skipped while its own selection mode is active (see
+    // TGridView::enterSelectionMode()): refresh() re-fetches and
+    // re-applies the current sort/filter, which can reorder visible_ —
+    // and TorrentListWindow::targetTorrents() maps a checked row
+    // straight to visible_[row], so a reorder while rows are checked in
+    // THAT window would silently apply an action to the wrong torrent.
+    // Holding that one window still until its own selection finishes
+    // (or is cancelled) avoids that outright, without needing to pause
+    // every other window's own refresh too.
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - lastRefresh_).count();
-    if (!selecting && elapsed >= settings_.refreshIntervalSeconds) {
-        if (listWindow_) listWindow_->refresh();
+    if (elapsed >= settings_.refreshIntervalSeconds) {
+        for (TorrentListWindow* w : allListWindows()) {
+            if (!w->grid()->isInSelectionMode()) w->refresh();
+        }
         lastRefresh_ = now;
     }
-    // Total bandwidth is refreshed on every idle tick: it's cheap (no
-    // RPC call, just reads data already cached by listWindow_).
+    // Cheap (no RPC call, just reads data already cached by whichever
+    // window has focus), so refreshed on every idle tick rather than
+    // only alongside the interval-gated re-fetch above.
     updateBandwidthStatus();
     // "Manage columns..." is a single menu entry that acts on whichever
     // window currently has focus (see focusedGrid()) — checked here,
@@ -596,4 +753,3 @@ void App::idle() {
     if (focusedGrid()) enableCommand(cmManageColumns);
     else disableCommand(cmManageColumns);
 }
-

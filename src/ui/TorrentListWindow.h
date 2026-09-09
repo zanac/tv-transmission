@@ -50,7 +50,12 @@ public:
     // trackerColumnWidths/Order/Visible, so a tracker window opened
     // from any of them starts with whatever tracker column layout was
     // last saved.
-    TorrentListWindow(const TRect& bounds, TransmissionClient& client,
+    // `serverName`: this window's own logical server name (see
+    // AppSettings::servers) — shown in the title, alongside the
+    // translated "Torrents" text (see retranslate()), and read back by
+    // App to know which settings.json entry this window's own geometry
+    // belongs to when saving on exit.
+    TorrentListWindow(const TRect& bounds, const std::string& serverName, TransmissionClient& client,
                        SortColumn initialSort, bool initialAscending,
                        TorrentFilter initialFilter,
                        const std::vector<int>& initialColumnWidths,
@@ -61,7 +66,18 @@ public:
                        const std::vector<int>& initialTrackerColumnOrder = {},
                        const std::vector<bool>& initialTrackerColumnVisible = {});
 
+    const std::string& serverName() const { return serverName_; }
+
     void refresh();       // calls listTorrents() and updates the view
+    // Re-syncs the shared Torrent-menu command enable/disable state
+    // (see updateCommandStates()) to THIS window's own current
+    // selection whenever it becomes the active one — enableCommand()/
+    // disableCommand() are process-wide, not per-window, so without
+    // this a window that gains focus without also changing its own row
+    // focus (its usual trigger — see the grid's row-focus callback in
+    // the constructor) would silently keep showing whichever other
+    // window's state was set last, not its own.
+    void setState(ushort aState, Boolean enable) override;
     void startSelected();
     void stopSelected();
     void removeSelected();       // confirmation prompt, then keeps files on disk
@@ -123,6 +139,7 @@ private:
     void showContextMenuFor(int row, TPoint screenPos);
 
     TransmissionClient& client_;
+    std::string serverName_;
     std::vector<int> initialTrackerColumnWidths_;
     // Which queue-move action a double-click on the queue column does
     // next — 0=top, 1=up, 2=down, 3=bottom, advancing (wrapping) after

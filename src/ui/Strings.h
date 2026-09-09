@@ -29,6 +29,7 @@ enum class Str {
     MenuSettingsMenu, MenuColumnsMenu, MenuFilters,
     DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
     MsgLanguageChangeRestart,
+    MsgServerAdded, MsgServerRemoved, MsgConnectionTestFailed,
     MenuManageColumns, DialogTitleColumnManager,
     LabelColumnManagerColumn, LabelColumnManagerWidth, LabelColumnManagerVisible,
     ButtonResizeColumn, ButtonMoveColumn, ButtonToggleVisible,

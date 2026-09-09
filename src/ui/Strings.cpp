@@ -69,6 +69,15 @@ const char* tr(Str id) {
                 "und Statusleiste vollständig umschalten (alles andere hat sich bereits geändert).",
                 "Idioma cambiado. Reinicia la aplicación para que la barra de menús "
                 "y la barra de estado cambien del todo (el resto ya ha cambiado).");
+        case Str::MsgServerAdded:
+            return pick("Server '%s' added.", "Server '%s' aggiunto.", "Serveur « %s » ajouté.",
+                        "Server '%s' hinzugefügt.", "Servidor '%s' añadido.");
+        case Str::MsgServerRemoved:
+            return pick("Server '%s' removed.", "Server '%s' rimosso.", "Serveur « %s » supprimé.",
+                        "Server '%s' entfernt.", "Servidor '%s' eliminado.");
+        case Str::MsgConnectionTestFailed:
+            return pick("Could not connect: %s", "Impossibile connettersi: %s", "Connexion impossible : %s",
+                        "Verbindung fehlgeschlagen: %s", "No se pudo conectar: %s");
         case Str::DialogTitleColumnManager:
             return pick("Manage columns", "Gestisci colonne", "Gérer les colonnes",
                         "Spalten verwalten", "Gestionar columnas");

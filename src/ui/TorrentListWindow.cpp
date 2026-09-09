@@ -22,6 +22,15 @@
 
 namespace {
 
+// "servername — Torrents" — the server name leads, since with more
+// than one of these windows potentially open at once (see App's own
+// constructor), that's the part actually telling them apart; the
+// translated "Torrents" after it is just there for anyone glancing at
+// the title bar without already knowing what this app's windows are.
+std::string buildWindowTitle(const std::string& serverName) {
+    return serverName + " \xE2\x80\x94 " + tr(Str::WindowTitleTorrentList);
+}
+
 // Builds "[███████░░░░░░░░░]  42%" — the block characters (U+2588 full
 // block / U+2591 light shade) are a near-universal convention for
 // filled/empty progress in any UTF-8 terminal; the count of each is
@@ -139,7 +148,7 @@ bool passesFilter(const Torrent& t, const TorrentFilter& f) {
 
 } // namespace
 
-TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& client,
+TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& serverName, TransmissionClient& client,
                                       SortColumn initialSort, bool initialAscending,
                                       TorrentFilter initialFilter,
                                       const std::vector<int>& initialColumnWidths,
@@ -153,9 +162,10 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
-      TGridWindow(bounds, tr(Str::WindowTitleTorrentList), /*fullScreen=*/true,
+      TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/false,
                   gvResizableColumns | gvReorderableColumns | gvMultiSelect),
       client_(client),
+      serverName_(serverName),
       initialTrackerColumnWidths_(initialTrackerColumnWidths),
       initialTrackerColumnOrder_(initialTrackerColumnOrder),
       initialTrackerColumnVisible_(initialTrackerColumnVisible),
@@ -406,7 +416,7 @@ void TorrentListWindow::retranslate() {
     // twindow.cpp) and freed with delete[] in its destructor — the same
     // pattern used for TStatusItem::text in BandwidthStatusLine.
     delete[] (char*)title;
-    title = newStr(tr(Str::WindowTitleTorrentList));
+    title = newStr(buildWindowTitle(serverName_));
     applyColumnLabels(); // the sort "^"/"v" indicator is drawn by TGridView
                          // itself at draw time (see grid()->refresh() below),
                          // independent of the header label text — nothing
@@ -548,6 +558,18 @@ void TorrentListWindow::updateCommandStates() {
     setCmd(this, cmStartNowTorrent, stopped || queued); // only useful if not already transferring
     setCmd(this, cmShowDetails, true);                 // always possible
     setCmd(this, cmShowFiles, true);                   // always possible
+}
+
+void TorrentListWindow::setState(ushort aState, Boolean enable) {
+    TGridWindow::setState(aState, enable);
+    // sfActive: this window just became (enable=True) or stopped being
+    // (enable=False) the desktop's current one — only the "became"
+    // direction needs anything here; the OTHER window gaining focus
+    // will run its own updateCommandStates() right after via this same
+    // override.
+    if ((aState & sfActive) != 0 && enable) {
+        updateCommandStates();
+    }
 }
 
 void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
