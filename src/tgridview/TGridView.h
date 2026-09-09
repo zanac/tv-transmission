@@ -135,6 +135,27 @@ public:
     using RowActivateFn  = std::function<void(int row)>;               // double-click / Enter
     using RowContextFn   = std::function<void(int row, TPoint screenPos)>; // right-click
     using RowFocusFn      = std::function<void(int row)>; // focused row changed (arrow keys, click, focusRow())
+    // Like RowActivateFn, but fired specifically for a MOUSE
+    // double-click, carrying the logical column it landed on — for a
+    // caller that needs to react differently depending on which column
+    // was double-clicked (e.g. TorrentFilesWindow: double-clicking the
+    // wanted column toggles it, double-clicking priority cycles it).
+    // Not fired for Enter (there's no "column" a keypress landed on) —
+    // set RowActivateFn too if a keyboard-driven equivalent is needed.
+    // Not fired while in selection mode either, for the same reason a
+    // double-click there doesn't fire RowActivateFn (see
+    // TGridRowsView::handleEvent()'s own doc comment).
+    //
+    // Returns whether THIS double-click was this column's concern: true
+    // consumes the event outright, so a caller that also set
+    // RowActivateFn (e.g. TorrentListWindow, opening details on any
+    // other column's double-click) doesn't have that fire too for a
+    // column meant to do something else instead (e.g. cycling a
+    // torrent's queue position). false leaves the event alone, letting
+    // it fall through to RowActivateFn exactly as if CellActivateFn
+    // hadn't been set at all — the natural choice for any column this
+    // callback doesn't specifically care about.
+    using CellActivateFn = std::function<bool(int row, int col)>;
 
     // Clicking a sortable column's header (see TGridColumn::sortable)
     // toggles ascending/descending if it's already the active sort
@@ -154,6 +175,7 @@ public:
     void setCellBoldCallback(CellBoldFn fn);
     void setRowActivateCallback(RowActivateFn fn);
     void setRowContextCallback(RowContextFn fn);
+    void setCellActivateCallback(CellActivateFn fn);
     void setRowFocusCallback(RowFocusFn fn);
     void setSortChangedCallback(SortChangedFn fn);
 
@@ -240,7 +262,7 @@ public:
     bool multiSelectCapable() const { return (options_ & gvMultiSelect) != 0; }
 
     // True once a leftmost checkbox column is showing and rows can be
-    // individually checked — via a 3-second press-and-hold on a row
+    // individually checked — via a brief press-and-hold on a row
     // (only when gvMultiSelect is set), or by calling this directly
     // (e.g. from a menu command, so keyboard-only use works too: Space
     // then toggles the focused row). `initialRow`, if given (and
@@ -305,6 +327,13 @@ private:
     // in updateHScrollBarVisibility()/relayout()).
     int scrollableViewportWidth() const;
     int visualPositionOf(int logicalCol) const; // position within displayOrder_, -1 if not found
+    // VISUAL position (index into `vis`, not a logical index) whose span
+    // (including its trailing separator) contains CONTENT-relative x, or
+    // -1 if past the last visible column. Shared by the header (its own
+    // sort-glyph/resize/reorder hit-testing) and the rows (double-click
+    // column detection — see CellActivateFn) rather than duplicated,
+    // since both need exactly the same column-boundary math.
+    int columnAtX(int x, const std::vector<int>& vis) const;
     // Position within the VISIBLE-only subset of displayOrder_ (what
     // every visual operation — drawing, hit-testing, reorder — actually
     // iterates over), -1 if not found or not visible. See
@@ -343,6 +372,7 @@ private:
     CellBoldFn cellBold_;
     RowActivateFn onRowActivate_;
     RowContextFn onRowContext_;
+    CellActivateFn onCellActivate_;
     RowFocusFn onRowFocus_;
     SortChangedFn onSortChanged_;
     ColumnOrderChangedFn onColumnOrderChanged_;

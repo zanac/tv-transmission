@@ -8,7 +8,8 @@ add_executable(tv-transmission
     ui/App.cpp
     ui/TorrentListWindow.cpp
     ui/AddTorrentDialog.cpp
-    ui/SettingsDialog.cpp
+    ui/ConnectionDialog.cpp
+    ui/ServerSettingsDialog.cpp
     ui/FilterDialog.cpp
     tgridview/TGridColumnManagerDialog.cpp
     ui/LanguageComboBox.cpp

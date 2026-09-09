@@ -51,7 +51,9 @@ private:
     void refresh();
     void toggleWantedForFocused();
     void setPriorityForFocused(int priority);
+    void cyclePriorityForFocused(); // Low -> Normal -> High -> Low; Mixed resolves to Low
     void setAllWanted(bool wanted);
+    void showContextMenuFor(int row, TPoint screenPos);
 
     int torrentId_;
     TransmissionClient& client_;

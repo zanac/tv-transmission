@@ -5,6 +5,10 @@
 #define Uses_TButton
 #define Uses_TProgram
 #define Uses_TEvent
+#define Uses_TMenuItem
+#define Uses_TMenu
+#define Uses_TMenuPopup
+#define Uses_TKeys
 #include <tvision/tv.h>
 #include <cstdio>
 #include <map>
@@ -123,7 +127,12 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
 
     TRect r = getExtent();
     r.grow(-1, -1);
-    r.b.y -= 6; // room for the two button rows at the bottom
+    r.b.y -= 3; // room for the one remaining button row at the bottom —
+                // "Toggle wanted" and the priority buttons are gone now
+                // (double-click and the right-click context menu cover
+                // both, see setCellActivateCallback()/
+                // setRowContextCallback() below), so only "Select all"/
+                // "Select none"/"Close" need a row
 
     grid_ = new TGridView(r, gvResizableColumns);
     insert(grid_);
@@ -215,30 +224,30 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
     grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
         return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
     });
-    // Double-click a row: toggles its own wanted state, the same as
-    // the "Toggle wanted" button does for whichever row is focused —
-    // a double-click already focuses the row it lands on first (see
-    // TListViewer's own click handling), so toggleWantedForFocused()
-    // already operates on the right one without needing the row index
-    // this callback receives.
-    grid_->setRowActivateCallback([this](int) { toggleWantedForFocused(); });
+    // Double-clicking a cell does something specific to WHICH column it
+    // landed on, rather than the same thing regardless — the wanted
+    // column toggles, the priority column cycles Low→Normal→High→Low
+    // (Mixed, on a folder whose descendants disagree, resolves to Low
+    // first — the same "ambiguous state picks the more conservative
+    // option" rule toggleWantedForFocused() already uses). Any other
+    // column is left alone; double-clicking the name or size doesn't do
+    // anything special.
+    grid_->setCellActivateCallback([this](int, int col) -> bool {
+        if (col == 3) toggleWantedForFocused();
+        else if (col == 4) cyclePriorityForFocused();
+        return true; // consumed either way — this window has no
+                     // RowActivateFn set to fall through to regardless
+    });
+    // Right-click: both actions again, plus the priority choices a
+    // double-click's cycling can't reach directly (jumping straight to
+    // High from Low, say) — see showContextMenuFor().
+    grid_->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
 
     int buttonY = r.b.y + 1;
     int x = r.a.x;
-    insert(new TButton(TRect(x, buttonY, x + 20, buttonY + 2), tr(Str::ButtonToggleWanted), cmToggleWanted, bfNormal));
-    x += 21;
     insert(new TButton(TRect(x, buttonY, x + 14, buttonY + 2), tr(Str::ButtonSelectAll), cmSelectAllFiles, bfNormal));
     x += 15;
     insert(new TButton(TRect(x, buttonY, x + 14, buttonY + 2), tr(Str::ButtonSelectNone), cmSelectNoneFiles, bfNormal));
-
-    buttonY += 3;
-    x = r.a.x;
-    insert(new TButton(TRect(x, buttonY, x + 16, buttonY + 2), tr(Str::ButtonPriorityLow), cmSetPriorityLow, bfNormal));
-    x += 17;
-    insert(new TButton(TRect(x, buttonY, x + 18, buttonY + 2), tr(Str::ButtonPriorityNormal), cmSetPriorityNormal, bfNormal));
-    x += 19;
-    insert(new TButton(TRect(x, buttonY, x + 16, buttonY + 2), tr(Str::ButtonPriorityHigh), cmSetPriorityHigh, bfNormal));
-    x += 17;
     insert(new TButton(TRect(r.b.x - 10, buttonY, r.b.x, buttonY + 2), tr(Str::ButtonClose), cmCloseFiles, bfDefault));
 
     refresh();
@@ -279,6 +288,29 @@ void TorrentFilesWindow::setPriorityForFocused(int priority) {
     refresh();
 }
 
+void TorrentFilesWindow::cyclePriorityForFocused() {
+    int row = grid_->focusedRow();
+    if (row < 0 || row >= (int)rows_.size()) return;
+    const std::vector<int>& indices = rows_[row].fileIndices;
+    if (indices.empty()) return;
+
+    // Low(-1) -> Normal(0) -> High(1) -> Low(-1) — a folder whose
+    // descendants disagree (Mixed) resolves to Low first, the same
+    // "ambiguous state picks the more conservative option" rule
+    // toggleWantedForFocused() already applies to a Mixed wanted state.
+    int firstPriority = files_[indices[0]].priority;
+    bool allSame = true;
+    for (int idx : indices) if (files_[idx].priority != firstPriority) { allSame = false; break; }
+    int next = -1;
+    if (allSame) {
+        if (firstPriority < 0) next = 0;
+        else if (firstPriority == 0) next = 1;
+        // else firstPriority > 0 (High): next stays -1 (Low)
+    }
+    client_.setFilesPriority(torrentId_, indices, next);
+    refresh();
+}
+
 void TorrentFilesWindow::setAllWanted(bool wanted) {
     if (files_.empty()) return;
     std::vector<int> allIndices;
@@ -286,6 +318,33 @@ void TorrentFilesWindow::setAllWanted(bool wanted) {
     for (int i = 0; i < (int)files_.size(); i++) allIndices.push_back(i);
     client_.setFilesWanted(torrentId_, allIndices, wanted);
     refresh();
+}
+
+void TorrentFilesWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
+    // Same pattern as TorrentListWindow::showContextMenuFor() — see its
+    // own comments for why the bounds are sized this way and why
+    // execView()'s result gets re-posted as a command rather than acted
+    // on directly here. Built fresh from tr()-translated strings (the
+    // same ones the removed buttons used) rather than a static TMenu,
+    // for the same reason every other menu in this app is: language can
+    // change at runtime.
+    TRect r(screenPos.x, screenPos.y, screenPos.x + 40, screenPos.y + 10);
+    TMenu* menu = new TMenu(
+        *new TMenuItem(tr(Str::ButtonToggleWanted), cmToggleWanted, kbNoKey) +
+        *new TMenuItem(tr(Str::ButtonPriorityLow), cmSetPriorityLow, kbNoKey) +
+        *new TMenuItem(tr(Str::ButtonPriorityNormal), cmSetPriorityNormal, kbNoKey) +
+        *new TMenuItem(tr(Str::ButtonPriorityHigh), cmSetPriorityHigh, kbNoKey)
+    );
+    auto* popup = new TMenuPopup(r, menu);
+    ushort chosen = TProgram::application->execView(popup);
+    TObject::destroy(popup);
+    if (chosen != 0) {
+        TEvent e;
+        e.what = evCommand;
+        e.message.command = chosen;
+        e.message.infoPtr = this;
+        putEvent(e);
+    }
 }
 
 void TorrentFilesWindow::handleEvent(TEvent& event) {

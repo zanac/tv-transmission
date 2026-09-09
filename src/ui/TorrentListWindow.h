@@ -69,6 +69,15 @@ public:
     void startNowSelected();
     void verifySelected();
     void reannounceSelected();
+    void queueMoveTopForSelected();
+    void queueMoveUpForSelected();
+    void queueMoveDownForSelected();
+    void queueMoveBottomForSelected();
+    // Cycles through the four queue-move actions above, one per
+    // double-click on the queue position column — see
+    // cycleQueueActionForRow()'s own comment for why this is a single
+    // shared counter rather than per-row state.
+    void cycleQueueActionForRow(int row);
     void showDetailsForSelected();
     void showFilesForSelected();
     void retranslate();   // re-applies the title + column headers in the current language
@@ -115,6 +124,13 @@ private:
 
     TransmissionClient& client_;
     std::vector<int> initialTrackerColumnWidths_;
+    // Which queue-move action a double-click on the queue column does
+    // next — 0=top, 1=up, 2=down, 3=bottom, advancing (wrapping) after
+    // every such double-click regardless of which row it landed on;
+    // not tied to any one torrent's own state, since queue position is
+    // relative to every other torrent, not something with its own
+    // fixed "next value" the way a file's priority has.
+    int queueActionCycle_ = 0;
     std::vector<int> initialTrackerColumnOrder_;
     std::vector<bool> initialTrackerColumnVisible_;
 

@@ -13,6 +13,17 @@ struct SessionLimits {
     int downloadLimit = 0;  // KB/s
     bool uploadLimited = false;
     int uploadLimit = 0;    // KB/s
+
+    // The "alt speed" (a.k.a. turtle-mode) limits — a second, usually
+    // lower, pair of limits Transmission switches to as a whole (via
+    // alt-speed-enabled, toggled elsewhere — not exposed by this
+    // struct — rather than per-direction like the pair above) when
+    // e.g. you want bandwidth back during the day without having to
+    // remember the normal limits to restore them later. Always present
+    // regardless of whether alt-speed is currently active, same as the
+    // official Transmission clients show them.
+    int altSpeedDown = 0;    // KB/s
+    int altSpeedUp = 0;      // KB/s
 };
 
 // Minimal client for Transmission's JSON RPC (transmission-daemon).
@@ -59,6 +70,16 @@ public:
     // (torrent-reannounce), instead of waiting for the next scheduled
     // announce.
     bool reannounceTorrent(int id);
+
+    // Queue reordering — Transmission processes queued (not-yet-active)
+    // torrents in queue-position order; these change where a torrent
+    // sits in that order relative to the others, rather than setting an
+    // absolute position directly (there's no RPC call for "move to
+    // position N" — only these four relative moves).
+    bool queueMoveTop(int id);
+    bool queueMoveUp(int id);
+    bool queueMoveDown(int id);
+    bool queueMoveBottom(int id);
 
     // Fetches per-tracker stats for a single torrent (torrent-get with
     // the "trackerStats" field). Fetched on demand, not part of the

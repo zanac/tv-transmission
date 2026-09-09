@@ -257,6 +257,46 @@ mid-character on non-ASCII content) drops however many leading display
 columns have scrolled off, and the shortened text is drawn starting at
 indent 0 instead.
 
+**The scrollbar itself is hidden — and its row handed back to the rows
+and vertical scrollbar, which grow to fill it — whenever there's
+nothing to scroll**, rather than always reserving a row for a control
+that would have nothing to do. `relayout()` checks this on every call
+(so on every column add/remove/resize/reorder/show-hide, the same
+things that already trigger it for other reasons) and grows or shrinks
+`rows_`/`scrollBar_` by exactly the one row the horizontal scrollbar
+needs, in whichever direction the content-vs-viewport comparison just
+flipped.
+
+That alone turned out not to be reliable enough: `relayout()` correctly
+sets the hidden state right after construction, but tvision's own
+view-insertion internals (`TGroup::insertBefore()`'s exposure cascade,
+most likely — the exact mechanism wasn't traced down further once a
+solid fix existed) can flip a child's visibility independently of this
+widget's own `hide()`/`show()` calls once the grid is actually inserted
+into a live desktop, with no `relayout()` call happening in between to
+catch it. First fixed by not depending on the transition happening
+exactly once: the header's own `draw()` re-validates and corrects the
+scrollbar's visibility every time it draws, not only when `relayout()`
+runs.
+
+That fix introduced a worse problem of its own: it decided WHETHER to
+resize by re-reading the scrollbar's own (externally-flippable)
+visibility state, so if something kept flipping that state back between
+one draw and the next, every single draw would see a "mismatch" again
+and resize `rows_` by another row — not just once. Repeated column
+visibility toggling could grow the rows area without bound, eventually
+overlapping whatever sits below the grid entirely (the host
+application's own status line, in TV Transmission's case). The real
+fix: never read that external state for the resize decision at all. A
+private `hScrollBarRowReserved_` flag — updated only by this widget's
+own code, never touched by anything outside it — is the sole authority
+for whether a resize happens; the scrollbar's own `show()`/`hide()`
+call is still repeated unconditionally on every `draw()` so its on-
+screen appearance keeps getting corrected, but that call no longer
+feeds back into the resize decision. Decoupling "does this look right"
+from "do we resize" is what stops the two from re-triggering each
+other.
+
 **Two ways to host it**: `TGridView` is a normal `TView` (a `TGroup`,
 specifically) and can be `insert()`-ed into any window you already
 have. `TGridWindow` exists only because "a window with nothing but a
@@ -287,6 +327,83 @@ own text (title, column headers, button labels) is a small
 overridable by the caller — see TV Transmission's own `App.cpp` for an
 example of building one from an app's existing translated strings right
 before calling `createColumnManagerDialog()`.
+
+**Multiple selection is opt-in** via `gvMultiSelect` — off by default, so
+a grid built without it (a column manager's own meta-grid, a tracker
+list) behaves exactly as it always did, paying nothing for the extra
+hit-testing. Once a grid has it, `enterSelectionMode()` — called
+directly (e.g. from a menu command, for keyboard-only use: Space then
+toggles whichever row is focused) or via a 3-second press-and-hold on a
+row — shows a leftmost `[X]`/`[ ]` checkbox column, drawn the same
+fixed-and-never-scrolled way the checkbox column always is (see
+`kSelectionColumnWidth` and `drawScrolled()`'s own `prefixWidth`
+parameter, which every column and separator already goes through). Any
+click on a row toggles it — not just a precise hit on the tiny `[X]`
+itself — since requiring pixel-perfect clicks on something this small
+would work against the point of making batch-selecting easier.
+`selectedRows()` returns every checked row's index; `setRowCount()`
+keeps the underlying tracking vector in lockstep with the row count
+whenever it changes while selection mode is active, so a mid-selection
+data refresh doesn't leave it too short.
+
+The long-press gesture needed a different mechanism than the drag-
+tracking `dragResize()` already uses elsewhere in this file:
+`TView::mouseEvent()` only returns once an event matching its own mask
+actually occurs, so a mask built for movement would leave it blocked
+indefinitely on a hold that never moves — exactly the case that
+matters here. Calling `getEvent()` directly instead relies on
+`TProgram::getEvent()`'s own wait timeout, which still returns
+periodically with `evNothing` even with nothing happening at all (the
+same path `idle()` runs on) — that's what lets an elapsed-time check
+actually get a chance to run rather than blocking on real input that
+may never come before release. Esc and Enter both leave selection mode
+too (in addition to the menu entry a caller wires up itself — see
+TV Transmission's own "Select Multiple"), without toggling the focused
+row on the way out.
+
+**Double-click can be column-aware**, via `CellActivateFn` — set with
+`setCellActivateCallback()`, alongside the existing `RowActivateFn`
+(`setRowActivateCallback()`), not in place of it. The two exist for
+different reasons: `RowActivateFn` is driven by `TListViewer`'s own
+generic `cmListItemSelected` broadcast (fired for Enter too, not just a
+mouse double-click), which only ever carries a row — nothing at that
+point in tvision's own handling knows *where* a click landed, only
+which row is now focused. `CellActivateFn` is fired directly from the
+rows view's own mouse handling instead, where the click's exact
+position is still available, specifically for a genuine mouse
+double-click (`meDoubleClick`) and only outside selection mode (a
+double-click there already means something else — see above).
+
+`CellActivateFn` returns `bool` — whether it considered that
+double-click its own concern. Returning `true` consumes the event
+outright, so `RowActivateFn` (if also set, e.g. TV Transmission's main
+list opening details on any other column's double-click) doesn't *also*
+fire for a column meant to do something else instead. Returning `false`
+leaves the event alone, falling through to `TListViewer::handleEvent()`
+exactly as if `CellActivateFn` had never been set for that column — the
+right choice for any column this callback doesn't specifically care
+about, letting whatever `RowActivateFn` would otherwise do keep working
+unchanged. Falling through that way is safe even for an ordinary
+double-click, unlike a plain single click: that base class's own
+press-tracking loop (see `tlstview.cpp`) checks for `meDoubleClick`
+*before* ever calling `mouseEvent()`, so an event that already carries
+the flag on arrival exits the loop immediately rather than blocking —
+confirmed by reading tvision's own source rather than assumed. Column
+hit-testing (`columnAtX()`) is shared between the header and the rows
+view rather than duplicated a second time for this — it's a method on
+`TGridView` itself now, not a private detail of the header.
+
+**A pre-flagged double-click can also reach the long-press watch** (see
+above) if `CellActivateFn` doesn't claim it — `multiSelectCapable()`
+alone used to be enough to start `watchForLongPress()`, with no check
+for whether this particular `evMouseDown` was already the second half
+of a double-click rather than a fresh press. That watch's own
+`getEvent()` loop then has no real release to find for a button that,
+as far as this specific event is concerned, was never freshly pressed —
+blocking indefinitely with no live event queue behind it (a synthetic
+test), or behaving unpredictably against whatever real release does
+eventually surface (a live app). Excluded now by adding `meDoubleClick`
+to that branch's own condition, alongside `multiSelectCapable()`.
 
 ## What this does *not* do (yet)
 
@@ -369,3 +486,50 @@ though, isn't that anything *looks* right — it's that after scrolling,
 a click at the position where a column's sort glyph now sits actually
 sorts *that* column, confirmed by which column index the sort callback
 receives, not just that a click did something.
+
+Hiding the scrollbar when it's not needed is verified the same
+directly-inspected way, in both directions: a grid whose columns
+already fit starts with it hidden and the row reclaimed; resizing a
+column until content exceeds the view flips it to shown with the row
+given back, confirmed by reading the scrollbar's own visibility state
+and range rather than just eyeballing whether content looks clipped.
+That covers `relayout()`'s own transition logic directly, but missed
+the actual reported bug — reading the same state again once the grid is
+inserted into a live desktop (not just right after construction) is
+what caught tvision's own insertion machinery quietly re-showing it.
+With the fix (re-validated on every `draw()`, not only in `relayout()`)
+in place, the real application itself — not a synthetic reproduction —
+confirms it end to end: a terminal too narrow for a given set of
+columns shows the scrollbar, a wide enough one doesn't, exercised by
+nothing more than the application's own ordinary draw cycle.
+
+That fix's own regression — the rows area growing without bound from
+resizing on every draw rather than once per transition — gets the most
+rigorous check in this module: 50 consecutive redraws with nothing
+changed leave the row count exactly unchanged, not just "still looks
+about right"; 20 rounds of toggling a column visible and hidden land on
+the exact same two row-count values every time, with zero drift in
+either direction; and in the real application, with real `refresh()`
+calls rather than a single synthetic check, 30 rapid toggles leave the
+window's own border and the application's status line exactly where
+they belong.
+
+Multiple selection is checked in the same layered order it was built:
+the widget's own mechanics first, entirely on their own — a grid built
+without `gvMultiSelect` leaves every selection API a safe no-op;
+`enterSelectionMode()`/`toggleRowSelected()`/`selectedRows()` toggle and
+report correctly on their own, including out-of-range indices being
+silently ignored rather than corrupting anything; the checkbox column
+stays fixed in place through horizontal scrolling, confirmed off a real
+rendered screen rather than just trusting the coordinate math; and the
+3-second gesture is timed against a real terminal with genuine elapsed
+time — a hold past 3 seconds shows the checkbox column with that row
+already checked, a short click well under the threshold shows neither.
+One thing worth noting about testing mouse interaction here at all:
+`TListViewer`'s own base handling of a click can block waiting for a
+release event to arrive through tvision's real event queue, which a
+synthetic single `handleEvent()` call outside a live application has no
+way to supply — confirmed by checking that this widget's own routing
+logic (which row a click lands on) had already run and updated state
+correctly *before* that block occurred, rather than treating the hang
+itself as a failure.

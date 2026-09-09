@@ -34,7 +34,11 @@ const char* tr(Str id) {
         case Str::MenuStart:     return pick("~S~tart", "~S~tart", "~D~émarrer", "~S~tarten", "~I~niciar");
         case Str::MenuStop:      return pick("S~t~op", "S~t~op", "Arrê~t~er", "S~t~oppen", "~D~etener");
         case Str::MenuRemove:    return pick("~R~emove", "~R~imuovi", "~S~upprimer", "~E~ntfernen", "~E~liminar");
-        case Str::MenuSettings:  return pick("S~e~ttings...", "~I~mpostazioni...", "~P~aramètres...", "Ei~n~stellungen...", "~C~onfiguración...");
+        case Str::MenuConnection:
+            return pick("~C~onnection...", "~C~onnessione...", "C~o~nnexion...",
+                        "~V~erbindung...", "C~o~nexión...");
+        case Str::MenuServerSettings:
+            return pick("~S~erver...", "~S~erver...", "~S~erveur...", "~S~erver...", "~S~ervidor...");
         case Str::MenuQuit:      return pick("~Q~uit", "~E~sci", "~Q~uitter", "~B~eenden", "~S~alir");
         case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración");
         case Str::MenuColumnsMenu:
@@ -89,6 +93,23 @@ const char* tr(Str id) {
         case Str::MenuSelectMultiple:
             return pick("Select ~M~ultiple", "Selezione ~m~ultipla", "Sélection ~m~ultiple",
                         "~M~ehrfachauswahl", "Selección ~m~últiple");
+        case Str::MenuCancelSelection:
+            return pick("~C~ancel selection", "~A~nnulla selezione", "~A~nnuler la sélection",
+                        "Auswahl ~a~bbrechen", "~C~ancelar selección");
+        case Str::MenuQueue:
+            return pick("Q~u~eue", "C~o~da", "F~i~le d'attente", "~W~arteschlange", "C~o~la");
+        case Str::MenuQueueMoveTop:
+            return pick("Move to ~T~op", "Porta in ~c~ima", "Déplacer tout en ~h~aut",
+                        "~G~anz nach oben", "Mover al ~p~rincipio");
+        case Str::MenuQueueMoveUp:
+            return pick("Move ~U~p", "Sposta ~s~u", "~M~onter",
+                        "Nach ~o~ben", "Mover ~a~rriba");
+        case Str::MenuQueueMoveDown:
+            return pick("Move ~D~own", "Sposta ~g~iù", "~D~escendre",
+                        "Nach ~u~nten", "Mover a~b~ajo");
+        case Str::MenuQueueMoveBottom:
+            return pick("Move to ~B~ottom", "Porta in ~f~ondo", "Déplacer tout en ~b~as",
+                        "Ganz nach u~n~ten", "Mover al ~f~inal");
         case Str::MenuDeleteWithData:
             return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
                         "~L~öschen (mit Dateien)", "~B~orrar (con archivos)");
@@ -149,7 +170,7 @@ const char* tr(Str id) {
         case Str::StatusAdd:      return pick("~F2~ Add", "~F2~ Aggiungi", "~F2~ Ajouter", "~F2~ Hinzufügen", "~F2~ Añadir");
         case Str::StatusStart:    return "~F5~ Start"; // same word in all five languages
         case Str::StatusStop:     return pick("~F6~ Stop", "~F6~ Stop", "~F6~ Arrêter", "~F6~ Stopp", "~F6~ Detener");
-        case Str::StatusSettings: return pick("~F9~ Settings", "~F9~ Impostazioni", "~F9~ Paramètres", "~F9~ Einstellungen", "~F9~ Config.");
+        case Str::StatusSettings: return pick("~F9~ Connection", "~F9~ Connessione", "~F9~ Connexion", "~F9~ Verbindung", "~F9~ Conexión");
         case Str::StatusQuit:     return pick("~Alt-X~ Quit", "~Alt-X~ Esci", "~Alt-X~ Quitter", "~Alt-X~ Beenden", "~Alt-X~ Salir");
 
         case Str::WindowTitleTorrentList:
@@ -179,8 +200,11 @@ const char* tr(Str id) {
         case Str::ButtonOK:     return "OK"; // same word in all five languages
         case Str::ButtonCancel: return pick("Cancel", "Annulla", "Annuler", "Abbrechen", "Cancelar");
 
-        case Str::DialogTitleSettings:
-            return pick("Settings", "Impostazioni", "Paramètres", "Einstellungen", "Configuración");
+        case Str::DialogTitleConnection:
+            return pick("Connection", "Connessione", "Connexion", "Verbindung", "Conexión");
+        case Str::DialogTitleServerSettings:
+            return pick("Server Configuration", "Configurazione server", "Configuration du serveur",
+                        "Server-Konfiguration", "Configuración del servidor");
         case Str::LabelRefreshSeconds:
             return pick("Refresh (seconds):", "Refresh (secondi):", "Actualisation (secondes) :",
                         "Aktualisierung (Sekunden):", "Actualización (segundos):");
@@ -332,6 +356,22 @@ const char* tr(Str id) {
                         "Download begrenzen", "Limitar descarga");
         case Str::CheckGlobalLimitUpload:
             return pick("Limit upload", "Limita upload", "Limiter l'envoi", "Upload begrenzen", "Limitar subida");
+        case Str::LabelAltSpeedSection:
+            return pick("'Speed Limit' mode", "Modalità 'Limite velocità'", "Mode « Limite de vitesse »",
+                        "Modus 'Geschwindigkeitslimit'", "Modo 'Límite de velocidad'");
+        case Str::LabelAltSpeedDescription:
+            return pick(
+                "When enabled, 'Speed Limit' mode overrides\nthe global bandwidth limit",
+                "Quando abilitata, la modalità 'Limite velocità'\nannulla la limitazione globale di banda",
+                "Lorsqu'il est activé, le mode « Limite de vitesse »\nremplace la limite de bande passante globale",
+                "Wenn aktiviert, setzt der Modus 'Geschwindigkeitslimit'\ndas globale Bandbreitenlimit außer Kraft",
+                "Cuando está habilitado, el modo 'Límite de velocidad'\nanula el límite de ancho de banda global");
+        case Str::LabelAltSpeedDownload:
+            return pick("Download limit:", "Limite download:", "Limite de téléchargement :",
+                        "Download-Limit:", "Límite de descarga:");
+        case Str::LabelAltSpeedUpload:
+            return pick("Upload limit:", "Limite upload:", "Limite d'envoi :",
+                        "Upload-Limit:", "Límite de subida:");
 
         case Str::TorrentStatusStopped:
             return pick("Stopped", "Fermo", "Arrêté", "Gestoppt", "Detenido");

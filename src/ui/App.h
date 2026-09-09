@@ -31,7 +31,8 @@ public:
 private:
     void newTorrentListWindow();
     void showAddTorrentDialog(const std::string& initialValue = "");
-    void showSettingsDialog();
+    void showConnectionDialog();
+    void showServerSettingsDialog();
     void showFilterDialog();
     void showColumnManagerDialog();
     void showWindowListDialog();
@@ -60,7 +61,7 @@ const ushort cmAddTorrent       = 100;
 const ushort cmStartTorrent     = 101;
 const ushort cmStopTorrent      = 102;
 const ushort cmRemoveTorrent    = 103;
-const ushort cmSettings         = 104;
+const ushort cmSettings         = 104; // opens the Connection dialog — see App::showConnectionDialog()
 const ushort cmBandwidthDisplay = 105; // non-clickable item in the status bar
 const ushort cmShowWindowList   = 106;
 const ushort cmVerifyTorrent    = 107;
@@ -73,3 +74,8 @@ const ushort cmFilters          = 113;
 const ushort cmManageColumns    = 114;
 const ushort cmShowFiles        = 115;
 const ushort cmSelectMultiple   = 116;
+const ushort cmQueueMoveTop     = 117;
+const ushort cmQueueMoveUp      = 118;
+const ushort cmQueueMoveDown    = 119;
+const ushort cmQueueMoveBottom  = 120;
+const ushort cmServerSettings   = 121;

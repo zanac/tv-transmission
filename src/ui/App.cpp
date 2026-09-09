@@ -2,7 +2,8 @@
 #include "TorrentListWindow.h"
 #include "TrackerListWindow.h"
 #include "AddTorrentDialog.h"
-#include "SettingsDialog.h"
+#include "ConnectionDialog.h"
+#include "ServerSettingsDialog.h"
 #include "FilterDialog.h"
 #include "../tgridview/TGridColumnManagerDialog.h"
 #include "WindowListDialog.h"
@@ -42,6 +43,23 @@ App::App(const AppSettings& initialSettings)
 
 TMenuBar* App::initMenuBar(TRect r) {
     r.b.y = r.a.y + 1;
+    // Built separately and nested into the Torrent menu below via an
+    // explicit cast to TMenuItem& — writing `*queueMenu + *new
+    // TMenuItem(...)` inline there would resolve to operator+(TSubMenu&,
+    // TSubMenu&) instead (see menus.h), which chains it as a sibling
+    // TOP-LEVEL menu in the bar rather than nesting it as an item inside
+    // Torrent's own list. The cast forces the other overload,
+    // operator+(TSubMenu&, TMenuItem&) — a TSubMenu still qualifies
+    // (it inherits from TMenuItem), just not the one the compiler picks
+    // automatically. Documented once here since this project hasn't
+    // needed a nested submenu before now.
+    TSubMenu* queueMenu = new TSubMenu(tr(Str::MenuQueue), kbNoKey);
+    *queueMenu +
+        *new TMenuItem(tr(Str::MenuQueueMoveTop), cmQueueMoveTop, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveUp), cmQueueMoveUp, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
+
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
@@ -55,6 +73,8 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
+            newLine() +
+            static_cast<TMenuItem&>(*queueMenu) +
             newLine() +
             *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
             newLine() +
@@ -84,7 +104,8 @@ TMenuBar* App::initMenuBar(TRect r) {
             // manager dialog — see ColumnManagerDialog.h.
             *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
-            *new TMenuItem(tr(Str::MenuSettings), cmSettings, kbF9) +
+            *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9) +
+            *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbNoKey) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
     );
@@ -189,22 +210,12 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
     }
 }
 
-void App::showSettingsDialog() {
-    // Live RPC call: the global speed limits aren't part of settings_ /
-    // settings.json, they live on the Transmission daemon itself (see
-    // TransmissionClient::getSessionLimits()). This uses whichever
-    // connection settings are active *before* this dialog changes them —
-    // if that connection doesn't work (e.g. this is the first time
-    // host/user/password are being set up), the fetch fails and
-    // `sessionLimitsFetched` says so.
-    bool sessionLimitsFetched = false;
-    SessionLimits sessionLimits = client_.getSessionLimits(&sessionLimitsFetched);
-
-    SettingsDialogFields fields;
-    if (auto* dlg = createSettingsDialog(settings_, sessionLimits, fields)) {
+void App::showConnectionDialog() {
+    ConnectionDialogFields fields;
+    if (auto* dlg = createConnectionDialog(settings_, fields)) {
         if (execView(dlg) == cmOK) {
             Language oldLanguage = settings_.language;
-            settings_ = settingsDialogResult(fields, settings_);
+            settings_ = connectionDialogResult(fields, settings_);
             applySettings();
             saveSettings(settings_); // persisted right away: see Config.h
             setLanguage(settings_.language);
@@ -224,19 +235,34 @@ void App::showSettingsDialog() {
             if (settings_.language != oldLanguage) {
                 messageBox(tr(Str::MsgLanguageChangeRestart), mfInformation | mfOKButton);
             }
+        }
+        destroy(dlg);
+    }
+}
 
+void App::showServerSettingsDialog() {
+    // Live RPC call: none of these fields are part of settings_ /
+    // settings.json, they live on the Transmission daemon itself (see
+    // TransmissionClient::getSessionLimits()). Uses whichever
+    // connection is already active — if it doesn't work (e.g. host/
+    // user/password were never set up successfully, see
+    // showConnectionDialog()), the fetch fails and `sessionLimitsFetched`
+    // says so.
+    bool sessionLimitsFetched = false;
+    SessionLimits sessionLimits = client_.getSessionLimits(&sessionLimitsFetched);
+
+    ServerSettingsDialogFields fields;
+    if (auto* dlg = createServerSettingsDialog(sessionLimits, fields)) {
+        if (execView(dlg) == cmOK) {
             // Only pushed back if the fetch above actually succeeded.
-            // Otherwise the dialog's speed-limit fields were showing
-            // meaningless defaults (0/disabled) rather than this
-            // server's real state — most commonly on the very first
-            // time host/user/password are configured, when the *old*
-            // connection couldn't reach anything yet. Sending those
-            // defaults to the newly-configured connection (now
-            // reachable, thanks to applySettings() above) would
-            // silently wipe out real limits already set there, even
-            // though the user never touched the speed-limit fields.
+            // Otherwise the dialog's fields were showing meaningless
+            // defaults (0/disabled) rather than this server's real
+            // state, most commonly when the connection isn't working
+            // yet — sending those defaults would silently wipe out real
+            // limits already set there, even though the user never
+            // touched any of these fields.
             if (sessionLimitsFetched) {
-                client_.setSessionLimits(settingsDialogSessionLimits(fields));
+                client_.setSessionLimits(serverSettingsDialogResult(fields));
             }
         }
         destroy(dlg);
@@ -451,8 +477,28 @@ void App::handleEvent(TEvent& event) {
             }
             clearEvent(event);
             break;
+        case cmQueueMoveTop:
+            if (listWindow_) listWindow_->queueMoveTopForSelected();
+            clearEvent(event);
+            break;
+        case cmQueueMoveUp:
+            if (listWindow_) listWindow_->queueMoveUpForSelected();
+            clearEvent(event);
+            break;
+        case cmQueueMoveDown:
+            if (listWindow_) listWindow_->queueMoveDownForSelected();
+            clearEvent(event);
+            break;
+        case cmQueueMoveBottom:
+            if (listWindow_) listWindow_->queueMoveBottomForSelected();
+            clearEvent(event);
+            break;
         case cmSettings:
-            showSettingsDialog();
+            showConnectionDialog();
+            clearEvent(event);
+            break;
+        case cmServerSettings:
+            showServerSettingsDialog();
             clearEvent(event);
             break;
         case cmFilters:

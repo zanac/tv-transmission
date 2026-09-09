@@ -66,6 +66,12 @@ constexpr int kSeparatorWidth = 1; // one character between adjacent columns
 // selection mode (see gvMultiSelect). Fixed width, fixed position,
 // never scrolled — see drawScrolled()'s prefixWidth parameter.
 constexpr int kSelectionColumnWidth = 4;
+// How long a press-and-hold takes to enter selection mode (see
+// watchForLongPress()) — long enough to not trigger on an ordinary
+// click, short enough not to feel sluggish for someone deliberately
+// holding to select. Originally 3000; brought down after feedback that
+// 3 seconds felt too slow in practice.
+constexpr int kLongPressMs = 800;
 
 // Draws `text` (already fitted to exactly `width` display columns) at
 // CONTENT-relative position `contentX`, translating it into the actual
@@ -261,7 +267,7 @@ public:
         int contentX = (local.x - prefixWidth) + owner_->horizontalScrollOffset();
 
         auto vis = owner_->visibleDisplayOrder();
-        int visualPos = columnAtX(contentX, vis);
+        int visualPos = owner_->columnAtX(contentX, vis);
 
         // The sort glyph has its own fixed, single-character hotspot
         // (the column's last character — see draw() above), checked
@@ -309,20 +315,6 @@ public:
     }
 
 private:
-    // VISUAL position (index into `vis`, not a logical index) whose span
-    // (including its trailing separator) contains local x, or -1 if past
-    // the last visible column.
-    int columnAtX(int x, const std::vector<int>& vis) const {
-        int pos = 0;
-        int n = (int)vis.size();
-        for (int visualPos = 0; visualPos < n; visualPos++) {
-            int w = owner_->column(vis[visualPos]).width + (visualPos < n - 1 ? kSeparatorWidth : 0);
-            if (x >= pos && x < pos + w) return visualPos;
-            pos += w;
-        }
-        return -1;
-    }
-
     // True if x lands exactly on the sort glyph's reserved position —
     // the last character of the column's own width (see draw() above:
     // never shifted by truncation, since it's placed there explicitly
@@ -442,6 +434,63 @@ public:
     }
 
     void handleEvent(TEvent& event) override {
+        if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0 &&
+            owner_->onRowContext_) {
+            // Handled here, BEFORE calling the base class below — not
+            // after, which is where this used to live. TListViewer::
+            // handleEvent()'s own `if (event.what == evMouseDown)` block
+            // (see tlstview.cpp) never actually checks which button was
+            // pressed: it unconditionally enters its own click-tracking
+            // loop for ANY mouseDown, left or right, and that loop
+            // blocks internally (via mouseEvent()) until the button is
+            // released — at which point it has overwritten `event.what`
+            // to evMouseUp before ever returning control here. Checking
+            // "was this a right-click" AFTER calling the base class
+            // therefore could never succeed, on any terminal — by then
+            // event.what was never still evMouseDown, regardless of
+            // which button was actually pressed. Handling it here
+            // instead, before the base class ever sees the event,
+            // sidesteps the whole problem rather than trying to recover
+            // the original button after the fact.
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                focusItemNum(row);
+                owner_->onRowContext_(row, event.mouse.where);
+            }
+            clearEvent(event);
+            return;
+        }
+
+        if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0 &&
+            (event.mouse.eventFlags & meDoubleClick) && !owner_->isInSelectionMode() &&
+            owner_->onCellActivate_) {
+            // Figures out which column the double-click landed on and
+            // fires the callback. If it reports having handled this
+            // column (see CellActivateFn's own doc comment), the event
+            // is consumed here — never reaching TListViewer::
+            // handleEvent() below at all, so RowActivateFn (set
+            // separately, if at all) doesn't also fire for a column
+            // that's meant to do something else on double-click
+            // instead. Otherwise falls through exactly as before: safe
+            // to still hand to TListViewer::handleEvent(), since an
+            // event that already carries meDoubleClick on arrival never
+            // blocks there (see tlstview.cpp — its own press-tracking
+            // loop checks for this flag before ever calling
+            // mouseEvent()).
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                int contentX = local.x + owner_->horizontalScrollOffset();
+                auto vis = owner_->visibleDisplayOrder();
+                int visualPos = owner_->columnAtX(contentX, vis);
+                if (visualPos >= 0 && owner_->onCellActivate_(row, vis[visualPos])) {
+                    clearEvent(event);
+                    return;
+                }
+            }
+        }
+
         if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0) {
             TPoint local = makeLocal(event.mouse.where);
             short row = topItem + local.y;
@@ -467,10 +516,22 @@ public:
                                          // otherwise open a details
                                          // window mid-selection
                     return;
-                } else if (owner_->multiSelectCapable()) {
+                } else if (owner_->multiSelectCapable() &&
+                           !(event.mouse.eventFlags & meDoubleClick)) {
                     // Not in selection mode yet, but this grid supports
                     // entering it — watch for a long press before
-                    // falling through to an ordinary click.
+                    // falling through to an ordinary click. Excludes an
+                    // event that already carries meDoubleClick (the
+                    // second half of a double-click TListViewer itself
+                    // detected) — watching it for a NEW long-press would
+                    // mean calling watchForLongPress() on a button that,
+                    // as far as this event is concerned, was never
+                    // freshly pressed at all; its own internal getEvent()
+                    // loop would then sit waiting for a release that (in
+                    // a live app) may already have been delivered and
+                    // consumed elsewhere, or (with no live event queue
+                    // behind it at all, as in a synthetic test) never
+                    // comes.
                     if (watchForLongPress(row)) {
                         clearEvent(event); // whole press-hold-release
                                             // cycle consumed by entering
@@ -486,27 +547,25 @@ public:
             owner_->toggleRowSelected(focused);
             clearEvent(event);
             return;
+        } else if (event.what == evKeyDown && owner_->isInSelectionMode() &&
+                   (event.keyDown.keyCode == kbEsc || event.keyDown.keyCode == kbEnter)) {
+            // Esc or Enter both just leave selection mode — neither
+            // toggles the focused row on the way out (Space already
+            // covers "toggle", these two are specifically "I'm done").
+            owner_->exitSelectionMode();
+            clearEvent(event);
+            return;
         }
 
         TListViewer::handleEvent(event);
-        if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0 &&
-            owner_->onRowContext_) {
-            TPoint local = makeLocal(event.mouse.where);
-            short row = topItem + local.y;
-            if (row >= 0 && row < range) {
-                focusItemNum(row);
-                owner_->onRowContext_(row, event.mouse.where);
-            }
-            clearEvent(event);
-        }
     }
 
 private:
     // Watches the mouse while the button stays down on `row`, entering
     // selection mode (see TGridView::enterSelectionMode()) the moment
-    // 3 seconds pass without a release — or, if the button lifts first,
-    // does nothing and returns false so the caller can fall through to
-    // an ordinary click.
+    // kLongPressMs passes without a release — or, if the button lifts
+    // first, does nothing and returns false so the caller can fall
+    // through to an ordinary click.
     //
     // Deliberately does NOT use TView::mouseEvent() the way dragResize()
     // (in TGridHeaderView) does: mouseEvent() only returns once an event
@@ -527,7 +586,7 @@ private:
             if (e.what == evMouseUp) return false; // released early — ordinary click
             auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start).count();
-            if (elapsedMs >= 3000) {
+            if (elapsedMs >= kLongPressMs) {
                 owner_->enterSelectionMode(row);
                 // Drains the eventual release so it doesn't surface as
                 // a stray event once this returns — the gesture that
@@ -675,6 +734,18 @@ void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); 
 void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
 void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }
+void TGridView::setCellActivateCallback(CellActivateFn fn) { onCellActivate_ = std::move(fn); }
+
+int TGridView::columnAtX(int x, const std::vector<int>& vis) const {
+    int pos = 0;
+    int n = (int)vis.size();
+    for (int visualPos = 0; visualPos < n; visualPos++) {
+        int w = column(vis[visualPos]).width + (visualPos < n - 1 ? kSeparatorWidth : 0);
+        if (x >= pos && x < pos + w) return visualPos;
+        pos += w;
+    }
+    return -1;
+}
 
 void TGridView::enterSelectionMode(int initialRow) {
     if (!(options_ & gvMultiSelect) || selectionModeActive_) return;

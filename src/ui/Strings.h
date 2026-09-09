@@ -15,9 +15,11 @@ Language currentLanguage();
 
 // Identifier for every translatable piece of UI text.
 enum class Str {
-    MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuSettings, MenuQuit,
+    MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuQuit,
+    MenuConnection, MenuServerSettings,
     MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
-    MenuSelectMultiple,
+    MenuSelectMultiple, MenuCancelSelection,
+    MenuQueue, MenuQueueMoveTop, MenuQueueMoveUp, MenuQueueMoveDown, MenuQueueMoveBottom,
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     ConfirmRemoveTorrentsMulti, ConfirmDeleteTorrentsWithDataMulti,
@@ -38,7 +40,7 @@ enum class Str {
     DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate, MsgTorrentAddFailed,
     ButtonOK, ButtonCancel,
 
-    DialogTitleSettings,
+    DialogTitleConnection, DialogTitleServerSettings,
     LabelRefreshSeconds, LabelHost, LabelPort, LabelUser, LabelPassword, LabelLanguage,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
 
@@ -65,6 +67,7 @@ enum class Str {
     LabelTrackerLastAnnounce, LabelTrackerNextAnnounce, LabelTrackerResult,
 
     LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,
+    LabelAltSpeedSection, LabelAltSpeedDescription, LabelAltSpeedDownload, LabelAltSpeedUpload,
 
     TorrentStatusStopped, TorrentStatusCheckWait, TorrentStatusChecking,
     TorrentStatusDownloadWait, TorrentStatusDownloading, TorrentStatusSeedWait,

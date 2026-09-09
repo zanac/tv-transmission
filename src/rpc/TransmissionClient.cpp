@@ -330,6 +330,26 @@ bool TransmissionClient::reannounceTorrent(int id) {
     return !call("torrent-reannounce", args.dump()).empty();
 }
 
+bool TransmissionClient::queueMoveTop(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("queue-move-top", args.dump()).empty();
+}
+
+bool TransmissionClient::queueMoveUp(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("queue-move-up", args.dump()).empty();
+}
+
+bool TransmissionClient::queueMoveDown(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("queue-move-down", args.dump()).empty();
+}
+
+bool TransmissionClient::queueMoveBottom(int id) {
+    json args = {{"ids", json::array({id})}};
+    return !call("queue-move-bottom", args.dump()).empty();
+}
+
 std::vector<TrackerStat> TransmissionClient::getTrackerStats(int torrentId) {
     std::vector<TrackerStat> result;
     json args = {{"ids", json::array({torrentId})}, {"fields", json::array({"trackerStats"})}};
@@ -398,6 +418,8 @@ SessionLimits TransmissionClient::getSessionLimits(bool* ok) {
         limits.downloadLimit = a.value("speed-limit-down", 0);
         limits.uploadLimited = a.value("speed-limit-up-enabled", false);
         limits.uploadLimit = a.value("speed-limit-up", 0);
+        limits.altSpeedDown = a.value("alt-speed-down", 0);
+        limits.altSpeedUp = a.value("alt-speed-up", 0);
         if (ok) *ok = true;
     } catch (const std::exception& e) {
         lastError_ = std::string("JSON parse error: ") + e.what();
@@ -411,6 +433,8 @@ bool TransmissionClient::setSessionLimits(const SessionLimits& limits) {
         {"speed-limit-down", limits.downloadLimit},
         {"speed-limit-up-enabled", limits.uploadLimited},
         {"speed-limit-up", limits.uploadLimit},
+        {"alt-speed-down", limits.altSpeedDown},
+        {"alt-speed-up", limits.altSpeedUp},
     };
     return !call("session-set", args.dump()).empty();
 }

@@ -14,6 +14,7 @@
 #define Uses_TMenuItem
 #define Uses_TMenu
 #define Uses_TMenuPopup
+#define Uses_TSubMenu
 #define Uses_MsgBox
 #define Uses_TKeys
 #include <tvision/tv.h>
@@ -233,6 +234,20 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, TransmissionClient& cl
         if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
     });
     grid()->setRowActivateCallback([this](int) { showDetailsForSelected(); });
+    // Double-clicking the queue position column cycles through the four
+    // queue-move actions instead of opening details, the same way
+    // TorrentFilesWindow's own priority column cycles instead of
+    // whatever a plain double-click would otherwise do — everything
+    // else keeps opening details as before (returning false here leaves
+    // the event alone, which is what lets RowActivateFn still fire for
+    // every other column).
+    grid()->setCellActivateCallback([this](int row, int col) -> bool {
+        if (col == static_cast<int>(SortColumn::QueuePosition)) {
+            cycleQueueActionForRow(row);
+            return true;
+        }
+        return false;
+    });
     grid()->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
     grid()->setRowFocusCallback([this](int) { updateCommandStates(); });
 
@@ -542,7 +557,20 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // backwards from the click point instead of growing rightward/
     // downward from it (see getRect() in tvision's tmenubox.cpp).
     TRect r(screenPos.x, screenPos.y, screenPos.x + 40, screenPos.y + 10);
-    TMenu* menu = new TMenu(
+    // See App::initMenuBar()'s own comment on nesting a TSubMenu this
+    // way — same reasoning applies here.
+    TSubMenu* queueMenu = new TSubMenu(tr(Str::MenuQueue), kbNoKey);
+    *queueMenu +
+        *new TMenuItem(tr(Str::MenuQueueMoveTop), cmQueueMoveTop, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveUp), cmQueueMoveUp, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
+    // operator+(TMenuItem&, TMenuItem&) walks to the end of the first
+    // item's existing chain and appends the second one there (see
+    // menu.cpp), mutating that chain in place — so `items` (bound to
+    // the very first item) already reflects anything appended to it
+    // afterward below, without needing to be reassigned.
+    TMenuItem& items =
         *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey) +
@@ -551,8 +579,17 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey)
-    );
+        *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
+        static_cast<TMenuItem&>(*queueMenu);
+    // Only meaningful — and only shown — while there's a selection to
+    // cancel. Reuses cmSelectMultiple itself rather than a separate
+    // command: its own handler (see App.cpp) already does exactly
+    // "leave selection mode if already in it", which is exactly what
+    // this needs since the item's only ever added when that's the case.
+    if (grid()->isInSelectionMode()) {
+        items + *new TMenuItem(tr(Str::MenuCancelSelection), cmSelectMultiple, kbNoKey);
+    }
+    TMenu* menu = new TMenu(items);
     auto* popup = new TMenuPopup(r, menu);
     // execView() (inherited from TProgram/TApplication) inserts the
     // popup, runs its own event loop until a choice is made or it's
@@ -715,6 +752,47 @@ void TorrentListWindow::reannounceSelected() {
     auto targets = targetTorrents();
     for (const Torrent* t : targets) client_.reannounceTorrent(t->id);
     grid()->exitSelectionMode();
+    refresh();
+}
+
+void TorrentListWindow::queueMoveTopForSelected() {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.queueMoveTop(t->id);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
+void TorrentListWindow::queueMoveUpForSelected() {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.queueMoveUp(t->id);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
+void TorrentListWindow::queueMoveDownForSelected() {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.queueMoveDown(t->id);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
+void TorrentListWindow::queueMoveBottomForSelected() {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.queueMoveBottom(t->id);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
+void TorrentListWindow::cycleQueueActionForRow(int row) {
+    if (row < 0 || row >= (int)visible_.size()) return;
+    int id = visible_[row].id;
+    switch (queueActionCycle_) {
+        case 0: client_.queueMoveTop(id); break;
+        case 1: client_.queueMoveUp(id); break;
+        case 2: client_.queueMoveDown(id); break;
+        case 3: client_.queueMoveBottom(id); break;
+    }
+    queueActionCycle_ = (queueActionCycle_ + 1) % 4;
     refresh();
 }
 
