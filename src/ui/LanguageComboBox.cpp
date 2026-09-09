@@ -5,8 +5,8 @@ namespace {
 
 // Built fresh for every LanguageComboBox instance: TComboBox takes
 // ownership of whatever chain it's given and frees it in its own
-// destructor (see the comment on TComboItem in tvision's dialogs.h), so
-// two combo boxes can never share one chain.
+// destructor (see the comment on TComboItem in src/tvision-ext/
+// TComboBox.h), so two combo boxes can never share one chain.
 //
 // Order here is what TComboBox::focused indexes into, so it has to
 // match Language's own numeric values (English=0 ... Spanish=4) — see

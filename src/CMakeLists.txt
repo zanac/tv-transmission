@@ -23,6 +23,7 @@ add_executable(tv-transmission
     ui/Strings.cpp
     tgridview/TGridView.cpp
     tgridview/TGridWindow.cpp
+    tvision-ext/TComboBox.cpp
 )
 
 target_include_directories(tv-transmission PRIVATE
