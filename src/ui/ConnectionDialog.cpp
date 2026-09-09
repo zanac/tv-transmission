@@ -36,11 +36,15 @@ TInputLine* addField(TDialog* dlg, int y, const char* label,
 } // namespace
 
 TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFields& fields) {
-    TRect r(0, 0, 60, 16);
+    TRect r(0, 0, 60, 18);
     auto* dlg = new TDialog(r, tr(Str::DialogTitleConnection));
     dlg->options |= ofCentered;
 
-    fields.refreshInterval = addField(dlg, 2, tr(Str::LabelRefreshSeconds),
+    dlg->insert(new TStaticText(TRect(2, 2, 24, 3), tr(Str::LabelLanguage)));
+    fields.language = new LanguageComboBox(TRect(24, 2, 50, 3), current.language);
+    dlg->insert(fields.language);
+
+    fields.refreshInterval = addField(dlg, 4, tr(Str::LabelRefreshSeconds),
         std::to_string(current.refreshIntervalSeconds), 10);
     // TRangeValidator filters non-digit keystrokes as they're typed (see
     // isValidInput() in tvision's tvalidat.cpp) and blocks confirming the
@@ -48,18 +52,18 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     // range X to Y" messageBox) — real validation, not just parsing
     // whatever ends up in the field after the fact.
     fields.refreshInterval->setValidator(new TRangeValidator(1, 86400)); // up to 24h
-    fields.host = addField(dlg, 4, tr(Str::LabelHost), current.host, 128);
-    fields.port = addField(dlg, 6, tr(Str::LabelPort), std::to_string(current.port), 10);
+    fields.host = addField(dlg, 6, tr(Str::LabelHost), current.host, 128);
+    fields.port = addField(dlg, 8, tr(Str::LabelPort), std::to_string(current.port), 10);
     fields.port->setValidator(new TRangeValidator(1, 65535)); // valid TCP port range
-    fields.user = addField(dlg, 8, tr(Str::LabelUser), current.user, 128);
-    fields.password = addField(dlg, 10, tr(Str::LabelPassword), current.password, 128, /*masked=*/true);
+    fields.user = addField(dlg, 10, tr(Str::LabelUser), current.user, 128);
+    fields.password = addField(dlg, 12, tr(Str::LabelPassword), current.password, 128, /*masked=*/true);
 
-    dlg->insert(new TStaticText(TRect(2, 12, 24, 13), tr(Str::LabelLanguage)));
-    fields.language = new LanguageComboBox(TRect(24, 12, 50, 13), current.language);
-    dlg->insert(fields.language);
-
-    dlg->insert(new TButton(TRect(20, 13, 30, 15), tr(Str::ButtonOK), cmOK, bfDefault));
-    dlg->insert(new TButton(TRect(32, 13, 42, 15), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    // A blank row (14) between the last field and the buttons, rather
+    // than the buttons sitting immediately under Password — the extra
+    // dialog height above (18 rows, up from 16) is exactly that one
+    // row's worth of breathing room.
+    dlg->insert(new TButton(TRect(20, 15, 30, 17), tr(Str::ButtonOK), cmOK, bfDefault));
+    dlg->insert(new TButton(TRect(32, 15, 42, 17), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;
