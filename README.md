@@ -9,6 +9,8 @@ written in C++17.
 It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
+<img width="1407" height="863" alt="image" src="https://github.com/user-attachments/assets/161529ad-160d-40e9-8bd5-58f6b02e1dd9" />
+
 
 ## Features
 
