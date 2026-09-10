@@ -97,15 +97,17 @@ protected:
     TComboViewer* viewer;
 };
 
-// Broadcast when the focused item actually changes as a result of the
-// user picking a different one from the popup (see TComboBox::
-// handleEvent()) — not fired for every open/close of the popup, only
-// when the selection itself moved. cmComboBoxSelectionChanged itself
-// isn't declared here: the fork this was copied from added it directly
-// to views.h's own command enum (unconditionally, not gated behind any
-// Uses_TComboBox guard — see cmdcodes.h/views.h), so it's already
-// available from <tvision/tv.h> without needing anything specific to
-// this file included first.
+// Broadcast whenever the shown text actually changes — picking a
+// different item from the dropdown, "[+]"/"[-]" (editable mode — they
+// end up focusing a different item themselves), or, also in editable
+// mode, directly typing/editing the text. Not fired for every open/
+// close of the popup, or for cursor movement alone (Left/Right/Home/
+// End) with no actual content change. cmComboBoxSelectionChanged
+// itself isn't declared here: the fork this was copied from added it
+// directly to views.h's own command enum (unconditionally, not gated
+// behind any Uses_TComboBox guard — see cmdcodes.h/views.h), so it's
+// already available from <tvision/tv.h> without needing anything
+// specific to this file included first.
 
 // Broadcast when "[+]"/"[-]" (editable mode — see below) actually add
 // or remove a list entry — not fired for the no-op cases (adding text
@@ -176,6 +178,14 @@ public:
     // Every entry currently in the list, in list order.
     std::vector<std::string> allValues() const;
 
+    // Adds editText() as a new list entry (a no-op if empty, or already
+    // present — focuses the existing match instead of duplicating it).
+    // Bound to the "[+]" button; also called directly by a caller that
+    // wants to ensure the currently-shown text is a real list entry
+    // without requiring the user to click "[+]" themselves first (e.g.
+    // ConnectionDialog's own Save button — see its own comment).
+    void addCurrentValue();
+
     // The name that was just added or removed by "[+]"/"[-]" — valid
     // (and meaningful) only while handling the matching
     // cmComboBoxItemAdded/cmComboBoxItemRemoved broadcast; a caller
@@ -201,10 +211,6 @@ private:
     // non-editable path (Space/Enter/Down/click) and the editable one
     // (Down/clicking the arrow specifically) rather than duplicated.
     void openDropdown();
-    // Adds editText() as a new list entry (a no-op if empty, or already
-    // present — focuses the existing match instead of duplicating it).
-    // Bound to the "[+]" button.
-    void addCurrentValue();
     // Removes the list entry matching editText(), if any, and focuses
     // whatever entry (if any) ends up nearest afterward. Bound to the
     // "[-]" button.

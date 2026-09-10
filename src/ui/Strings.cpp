@@ -208,6 +208,7 @@ const char* tr(Str id) {
 
         case Str::ButtonOK:     return "OK"; // same word in all five languages
         case Str::ButtonCancel: return pick("Cancel", "Annulla", "Annuler", "Abbrechen", "Cancelar");
+        case Str::ButtonSave: return pick("Save", "Salva", "Enregistrer", "Speichern", "Guardar");
 
         case Str::DialogTitleConnection:
             return pick("Connection", "Connessione", "Connexion", "Verbindung", "Conexión");

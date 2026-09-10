@@ -259,6 +259,16 @@ void TComboBox::focusItem(short item) noexcept {
         cursorPos_ = (int)editBuf_.size();
     }
     drawView();
+    // Broadcasts whenever the shown value changes as a result of
+    // focusing a different item — covers picking from the dropdown,
+    // "[+]" (focuses the newly-added entry), "[-]" (focuses whatever's
+    // left), and newList() uniformly, in this one place, rather than
+    // needing each call site to remember to fire it itself (this class
+    // already had one bug from a similar "each caller has to remember"
+    // assumption — see its own header comment on editBuf_ syncing).
+    // Safe even before this view has an owner (e.g. mid-construction):
+    // message() itself no-ops on a null receiver (see misc.cpp).
+    message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
 }
 
 void TComboBox::newList(TComboItem* aItems, short aFocused) noexcept {
@@ -311,15 +321,15 @@ void TComboBox::openDropdown() {
         ushort c = owner->execView(win);
         if (c == cmOK) {
             short sel = win->getSelection();
-            // In editable mode, re-focus (and so re-sync editBuf_ — see
-            // focusItem()'s own comment) even if the selection landed
-            // back on the same item as before: the box may currently be
-            // showing something the user typed rather than that item's
-            // own text, and picking it from the dropdown again should
+            // In editable mode, re-focus (and so re-sync editBuf_, and
+            // re-broadcast — both now handled by focusItem() itself,
+            // see its own comment) even if the selection landed back on
+            // the same item as before: the box may currently be showing
+            // something the user typed rather than that item's own
+            // text, and picking it from the dropdown again should
             // still restore it.
             if (sel != focused || editable_) {
                 focusItem(sel);
-                message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
             }
         }
         destroy(win);
@@ -463,12 +473,20 @@ void TComboBox::handleEvent(TEvent& event) {
                     editBuf_.erase(cursorPos_ - 1, 1);
                     cursorPos_--;
                     drawView();
+                    // Content actually changed by typing, not by
+                    // focusing a different item — focusItem() doesn't
+                    // run this path, so it has to fire here instead.
+                    // Same event as focusItem()'s own, deliberately: the
+                    // caller only cares that the shown text is now
+                    // different, not how it got that way.
+                    message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
                 }
                 clearEvent(event);
             } else if (key == kbDel) {
                 if (cursorPos_ < (int)editBuf_.size()) {
                     editBuf_.erase(cursorPos_, 1);
                     drawView();
+                    message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
                 }
                 clearEvent(event);
             } else {
@@ -483,6 +501,7 @@ void TComboBox::handleEvent(TEvent& event) {
                     editBuf_.insert(editBuf_.begin() + cursorPos_, ch);
                     cursorPos_++;
                     drawView();
+                    message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
                     clearEvent(event);
                 }
             }

@@ -275,69 +275,82 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
 
 void App::showConnectionDialog() {
     ConnectionDialogFields fields;
-    if (auto* dlg = createConnectionDialog(settings_, fields)) {
+    // Runs the INSTANT "[-]" actually removes a server — not gated
+    // behind this dialog's own OK/Cancel at all (see
+    // ServerRemovedCallback's own doc comment in ConnectionDialog.h for
+    // why waiting for either would leave stale windows behind). Closes
+    // every window still pointing at that server's client — its own
+    // torrent-list window, and any Details/Files/Tracker window opened
+    // from it for one of its torrents — before dropping the server
+    // from settings_ and persisting that right away, so a Cancel right
+    // after doesn't quietly undo a removal its own confirmation popup
+    // already told the user had happened.
+    auto onServerRemoved = [this](const std::string& name) {
+        auto clientIt = clients_.find(name);
+        if (clientIt != clients_.end()) {
+            // Same ordering as ever: other windows first, while the
+            // client identifying them is still alive, then the
+            // torrent-list window, and only then the client itself.
+            closeWindowsForClient(clientIt->second.get());
+            for (TorrentListWindow* w : allListWindows()) {
+                if (w->serverName() == name) { w->close(); break; }
+            }
+            clients_.erase(clientIt);
+        }
+        settings_.servers.erase(name);
+        if (settings_.activeServer == name) settings_.activeServer.clear();
+        saveSettings(settings_);
+    };
+
+    // Runs the moment Save/OK actually tests a connection successfully
+    // (see ServerSavedCallback's own doc comment in ConnectionDialog.h)
+    // — persists that server's profile and opens (or updates) its own
+    // window right here, not deferred to whenever/if this dialog
+    // eventually closes with cmOK: Save deliberately keeps the dialog
+    // open (see the button's own comment), so waiting for cmOK the way
+    // this used to would mean nothing happens at all unless the user
+    // also clicks the now-relabeled "OK" afterward.
+    auto onServerSaved = [this](const std::string& name, const ServerProfile& profile) {
+        settings_.servers[name] = profile;
+        settings_.activeServer = name;
+        saveSettings(settings_);
+
+        TorrentListWindow* target = nullptr;
+        for (TorrentListWindow* w : allListWindows()) {
+            if (w->serverName() == name) { target = w; break; }
+        }
+        if (target) {
+            auto clientIt = clients_.find(name);
+            if (clientIt != clients_.end()) {
+                clientIt->second->setEndpoint(profile.host, profile.port);
+                clientIt->second->setCredentials(profile.user, profile.password);
+                target->refresh();
+            }
+            target->select();
+        } else {
+            openServerWindow(name, deskTop->getExtent());
+        }
+    };
+
+    if (auto* dlg = createConnectionDialog(settings_, fields, onServerRemoved, onServerSaved)) {
         if (execView(dlg) == cmOK) {
+            // Only refreshInterval/language left to apply here — by the
+            // time this dialog can even close with cmOK, the button
+            // read "OK" (not "Save"), meaning whichever server was last
+            // shown was already fully saved and its window already
+            // opened/updated by onServerSaved above. Nothing further to
+            // do for server data specifically.
             Language oldLanguage = settings_.language;
             settings_ = connectionDialogResult(fields, settings_);
             saveSettings(settings_); // persisted right away: see Config.h
             setLanguage(settings_.language);
-
-            // Any server no longer in settings_.servers after this edit
-            // (removed via the combo's own "[-]" and confirmed) loses
-            // every window that was open for it — its own torrent-list
-            // window, and any Details/Files/Tracker window opened from
-            // it, whichever torrent they were about — plus the client
-            // itself. Order matters here: the OTHER windows first
-            // (closeWindowsForClient(), which points at this server's
-            // still-live client to identify them), then the torrent-
-            // list window, and only THEN the client itself erased —
-            // erasing it any earlier would leave whichever of those
-            // hadn't been closed yet holding a dangling reference the
-            // next time they tried to do anything.
-            for (TorrentListWindow* w : allListWindows()) {
-                if (settings_.servers.find(w->serverName()) == settings_.servers.end()) {
-                    auto clientIt = clients_.find(w->serverName());
-                    if (clientIt != clients_.end()) closeWindowsForClient(clientIt->second.get());
-                    w->close();
-                    clients_.erase(w->serverName());
-                }
-            }
-
-            // The server actually shown when OK was pressed: an
-            // existing window for it gets its client's credentials
-            // refreshed in place (host/port/user/password may have
-            // just changed) and a re-fetch; one that isn't open yet
-            // (a brand new name, or switching to a previously-saved
-            // one that was never opened this session) gets opened the
-            // same way startup does. Either way it's brought to the
-            // front, so confirming this dialog always ends with the
-            // server it was just pointed at visible.
-            if (!settings_.activeServer.empty()) {
-                TorrentListWindow* target = nullptr;
-                for (TorrentListWindow* w : allListWindows()) {
-                    if (w->serverName() == settings_.activeServer) { target = w; break; }
-                }
-                if (target) {
-                    const ServerProfile& profile = settings_.activeProfile();
-                    auto clientIt = clients_.find(settings_.activeServer);
-                    if (clientIt != clients_.end()) {
-                        clientIt->second->setEndpoint(profile.host, profile.port);
-                        clientIt->second->setCredentials(profile.user, profile.password);
-                        target->refresh();
-                    }
-                    target->select();
-                } else {
-                    openServerWindow(settings_.activeServer, deskTop->getExtent());
-                }
-            }
 
             // The menu bar and status bar, on the other hand, are built
             // only once at startup (see main.cpp/App.h) and stay in
             // whatever language was active then until the app is
             // restarted — but from this point on restarting *works*:
             // the config file now holds the chosen language. Every
-            // still-open torrent-list window gets relabeled right away,
-            // not just the one just opened/edited above.
+            // still-open torrent-list window gets relabeled right away.
             for (TorrentListWindow* w : allListWindows()) w->retranslate();
 
             // Told explicitly rather than left to notice on their own:

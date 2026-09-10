@@ -16,18 +16,19 @@
 
 namespace {
 
-// Local command for the OK button — deliberately NOT cmOK. tvision's
-// own TButton/TDialog machinery recognizes cmOK/cmCancel/cmYes/cmNo
-// specially (auto-validating every field, then calling endModal()
-// directly, before this dialog's own handleEvent() ever sees the
-// click) — exactly the shortcut this button can no longer take, since
-// confirming now needs a connection test to actually succeed first.
-// Handled entirely by ConnectionDialogImpl::handleEvent() below, which
-// only calls endModal(cmOK) itself once that test has passed. 62,
-// grouped with TComboBox's own cmComboBoxItemAdded/cmComboBoxItemRemoved
-// (60/61, see TComboBox.h) rather than up near 100 — App.h's own
-// commands (cmAddTorrent and up) start exactly there, so this stays
-// clear of them.
+// Local command for the Save/OK button — deliberately NOT cmOK.
+// tvision's own TButton/TDialog machinery recognizes cmOK/cmCancel/
+// cmYes/cmNo specially (auto-validating every field, then calling
+// endModal() directly, before this dialog's own handleEvent() ever
+// sees the click) — exactly the shortcut this button can no longer
+// take, since it needs to run a connection test (and, on success,
+// EITHER save-and-stay-open OR close, depending on its own current
+// state — see ConnectionDialogImpl::setDirty()) before either of those
+// can happen. Handled entirely by ConnectionDialogImpl::handleEvent()
+// below. 62, grouped with TComboBox's own cmComboBoxItemAdded/
+// cmComboBoxItemRemoved (60/61, see TComboBox.h) rather than up near
+// 100 — App.h's own commands (cmAddTorrent and up) start exactly
+// there, so this stays clear of them.
 constexpr ushort cmTestConnectionAndOK = 62;
 
 // Same reasoning as TorrentListWindow.cpp's own formatMessage() (not
@@ -80,6 +81,18 @@ std::string getFieldText(TInputLine* field) {
     return buf;
 }
 
+// Fills host/port/user/password with `profile`'s own values — used both
+// for a name that matches an existing saved server (its real profile)
+// and for one that doesn't (a default-constructed ServerProfile, i.e.
+// 127.0.0.1:9091 with no user/password) — same helper either way, the
+// caller just picks which profile to pass.
+void setConnectionFields(ConnectionDialogFields& fields, const ServerProfile& profile) {
+    setFieldText(fields.host, profile.host);
+    setFieldText(fields.port, std::to_string(profile.port));
+    setFieldText(fields.user, profile.user);
+    setFieldText(fields.password, profile.password);
+}
+
 // Builds the server-name combo's item chain from `current.servers`'
 // own keys (alphabetical — see AppSettings.h's own comment on why
 // servers is a std::map), and works out which one to focus initially:
@@ -102,57 +115,105 @@ TComboItem* buildServerItems(const AppSettings& current, short& focusedIndex) {
 }
 
 // A plain TDialog everywhere else in this file's own instantiation
-// (`new TDialog(...)`) would have done — subclassed for three reasons,
-// all handled in the one handleEvent() override below: reacting to the
-// server-name combo's own cmComboBoxSelectionChanged broadcast (loading
-// that server's saved details into the other fields), showing a
-// confirmation for its cmComboBoxItemAdded/cmComboBoxItemRemoved
-// broadcasts ("[+]"/"[-]"), and running a connection test before
-// actually confirming the dialog (see cmTestConnectionAndOK above).
-// Kept local to this file rather than given its own header: nothing
-// outside createConnectionDialog() below ever needs to name this type.
+// (`new TDialog(...)`) would have done — subclassed for the reasons
+// handled in the one handleEvent() override below: reacting to the
+// server-name combo's own cmComboBoxSelectionChanged broadcast (now
+// broadened — see TComboBox.h — to cover typing as well as picking
+// from the dropdown or "[+]"/"[-]"), showing a confirmation for its
+// cmComboBoxItemAdded/cmComboBoxItemRemoved broadcasts, tracking edits
+// to the connection fields themselves, and running a connection test
+// before Save/OK does anything permanent (see cmTestConnectionAndOK
+// above). Kept local to this file rather than given its own header:
+// nothing outside createConnectionDialog() below ever needs to name
+// this type.
 class ConnectionDialogImpl : public TDialog {
 public:
     ConnectionDialogImpl(const TRect& r, const char* title) noexcept :
         TWindowInit(&TDialog::initFrame), TDialog(r, title) {}
 
     ConnectionDialogFields* fields = nullptr;
-    const AppSettings* current = nullptr;
+    const AppSettings* currentSettings = nullptr;
+    ServerRemovedCallback onServerRemoved;
+    ServerSavedCallback onServerSaved;
+    TButton* saveOkButton = nullptr;
+    // Starts true unless createConnectionDialog() finds the initially-
+    // shown server already has a saved, matching profile (see its own
+    // dirty_ initialization) — whether the button reads "Save" (true)
+    // or "OK" (false) right now, and so whether clicking it needs to
+    // run a fresh connection test or can just close.
+    bool dirty_ = true;
+
+    // Relabels the Save/OK button and updates dirty_ together, so the
+    // two can never drift apart — every place in this class that
+    // changes one always goes through here rather than touching
+    // dirty_ directly.
+    void setDirty(bool dirty) {
+        dirty_ = dirty;
+        if (saveOkButton) {
+            delete[] (char*)saveOkButton->title; // same alloc/free convention as TWindow's own title — see twindow.cpp/tbutton.cpp
+            saveOkButton->title = newStr(dirty ? tr(Str::ButtonSave) : tr(Str::ButtonOK));
+            saveOkButton->drawView();
+        }
+    }
 
     void handleEvent(TEvent& event) override {
+        // Captured BEFORE dispatch: TDialog::handleEvent() below may
+        // move focus on its own (e.g. Tab), so `current` right after
+        // it no longer reliably says which field an evKeyDown was
+        // actually delivered to.
+        TView* focusedBefore = current;
         TDialog::handleEvent(event);
+
+        if (event.what == evKeyDown && fields != nullptr &&
+            (focusedBefore == fields->host || focusedBefore == fields->port ||
+             focusedBefore == fields->user || focusedBefore == fields->password)) {
+            // Any direct edit to the connection fields themselves (not
+            // just switching servers via the combo) invalidates
+            // whatever Save last tested — matches the combo's own
+            // cmComboBoxSelectionChanged handling below, just for a
+            // different way the shown connection details can change.
+            setDirty(true);
+        }
 
         if (event.what == evBroadcast && fields != nullptr &&
             event.message.infoPtr == fields->serverName) {
             if (event.message.command == cmComboBoxSelectionChanged) {
                 std::string name = fields->serverName->editText();
-                auto it = current->servers.find(name);
-                if (it != current->servers.end()) {
-                    // Only loads the OTHER fields when the picked name
-                    // already has a saved profile — a name just typed
-                    // and added via "[+]", never yet confirmed with OK,
-                    // has none, and leaving the other fields alone in
-                    // that case means whatever the user might already
-                    // be filling in for that new server doesn't get
-                    // wiped out from under them.
-                    setFieldText(fields->host, it->second.host);
-                    setFieldText(fields->port, std::to_string(it->second.port));
-                    setFieldText(fields->user, it->second.user);
-                    setFieldText(fields->password, it->second.password);
+                auto it = currentSettings->servers.find(name);
+                if (it != currentSettings->servers.end()) {
+                    // Matches an already-saved server: load its own
+                    // details, and nothing new needs testing.
+                    setConnectionFields(*fields, it->second);
+                    setDirty(false);
+                } else {
+                    // New or not-yet-saved name (typed fresh, or picked
+                    // right after "[+]" added it) — resets to generic
+                    // defaults rather than leaving whatever the
+                    // PREVIOUSLY shown server's own details were, which
+                    // aren't this one's. Same defaults a brand new
+                    // AppSettings::servers entry would start from (see
+                    // ServerProfile's own field defaults).
+                    setConnectionFields(*fields, ServerProfile{});
+                    setDirty(true);
                 }
             } else if (event.message.command == cmComboBoxItemAdded) {
                 messageBox(formatMessage(tr(Str::MsgServerAdded), fields->serverName->lastChangedValue()),
                            mfInformation | mfOKButton);
             } else if (event.message.command == cmComboBoxItemRemoved) {
-                messageBox(formatMessage(tr(Str::MsgServerRemoved), fields->serverName->lastChangedValue()),
+                std::string removedName = fields->serverName->lastChangedValue();
+                messageBox(formatMessage(tr(Str::MsgServerRemoved), removedName),
                            mfInformation | mfOKButton);
+                // Immediate, not gated behind this dialog's own OK/Cancel
+                // — see ServerRemovedCallback's own doc comment in
+                // ConnectionDialog.h for why "[-]" can't wait for either.
+                if (onServerRemoved) onServerRemoved(removedName);
             }
         }
 
         if (event.what == evCommand && event.message.command == cmTestConnectionAndOK) {
             // Runs every field's own TValidator (the refresh interval
             // and port's TRangeValidator — see createConnectionDialog()
-            // below) before even attempting a test — the same check a
+            // below) before even attempting anything — the same check a
             // plain cmOK button gets automatically from tvision itself,
             // which this button no longer does simply by being cmOK.
             // valid()'s own argument only matters for telling cmCancel
@@ -160,17 +221,56 @@ public:
             // entirely) — cmOK here is just conventional, not literally
             // what confirming will end up doing next.
             if (valid(cmOK)) {
-                TransmissionClient testClient(getFieldText(fields->host),
-                                               std::atoi(getFieldText(fields->port).c_str()),
-                                               getFieldText(fields->user),
-                                               getFieldText(fields->password));
-                bool ok = false;
-                testClient.getSessionLimits(&ok);
-                if (ok) {
+                if (!dirty_) {
+                    // Already saved and nothing's changed since — Save
+                    // already did everything that needed doing (see
+                    // onServerSaved below), so this click just closes.
                     endModal(cmOK);
                 } else {
-                    messageBox(formatMessage(tr(Str::MsgConnectionTestFailed), testClient.lastError()),
-                               mfError | mfOKButton);
+                    std::string name = fields->serverName->editText();
+                    if (!name.empty()) {
+                        ServerProfile profile;
+                        profile.host = getFieldText(fields->host);
+                        profile.port = std::atoi(getFieldText(fields->port).c_str());
+                        profile.user = getFieldText(fields->user);
+                        profile.password = getFieldText(fields->password);
+
+                        // A throwaway client, built straight from
+                        // what's currently in the fields — never the
+                        // app's own shared one for this server (if any
+                        // even exists yet), which should stay pointed
+                        // at whatever last actually worked until this
+                        // one succeeds too.
+                        TransmissionClient testClient(profile.host, profile.port,
+                                                       profile.user, profile.password);
+                        bool ok = false;
+                        testClient.getSessionLimits(&ok);
+                        if (ok) {
+                            // The real save happens first — onServerSaved
+                            // persists it and opens/updates the window —
+                            // and only then does the combo's own list get
+                            // synced to match (addCurrentValue(), a no-op
+                            // if the name's already there, e.g. re-Saving
+                            // an existing server after editing it — see
+                            // its own comment for why this can also show
+                            // a "Server added" confirmation the first
+                            // time a brand new name is Saved directly,
+                            // without "[+]" ever being clicked first).
+                            // Cosmetic list-sync last, on purpose: it's
+                            // not what actually needs to succeed here.
+                            if (onServerSaved) onServerSaved(name, profile);
+                            fields->serverName->addCurrentValue();
+                            // Stays open — Save is not a close action,
+                            // unlike a plain OK; the user may want to
+                            // configure another server next, or just
+                            // click this same button again (now
+                            // reading "OK") to close.
+                            setDirty(false);
+                        } else {
+                            messageBox(formatMessage(tr(Str::MsgConnectionTestFailed), testClient.lastError()),
+                                       mfError | mfOKButton);
+                        }
+                    }
                 }
             }
             clearEvent(event);
@@ -180,7 +280,9 @@ public:
 
 } // namespace
 
-TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFields& fields) {
+TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFields& fields,
+                                 ServerRemovedCallback onServerRemoved,
+                                 ServerSavedCallback onServerSaved) {
     TRect r(0, 0, 60, 20);
     auto* dlg = new ConnectionDialogImpl(r, tr(Str::DialogTitleConnection));
     dlg->options |= ofCentered;
@@ -194,13 +296,23 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     TComboItem* serverItems = buildServerItems(current, focusedIndex);
     fields.serverName = new TComboBox(TRect(24, 4, 50, 5), serverItems, focusedIndex);
     fields.serverName->setEditable(true);
+
+    // Which name ends up shown initially, and whether it already
+    // matches a saved profile — decides both the connection fields'
+    // own starting values and the Save/OK button's own starting label
+    // (see the dirty_ assignment further below), all in one place
+    // rather than recomputing "is this name already saved?" twice.
+    std::string initialName = tr(Str::DefaultServerName);
+    bool initialMatch = false;
     if (serverItems == nullptr) {
         // No servers configured yet (a fresh install) — nothing for
         // the combo to focus, so its own editText() would otherwise
         // start out empty with no hint of what to type. Not saved
-        // anywhere until "[+]" is used or OK is confirmed with this
-        // still showing.
-        fields.serverName->setEditText(tr(Str::DefaultServerName));
+        // anywhere until Save (or "[+]") is used.
+        fields.serverName->setEditText(initialName);
+    } else {
+        initialName = fields.serverName->editText();
+        initialMatch = current.servers.find(initialName) != current.servers.end();
     }
     dlg->insert(fields.serverName);
 
@@ -212,22 +324,36 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     // range X to Y" messageBox) — real validation, not just parsing
     // whatever ends up in the field after the fact.
     fields.refreshInterval->setValidator(new TRangeValidator(1, 86400)); // up to 24h
-    const ServerProfile& active = current.activeProfile();
-    fields.host = addField(dlg, 8, tr(Str::LabelHost), active.host, 128);
-    fields.port = addField(dlg, 10, tr(Str::LabelPort), std::to_string(active.port), 10);
+    // Starting values match whichever server ended up initially shown
+    // above (its own saved profile if it has one, otherwise a
+    // default-constructed ServerProfile — same "no match → defaults"
+    // rule setConnectionFields()/cmComboBoxSelectionChanged use
+    // everywhere else in this dialog).
+    ServerProfile initialProfile = initialMatch ? current.servers.at(initialName) : ServerProfile{};
+    fields.host = addField(dlg, 8, tr(Str::LabelHost), initialProfile.host, 128);
+    fields.port = addField(dlg, 10, tr(Str::LabelPort), std::to_string(initialProfile.port), 10);
     fields.port->setValidator(new TRangeValidator(1, 65535)); // valid TCP port range
-    fields.user = addField(dlg, 12, tr(Str::LabelUser), active.user, 128);
-    fields.password = addField(dlg, 14, tr(Str::LabelPassword), active.password, 128, /*masked=*/true);
+    fields.user = addField(dlg, 12, tr(Str::LabelUser), initialProfile.user, 128);
+    fields.password = addField(dlg, 14, tr(Str::LabelPassword), initialProfile.password, 128, /*masked=*/true);
 
-    static_cast<ConnectionDialogImpl*>(dlg)->fields = &fields;
-    static_cast<ConnectionDialogImpl*>(dlg)->current = &current;
+    auto* impl = static_cast<ConnectionDialogImpl*>(dlg);
+    impl->fields = &fields;
+    impl->currentSettings = &current;
+    impl->onServerRemoved = std::move(onServerRemoved);
+    impl->onServerSaved = std::move(onServerSaved);
+    impl->dirty_ = !initialMatch;
 
     // A blank row (16) between the last field and the buttons, rather
-    // than the buttons sitting immediately under Password. The OK
-    // button uses cmTestConnectionAndOK, not cmOK — see its own
-    // definition above for why — but keeps bfDefault (Enter still
-    // reaches it the same way a real cmOK button would).
-    dlg->insert(new TButton(TRect(20, 17, 30, 19), tr(Str::ButtonOK), cmTestConnectionAndOK, bfDefault));
+    // than the buttons sitting immediately under Password. The
+    // Save/OK button uses cmTestConnectionAndOK, not cmOK — see its
+    // own definition above for why — but keeps bfDefault (Enter still
+    // reaches it the same way a real cmOK button would). Starting
+    // label matches impl->dirty_ (just set above): "Save" for a new/
+    // unmatched server, "OK" for one that's already saved as-is.
+    auto* button = new TButton(TRect(20, 17, 30, 19),
+        tr(impl->dirty_ ? Str::ButtonSave : Str::ButtonOK), cmTestConnectionAndOK, bfDefault);
+    impl->saveOkButton = button;
+    dlg->insert(button);
     dlg->insert(new TButton(TRect(32, 17, 42, 19), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
@@ -236,50 +362,15 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
 
 AppSettings connectionDialogResult(const ConnectionDialogFields& fields, const AppSettings& current) {
     AppSettings result = current;
-    char buf[256];
 
     if (fields.refreshInterval) {
+        char buf[256];
         fields.refreshInterval->getData(buf);
         int v = std::atoi(buf);
         if (v > 0) result.refreshIntervalSeconds = v;
     }
     if (fields.language) {
         result.language = fields.language->language();
-    }
-
-    if (fields.serverName) {
-        std::string activeName = fields.serverName->editText();
-
-        // Rebuilt from the combo's own current list (TComboBox::
-        // allValues()) rather than editing current.servers in place —
-        // a name removed via "[-]" needs to disappear from the saved
-        // set too, and only what's still IN the combo (not what's
-        // missing from it) can tell us that.
-        result.servers.clear();
-        for (const std::string& name : fields.serverName->allValues()) {
-            if (name == activeName) continue; // filled in below, from the fields actually shown
-            auto it = current.servers.find(name);
-            if (it != current.servers.end()) result.servers[name] = it->second;
-            // A name with no prior profile (added via "[+]" but never
-            // confirmed while active) gets no entry — see
-            // ConnectionDialogImpl::handleEvent()'s own comment on why
-            // that's the same case where the other fields are left
-            // alone rather than blanked.
-        }
-
-        if (!activeName.empty()) {
-            ServerProfile profile;
-            if (fields.host) { fields.host->getData(buf); profile.host = buf; }
-            if (fields.port) {
-                fields.port->getData(buf);
-                int v = std::atoi(buf);
-                if (v > 0) profile.port = v;
-            }
-            if (fields.user) { fields.user->getData(buf); profile.user = buf; }
-            if (fields.password) { fields.password->getData(buf); profile.password = buf; }
-            result.servers[activeName] = profile;
-            result.activeServer = activeName;
-        }
     }
 
     return result;
