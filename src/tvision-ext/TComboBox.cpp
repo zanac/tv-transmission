@@ -386,6 +386,12 @@ void TComboBox::removeCurrentValue() {
         editBuf_.clear();
         cursorPos_ = 0;
         drawView();
+        // The list emptying out is itself a change to what's shown
+        // (from that last entry's own text to nothing) — fired here
+        // explicitly since this is the one path that doesn't go
+        // through focusItem() (nothing left to focus), which already
+        // fires this same broadcast for every other case.
+        message(owner, evBroadcast, cmComboBoxSelectionChanged, this);
     } else {
         // Focuses whatever entry now sits at the removed one's old
         // position (or the new last entry, if it was the last one) —

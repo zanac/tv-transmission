@@ -99,10 +99,11 @@ protected:
 
 // Broadcast whenever the shown text actually changes — picking a
 // different item from the dropdown, "[+]"/"[-]" (editable mode — they
-// end up focusing a different item themselves), or, also in editable
-// mode, directly typing/editing the text. Not fired for every open/
-// close of the popup, or for cursor movement alone (Left/Right/Home/
-// End) with no actual content change. cmComboBoxSelectionChanged
+// end up focusing a different item themselves, or, for "[-]" removing
+// the last remaining one, leaving nothing shown at all), or, also in
+// editable mode, directly typing/editing the text. Not fired for every
+// open/close of the popup, or for cursor movement alone (Left/Right/
+// Home/End) with no actual content change. cmComboBoxSelectionChanged
 // itself isn't declared here: the fork this was copied from added it
 // directly to views.h's own command enum (unconditionally, not gated
 // behind any Uses_TComboBox guard — see cmdcodes.h/views.h), so it's

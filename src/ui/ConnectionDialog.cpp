@@ -10,6 +10,7 @@
 #define Uses_MsgBox
 #include <tvision/tv.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -156,6 +157,26 @@ public:
         }
     }
 
+    // Enables or disables host/port/user/password together — there's
+    // nothing meaningful to configure for a server name that isn't
+    // actually in the combo's own list yet (never saved, and not even
+    // added via "[+]" this session), so editing them is blocked
+    // entirely rather than just left looking editable with nothing
+    // real behind it. setState(sfDisabled, ...) is the one call that
+    // covers this completely on its own: TGroup's own event dispatch
+    // (see tgroup.cpp) already skips delivering keyboard/mouse events
+    // to a disabled view, and focusNext() (Tab) already skips over it
+    // when picking what to focus next — nothing extra needed here for
+    // either.
+    void setConnectionFieldsEnabled(bool enabled) {
+        if (!fields) return;
+        Boolean disable = Boolean(!enabled);
+        if (fields->host) fields->host->setState(sfDisabled, disable);
+        if (fields->port) fields->port->setState(sfDisabled, disable);
+        if (fields->user) fields->user->setState(sfDisabled, disable);
+        if (fields->password) fields->password->setState(sfDisabled, disable);
+    }
+
     void handleEvent(TEvent& event) override {
         // Captured BEFORE dispatch: TDialog::handleEvent() below may
         // move focus on its own (e.g. Tab), so `current` right after
@@ -179,6 +200,19 @@ public:
             event.message.infoPtr == fields->serverName) {
             if (event.message.command == cmComboBoxSelectionChanged) {
                 std::string name = fields->serverName->editText();
+
+                // Whether `name` is actually a registered entry in the
+                // combo's own list — a SEPARATE question from whether
+                // it's a saved server (checked just below): a name just
+                // added via "[+]" is registered but not yet saved
+                // (fields enabled, still showing defaults, until Save
+                // actually persists something under it); a name that's
+                // neither isn't real yet in any sense, so there's
+                // nothing to enable at all.
+                auto values = fields->serverName->allValues();
+                bool isRegistered = std::find(values.begin(), values.end(), name) != values.end();
+                setConnectionFieldsEnabled(isRegistered);
+
                 auto it = currentSettings->servers.find(name);
                 if (it != currentSettings->servers.end()) {
                     // Matches an already-saved server: load its own
@@ -186,13 +220,13 @@ public:
                     setConnectionFields(*fields, it->second);
                     setDirty(false);
                 } else {
-                    // New or not-yet-saved name (typed fresh, or picked
-                    // right after "[+]" added it) — resets to generic
-                    // defaults rather than leaving whatever the
-                    // PREVIOUSLY shown server's own details were, which
-                    // aren't this one's. Same defaults a brand new
-                    // AppSettings::servers entry would start from (see
-                    // ServerProfile's own field defaults).
+                    // New, not-yet-saved, or not-yet-registered name —
+                    // resets to generic defaults rather than leaving
+                    // whatever the PREVIOUSLY shown server's own
+                    // details were, which aren't this one's. Same
+                    // defaults a brand new AppSettings::servers entry
+                    // would start from (see ServerProfile's own field
+                    // defaults).
                     setConnectionFields(*fields, ServerProfile{});
                     setDirty(true);
                 }
@@ -342,6 +376,17 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     impl->onServerRemoved = std::move(onServerRemoved);
     impl->onServerSaved = std::move(onServerSaved);
     impl->dirty_ = !initialMatch;
+    // initialMatch doubles as "is this name registered in the combo"
+    // here too: whenever serverItems != nullptr, the initially-focused
+    // name is necessarily one of the combo's own entries (built
+    // straight from current.servers — see buildServerItems() above),
+    // so a saved match implies a registered one and vice versa for
+    // this specific, construction-time case. Set directly on the
+    // fields themselves (setConnectionFieldsEnabled() needs `fields`
+    // already assigned, done just above) rather than through the
+    // broadcast path everything else in this dialog uses — nothing's
+    // broadcasting yet this early.
+    impl->setConnectionFieldsEnabled(initialMatch);
 
     // A blank row (16) between the last field and the buttons, rather
     // than the buttons sitting immediately under Password. The
