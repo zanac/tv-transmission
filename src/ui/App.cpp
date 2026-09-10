@@ -185,9 +185,18 @@ TorrentListWindow* App::openServerWindow(const std::string& name, const TRect& b
     TransmissionClient& clientRef = *client;
     clients_[name] = std::move(client);
 
+    // This server's own column layout, if it's ever been customized —
+    // a default-constructed ColumnLayout (empty vectors) otherwise,
+    // which TorrentListWindow's own constructor already treats as "use
+    // the built-in defaults" (see AppSettings::ColumnLayout's own
+    // comment on why this is per-server now, not shared).
+    AppSettings::ColumnLayout columnLayout;
+    auto layoutIt = settings_.columnLayouts.find(name);
+    if (layoutIt != settings_.columnLayouts.end()) columnLayout = layoutIt->second;
+
     auto* win = new TorrentListWindow(bounds, name, clientRef,
         settings_.sortColumn, settings_.sortAscending, settings_.filter,
-        settings_.columnWidths, settings_.columnOrder, settings_.columnVisible,
+        columnLayout.widths, columnLayout.order, columnLayout.visible,
         [this](SortColumn col, bool asc) {
             settings_.sortColumn = col;
             settings_.sortAscending = asc;
@@ -472,14 +481,17 @@ void App::showColumnManagerDialog() {
         // user might not close the app again for a while after this.
         // Which settings.json fields to update depends on which grid
         // was actually just edited — checked by the focused window's
-        // own class: any torrent-list window (there can be several open
-        // at once now, but they all share one saved layout — see
-        // AppSettings::columnWidths' own doc comment), or the tracker
-        // list (same sharing, for its own separate layout).
+        // own class: a torrent-list window saves under its own server
+        // name (see AppSettings::ColumnLayout's own comment on why
+        // per-server, not shared, now that each server has its own
+        // independently-managed MDI window), the tracker list under
+        // its own separate, still-shared layout.
         if (auto* listWin = dynamic_cast<TorrentListWindow*>(TProgram::deskTop->current)) {
-            settings_.columnWidths = listWin->columnWidths();
-            settings_.columnOrder = listWin->columnOrder();
-            settings_.columnVisible = listWin->columnVisibility();
+            AppSettings::ColumnLayout layout;
+            layout.widths = listWin->columnWidths();
+            layout.order = listWin->columnOrder();
+            layout.visible = listWin->columnVisibility();
+            settings_.columnLayouts[listWin->serverName()] = layout;
             saveSettings(settings_);
         } else if (auto* trackerWin = dynamic_cast<TrackerListWindow*>(TProgram::deskTop->current)) {
             settings_.trackerColumnWidths = trackerWin->columnWidths();
@@ -706,14 +718,24 @@ void App::handleEvent(TEvent& event) {
 }
 
 void App::shutDown() {
-    // Column widths/order (shared across every window — see
-    // AppSettings::columnWidths' own comment) captured from whichever
-    // window is found first, since they should all match anyway — the
-    // same reasoning as the tracker-list backstop just below.
+    // Every still-open window's own column layout (widths/order/
+    // visibility together — see AppSettings::ColumnLayout's own
+    // comment on why per-server now, not shared), keyed by its server
+    // name — rebuilt from scratch each time (not just updated in
+    // place), same reasoning as windowLayouts just below: every
+    // configured server always has its own open window (the MDI
+    // invariant this app maintains — see its own constructor), so
+    // rebuilding from allListWindows() can't lose a legitimate one, and
+    // a server removed via the Connection dialog during this session
+    // doesn't leave a stale entry behind either.
     std::vector<TorrentListWindow*> windows = allListWindows();
-    if (!windows.empty()) {
-        settings_.columnWidths = windows[0]->columnWidths();
-        settings_.columnOrder = windows[0]->columnOrder();
+    settings_.columnLayouts.clear();
+    for (TorrentListWindow* w : windows) {
+        AppSettings::ColumnLayout layout;
+        layout.widths = w->columnWidths();
+        layout.order = w->columnOrder();
+        layout.visible = w->columnVisibility();
+        settings_.columnLayouts[w->serverName()] = layout;
     }
 
     // Every still-open window's own position/size, keyed by its server

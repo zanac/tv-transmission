@@ -138,42 +138,58 @@ struct AppSettings {
     SortColumn sortColumn = SortColumn::Name;
     bool sortAscending = true;
 
+    // A server's own torrent-list column layout — width, order, and
+    // visibility go together (all three edited via the same actions:
+    // dragging a column's separator, double-clicking its header to
+    // reorder, or the "Manage columns..." dialog), and belong to a
+    // specific server's own window rather than being shared globally —
+    // each is independently resizable now that every configured server
+    // has its own MDI window (see AppSettings::windowLayouts' own
+    // comment for the parallel per-server treatment of position/size),
+    // so there's no single "the" torrent list anymore whose column
+    // layout would even mean one shared thing.
+    struct ColumnLayout {
+        // Current width of each column, same order as SortColumn
+        // (Name, Done, Size, Down, Up, Added, Status). Empty (or a
+        // mismatched count, e.g. after a column was added) falls back
+        // to the list's own built-in defaults.
+        std::vector<int> widths;
+        // Current visual arrangement — a permutation of [0, 7), one
+        // entry per visual position holding the LOGICAL column index
+        // (SortColumn's own order) shown there. Empty (or not a valid
+        // permutation — see TGridView::setColumnOrder()) falls back to
+        // identity order.
+        std::vector<int> order;
+        // Which columns are shown at all, same order as SortColumn.
+        // Empty (or a mismatched count) falls back to every column
+        // shown.
+        std::vector<bool> visible;
+    };
+
     // Persisted the same way as everything else here: saved when the
     // Filters window is confirmed, reloaded on the next launch.
     TorrentFilter filter;
 
-    // Current width of each torrent-list column, same order as
-    // SortColumn (Name, Done, Size, Down, Up, Added, Status) — read
-    // from the grid and saved on exit (see App::shutDown()), applied
-    // back when the list is built on the next launch. Empty (or a
-    // mismatched count, e.g. a settings.json from before a column was
-    // added) falls back to the list's own built-in defaults.
-    std::vector<int> columnWidths;
+    // Every configured server's own torrent-list column layout, keyed
+    // by the same logical server name as `servers` below — read from
+    // the grid and saved on exit (widths/order — see App::shutDown())
+    // or as soon as "Manage columns..." is confirmed (visibility, the
+    // same "discrete choice vs. continuous drag" distinction
+    // ColumnLayout's own fields already draw), applied back to that
+    // server's own window when it's (re)opened. A server with no entry
+    // here yet (never customized, or an older settings.json predating
+    // this) falls back to that window's own built-in defaults.
+    std::map<std::string, ColumnLayout> columnLayouts;
 
-    // Current visual arrangement of the torrent-list columns — a
-    // permutation of [0, 7), one entry per visual position holding the
-    // LOGICAL column index (SortColumn's own order) shown there. Saved
-    // and restored the same way as columnWidths above. Empty (or not a
-    // valid permutation — see TGridView::setColumnOrder()) falls back
-    // to identity order.
-    std::vector<int> columnOrder;
-
-    // Which torrent-list columns are shown at all, same order as
-    // SortColumn — chosen from the "Columns..." dialog (Settings menu).
-    // Saved as soon as that dialog is confirmed (unlike widths/order,
-    // which are only captured on exit — see App::shutDown() — this is a
-    // discrete dialog choice, not a continuous drag). Empty (or a
-    // mismatched count) falls back to every column shown.
-    std::vector<bool> columnVisible;
-
-    // Same three fields as columnWidths/columnOrder/columnVisible
-    // above, but for TrackerListWindow's own 6 columns (Host, Tier,
-    // Seeders, Leechers, Downloaded, Status) instead of the main
-    // torrent list's. Shared across every open tracker window — there's
-    // one tracker column layout, not one per torrent — saved whenever
-    // "Manage columns..." (see App::focusedGrid()) is used while a
-    // tracker window has focus, and applied to every tracker window
-    // opened afterward, including ones for a different torrent.
+    // Same three fields as ColumnLayout above, but for
+    // TrackerListWindow's own 6 columns (Host, Tier, Seeders, Leechers,
+    // Downloaded, Status) instead of the main torrent list's. Shared
+    // across every open tracker window — there's one tracker column
+    // layout, not one per torrent (and not one per server either) —
+    // saved whenever "Manage columns..." (see App::focusedGrid()) is
+    // used while a tracker window has focus, and applied to every
+    // tracker window opened afterward, including ones for a different
+    // torrent or a different server.
     std::vector<int> trackerColumnWidths;
     std::vector<int> trackerColumnOrder;
     std::vector<bool> trackerColumnVisible;

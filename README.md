@@ -47,12 +47,15 @@ HTTP and nlohmann/json for parsing.
   (double-click a column's name — "<"/">" markers appear where a move
   is possible); **Columns → Manage columns...** does the same, plus
   showing/hiding columns, all from one place — see its own entry below.
-  Width, order, and visibility are shared across every open torrent-list
-  window (not one set per server) and saved/restored across launches
+  Width, order, and visibility are each server's own — a window resized
+  or reconfigured this way doesn't affect any other open one — and
+  saved/restored per server across launches (see "Fixed bugs" below for
+  why this changed from a single shared layout)
 - Click a column header to sort by it; click again to reverse the
   direction (a `^`/`v` indicator shows the active column and direction);
-  the chosen column and direction — shared the same way widths/order
-  are — are saved and restored on the next launch
+  the chosen column and direction — unlike width/order/visibility above,
+  still one shared setting across every open window, not per server —
+  are saved and restored on the next launch
 - If enough columns are shown at once that they don't all fit — a wide
   terminal helps, but with several of the optional columns turned on
   it's easy to exceed even that — a horizontal scrollbar appears below
@@ -280,29 +283,46 @@ HTTP and nlohmann/json for parsing.
 - "Server name" is an editable combo (see "Fixed bugs" below for the
   widget itself) — the logical name a set of host/port/user/password is
   saved under, e.g. "home" or "seedbox". Picking a different existing
-  name from the dropdown loads that server's own saved details into the
-  other fields automatically; typing a new one and clicking "[+]" adds
-  it to the list (with a confirmation popup naming it) without touching
-  what's saved until OK is actually confirmed — at which point
-  whatever's currently in the other fields is saved under whichever
-  name is currently shown, and that becomes the active server. "[-]"
-  removes a name (and its saved details) from the list entirely, with
-  its own confirmation popup — and, once confirmed, closes that
+  name from the dropdown, or typing one directly, loads that server's
+  own saved details into the other fields automatically if it matches
+  one already saved; typing (or switching to) a name that doesn't
+  resets host/port/user/password to generic defaults instead of leaving
+  whatever the previously-shown server's own details were — those
+  aren't this (as yet unconfigured) server's details. "[+]" adds
+  whatever's currently shown as a list entry on its own (with a
+  confirmation popup naming it), without saving anything under it yet
+- Host/port/user/password stay disabled — visibly dimmed, and skipped
+  entirely by Tab — until the name currently shown is actually a
+  registered entry in the combo, whether that's a name already saved
+  from a previous session or one just added this session via "[+]".
+  There's nothing meaningful to configure for a name that's neither, so
+  editing those fields is blocked outright rather than left looking
+  editable with nothing real behind it
+- The button beneath — labeled **Save** or **OK** depending on
+  whether what's shown right now already matches a saved server exactly
+  — reflects whether there's anything new to persist. Save runs a real
+  connection test (the same kind of RPC round trip "Server
+  Configuration" already relies on for its own fetch) with whatever's
+  currently in the fields; only on success does it actually save that
+  server's details to disk and open (or update) its own torrent-list
+  window, then relabel itself to OK — the dialog stays open either way,
+  ready to configure another server next, or just close via the now-OK
+  button. A failed test shows the error and changes nothing. Typing (or
+  selecting) a different server, or editing host/port/user/password
+  directly, puts the button back to reading Save — even right after a
+  successful one, since now there's something new that hasn't been
+  tested yet
+- "[-]" is NOT symmetric with any of the above: removing a server, and
+  confirming its own popup, takes effect immediately — closing that
   server's torrent-list window along with every Details/Files/Tracker
-  window still open for one of its torrents (see "Fixed bugs" below)
+  window still open for one of its torrents, and saving the removal to
+  disk right then (see "Fixed bugs" below) — rather than waiting for
+  Save/OK, so pressing Cancel afterward does NOT undo it
 - First step toward managing more than one server — right now exactly
-  one is ever connected to at a time (whichever is active when OK is
-  pressed); switching to a different saved one and confirming is what
-  "quickly switching between servers" means at this stage, not yet
-  several running side by side
-- OK tests the connection with whatever's currently in the fields
-  before anything is saved — a real RPC round trip (`session-get`),
-  the same kind of check "Server Configuration" already relies on for
-  its own fetch. Only on success does the dialog actually close and the
-  server's details get written to disk; a failed test shows the error
-  and leaves everything exactly as it was, dialog still open, nothing
-  saved — never silently keeps a set of details that don't actually
-  work
+  one is ever connected to at a time per Save (whichever was last
+  successfully tested and saved); switching to a different saved one
+  and doing the same is what "quickly switching between servers" means
+  at this stage, not yet several running side by side
 - Changing the language shows a popup noting that a restart is needed
   for the menu bar and status bar to relabel — everything else already
   has (see "Internationalization" below for why those two specifically
@@ -468,11 +488,12 @@ rows don't need aren't carried on every refresh tick for every torrent.
 
 Settings (every saved server's own host/port/user/password — see
 "Connection" above — plus which one is active, each server's own
-torrent-list window position/size and which one had focus when the
-app last closed — see "Torrent list" above — refresh interval,
-language, the torrent list's last sort column/direction, column
-widths/order/visibility for both the torrent list and the tracker
-list, and the active filter) are stored in:
+torrent-list window position/size, column widths/order/visibility, and
+which one had focus when the app last closed — see "Torrent list"
+above — refresh interval, language, the torrent list's last sort
+column/direction (still one shared setting, not per server), the
+tracker list's own column widths/order/visibility (shared the same
+way), and the active filter) are stored in:
 
 ```
 $XDG_CONFIG_HOME/tv-transmission/settings.json
@@ -706,6 +727,253 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Torrent-list column widths/order/visibility became per-server,
+having stayed one shared setting since the MDI work made that stop
+making sense.** Reported directly: resizing or reconfiguring one
+server's window was silently overwriting every other server's own
+column layout too, since `AppSettings` still had exactly one
+`columnWidths`/`columnOrder`/`columnVisible` triplet — left that way
+deliberately at the time ("first step" scope, see the MDI work's own
+entry above), but a real gap once every server got its own
+independently-managed window.
+
+`AppSettings::ColumnLayout` bundles the three together (they're always
+edited as a unit — dragging a separator, double-clicking a header,
+"Manage columns...") and `columnLayouts` keys one per server name, the
+same shape `windowLayouts` already used for position/size. Nothing
+about `TorrentListWindow` itself needed changing — it already took
+these three as per-*window* constructor parameters (`initialColumnWidths`
+and friends), which is exactly the right scope; the bug was entirely in
+how `App` was filling them in, from one shared field instead of a
+lookup keyed by the window's own server name. Three call sites needed
+that lookup instead of the flat field: `openServerWindow()` (read, when
+a window is created or reopened), `showColumnManagerDialog()` (write,
+the instant that dialog confirms a change — matches the existing
+"visibility is a discrete choice, not a continuous drag" distinction
+`ColumnLayout`'s own fields already draw), and `shutDown()` (write,
+every still-open window's own current widths/order, the same way it
+already did for position/size — previously only captured window[0]'s
+own layout and wrote it under the one shared field, silently discarding
+every other open window's own settings on every exit). Sort
+column/direction stayed as it was — genuinely still one shared setting
+across every window, not reported as part of this, and not obviously
+the same kind of "per-server" question the other three are (there's no
+single UI action producing it the same "customize one window" way
+resizing or reordering a column does).
+
+Verified with a direct check on the read side rather than only the
+write side, since a get-then-redisplay bug (loading the right data but
+still somehow rendering it the same everywhere) would have looked
+identical to a correctly-scoped one on a quick glance: a `settings.json`
+with a custom, distinctive column width saved only under one server's
+own name, loaded through the real `Config.cpp`, and two windows built
+the way `openServerWindow()` builds them — the one for that server
+came back with the custom width; the other, with no entry of its own,
+came back with the untouched defaults. Caught a mismatch in the test
+itself along the way, not the implementation: an initial attempt fed a
+7-element width array (one per *visible* column) into a mechanism that
+actually expects one entry per column *including hidden ones* (16
+total) — already documented behavior (a mismatched count falls back to
+defaults, exactly as intended for an older `settings.json` predating a
+column being added), but it meant the first pass showed both windows
+identically wrong for a reason that had nothing to do with the
+per-server logic being tested. Fixed the test, not the code, and reran
+with a correctly-sized array to get the real answer.
+
+**Connection dialog: host/port/user/password disabled until the shown
+server name is actually a registered entry.** Asked for as a design on
+top of the Save/OK state machine just above (deliberately built to
+complement it, not conflict — the two share the same underlying
+question, "does the name shown right now correspond to something
+real?", just answering it for two different things: whether to reset
+the fields to defaults or load real data, and now, separately, whether
+those fields should even be touchable at all).
+
+"Registered" is deliberately a different question from "saved" — a
+name just added via "[+]" is real enough to configure (it's sitting
+right there in the combo's own list) even though nothing's been Saved
+under it yet, so it needed its own check (`TComboBox::allValues()`,
+searched for the currently-shown name) rather than reusing the
+existing "is this in `settings_.servers`" test the load-vs-defaults
+logic already had. A name that's neither registered nor saved gets
+both: reset fields *and* disabled ones — the two decisions computed
+side by side in the same broadcast handler, from the same two checks,
+so they can never disagree about a given name.
+
+`setState(sfDisabled, ...)` turned out to need nothing else alongside
+it — confirmed by reading `tgroup.cpp` rather than assumed: disabled
+views are already skipped entirely by `focusNext()` (Tab won't land on
+one) and by the event-dispatch helper that delivers positional/focused
+events (disabled views never receive mouse clicks or keystrokes at
+all), both core to how every view in tvision already behaves. Nothing
+project-specific needed adding on top for either half.
+
+One gap surfaced in `TComboBox` itself along the way: `"[-]"` removing
+the very last remaining entry left the list empty without broadcasting
+`cmComboBoxSelectionChanged` — the emptying-out branch predates the
+broadcast being centralized into `focusItem()` (see the entry above),
+and didn't get a manual fire added when everything else did, since at
+the time nothing needed to know about *emptying out* specifically, only
+about focusing a different entry. Fixed by firing it there too, since
+skipping it would have meant this dialog's own fields staying
+enabled — showing whatever the just-removed server's own details still
+were — after removing the last configured name entirely. Fixed at the
+source in `TComboBox` rather than worked around in the dialog, for the
+same reason the broadcast was centralized into `focusItem()` in the
+first place: a future caller relying on this broadcast to mean "the
+shown value changed, no exceptions" shouldn't have to discover the
+empty-list case is one.
+
+Verified both directions on a real running instance rather than
+assumed from the `setState()` call alone: with no server configured yet
+and the combo showing its own placeholder name (not a registered
+entry), Tab was sent repeatedly with a character typed after each — it
+never reached host, port, user, or password, all four staying at their
+untouched defaults throughout, confirming they were both invisible to
+keyboard focus and inert against direct input. Clicking "[+]" to
+actually register that name, then repeating the same Tab-and-type
+sequence, showed the typed character land in the host field exactly as
+expected — confirming the fields didn't just start disabled, but
+genuinely re-enable the moment a name becomes real.
+
+**Connection dialog: a real Save/OK state machine, and resetting the
+connection fields to defaults on an unmatched server name.** Asked for
+directly as a design, not found as a bug — worth documenting the
+reasoning as thoroughly as the code itself, since several pieces had to
+line up.
+
+The defaults-reset needed `TComboBox`'s own broadcast to widen. It used
+to fire `cmComboBoxSelectionChanged` only from the dropdown-pick path,
+inline in `openDropdown()`. Moved into `focusItem()` itself instead —
+the one place every path that changes what's focused already goes
+through (dropdown pick, "[+]", "[-]", `newList()`), so nothing has to
+remember to fire it separately (this class had exactly that kind of bug
+once before — see the editBuf_-syncing comment already in `TComboBox.h`
+— so consolidating into the one function that's already the accepted
+place to keep this in sync was the deliberate choice here, not just a
+convenience). Typing itself doesn't call `focusItem()` at all, so the
+keystroke-handling paths (insert, backspace, delete — not plain cursor
+movement) needed their own explicit fire alongside it. `message()`
+itself no-ops on a null receiver (confirmed in tvision's own
+`misc.cpp`), so firing this from inside `focusItem()` — including
+during construction, before this view has an owner — never needed a
+null check of its own.
+
+`ConnectionDialogImpl`'s handler for that broadcast now does one of two
+things depending on whether the shown name matches an entry in
+`settings_.servers`: loads that server's own saved profile (unchanged
+from before), or resets to a default-constructed `ServerProfile` (the
+same 127.0.0.1:9091, no user/password every `AppSettings::servers`
+entry would start from) — rather than leaving whatever the previously-
+focused server's own details happened to be, which was the actual
+report: switching or typing a new name kept showing an unrelated
+server's host/port as if they belonged to the new one.
+
+The Save/OK button needed to stop being the fixed cmOK-labeled button
+it always was. `ConnectionDialogImpl` gained a `dirty_` flag and a
+`setDirty()` that both updates it and relabels the button (`TButton::
+title`, reassigned with the same `newStr()`/`delete[]` convention
+already used for `TWindow::title` elsewhere in this project) — kept as
+the one place that touches either, so the two can't drift apart. Dirty
+starts true unless the initially-shown server already matches a saved
+profile exactly. It's set false only right after Save's own connection
+test actually succeeds; set true again by the combo's own broadcast
+(covering typing, dropdown picks, and "[+]"/"[-]" alike, now that it's
+unified — see above) AND, separately, by a raw `evKeyDown` reaching any
+of host/port/user/password directly (captured via `current`, this
+dialog's own inherited `TGroup::current`, read *before* dispatching the
+event down to whichever field has focus — reading it after can no
+longer be trusted, since `TDialog::handleEvent()` may have already
+moved focus on its own by then, e.g. via Tab). The button's own click
+handler branches on `dirty_`: false skips straight to `endModal(cmOK)`
+(Save already did everything last time); true runs the connection test,
+and only past that — the real save, via the new `ServerSavedCallback`
+(see below) — then `addCurrentValue()` to make sure the combo's own
+list has this name as a real entry even if it was typed and Saved
+directly without ever clicking "[+]" first. Deliberately in that order,
+save-then-sync: `addCurrentValue()` can itself show a "Server added"
+confirmation (the same one "[+]" shows) the first time a brand new name
+reaches this point, and the actual persistence shouldn't depend on
+where that confirmation happens to land.
+
+`App::showConnectionDialog()`'s side needed a new `ServerSavedCallback`
+alongside the existing `ServerRemovedCallback`, called the instant Save
+succeeds — not deferred to whenever (or if) this dialog eventually
+closes with cmOK, since Save deliberately keeps it open. It persists
+that one server's profile to `settings_`, and opens or updates its own
+window, mirroring `onServerRemoved`'s own "act immediately, don't wait
+for OK/Cancel" shape. With server data now handled entirely through
+these two callbacks, the code that used to run after `execView(dlg) ==
+cmOK` shrank to just refresh interval and language — anything server-
+related reaching that point would already be redundant, since Save
+already did it the moment the button last read "OK".
+
+Verified in layers, several with a synthetic harness driving
+`ConnectionDialogImpl::handleEvent()` directly rather than through a
+live interactive session — precise for exactly the kind of "did this
+one internal flag change" questions involved here, in a way clicking
+through a real dialog wouldn't be. A server already saved with a dead
+port, edited to a live one and Saved: the callback fired with the
+*edited* values, not the original ones, confirming the test genuinely
+used what was currently in the fields rather than something cached.
+The very next click, unchanged, fired nothing further — confirming
+`dirty_` correctly gated a second, redundant test+save once the button
+read OK. A saved server's fields shown, then the name switched to an
+unmatched one and back: confirmed the fields actually reset to generic
+defaults on the way out and reloaded the real saved values on the way
+back, not stale data drifting between the two. One genuine surprise
+along the way: the first version of this test appeared to hang — not a
+bug, but Save's own `addCurrentValue()` correctly reaching a real,
+correctly-blocking `messageBox()` (the "Server added" confirmation) for
+a brand new name with nowhere for a synthetic single-shot test to send
+a dismissal — resolved by reordering the real save ahead of that
+cosmetic list-sync in the implementation itself (described above) and,
+for the test, choosing scenarios that exercise an *existing* entry
+(where `addCurrentValue()` finds a match and skips the confirmation
+entirely) to observe the rest of the state machine without that
+particular blocking step in the way.
+
+**"[-]" removing a server didn't actually close anything unless OK was
+also pressed afterward — and pressing Cancel instead quietly undid a
+removal its own confirmation popup had already told the user had
+happened.** A real follow-up to the fix just below this one (which got
+the *closing itself* right — every window pointing at the removed
+server's client, not just its torrent-list window — but still only
+ever ran inside the `execView(dlg) == cmOK` branch, gated behind
+however this dialog happened to close). Asked directly rather than
+found by testing: does Cancel actually undo it? It did, and shouldn't
+have — "[-]" needed to stop behaving like every other field in this
+dialog (nothing takes effect until OK) and start being immediate,
+matching what its own confirmation popup already implied.
+
+`createConnectionDialog()` gained a `ServerRemovedCallback` parameter —
+a `std::function<void(const std::string&)>` `App::showConnectionDialog()`
+supplies, called the instant "[-]" actually removes an entry (not the
+no-op cases), from inside `ConnectionDialogImpl::handleEvent()` itself,
+well before the dialog's own `execView()` call returns with anything at
+all. The callback does the *entire* removal right there — closing every
+window for that server (the same `closeWindowsForClient()` plus its own
+torrent-list window from the fix below), dropping it from `settings_.
+servers`, and `saveSettings()` immediately — not deferred to whatever
+`connectionDialogResult()` would otherwise do on OK. That function's own
+loop rebuilding `result.servers` from the combo's current list stayed
+in place and needed no changes: by the time OK (if it's even pressed)
+reaches it, the removed name is already gone from both the combo's own
+`allValues()` and `settings_.servers` itself, so there's nothing left
+for it to redundantly remove — the dead code that used to do that
+inside the `cmOK` branch was deleted rather than left stale alongside
+the new immediate path.
+
+Verified against the exact sequence that exposed the gap: a torrent's
+Details window opened, then Connection, then "[-]" on the one
+configured server, confirming its own popup — at which point the
+torrent-list window *and* the Details window were both already gone
+from the screen, before touching the Connection dialog's own OK or
+Cancel at all. Pressing Cancel afterward changed nothing further (both
+windows stayed gone), and `settings.json` already had an empty `servers`
+object — confirming the removal was real and permanent from the moment
+"[-]" was confirmed, not something Cancel could still walk back.
 
 **Removing a server via the Connection dialog's "[-]" didn't actually
 close anything.** Two gaps, found together: the server's own torrent-

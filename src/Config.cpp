@@ -92,14 +92,20 @@ AppSettings loadSettings() {
             settings.filter.showSeedWait = f.value("showSeedWait", settings.filter.showSeedWait);
             settings.filter.showSeeding = f.value("showSeeding", settings.filter.showSeeding);
         }
-        if (j.contains("columnWidths") && j["columnWidths"].is_array()) {
-            settings.columnWidths = j["columnWidths"].get<std::vector<int>>();
-        }
-        if (j.contains("columnOrder") && j["columnOrder"].is_array()) {
-            settings.columnOrder = j["columnOrder"].get<std::vector<int>>();
-        }
-        if (j.contains("columnVisible") && j["columnVisible"].is_array()) {
-            settings.columnVisible = j["columnVisible"].get<std::vector<bool>>();
+        if (j.contains("columnLayouts") && j["columnLayouts"].is_object()) {
+            for (auto& [name, cj] : j["columnLayouts"].items()) {
+                AppSettings::ColumnLayout layout;
+                if (cj.contains("widths") && cj["widths"].is_array()) {
+                    layout.widths = cj["widths"].get<std::vector<int>>();
+                }
+                if (cj.contains("order") && cj["order"].is_array()) {
+                    layout.order = cj["order"].get<std::vector<int>>();
+                }
+                if (cj.contains("visible") && cj["visible"].is_array()) {
+                    layout.visible = cj["visible"].get<std::vector<bool>>();
+                }
+                settings.columnLayouts[name] = layout;
+            }
         }
         if (j.contains("trackerColumnWidths") && j["trackerColumnWidths"].is_array()) {
             settings.trackerColumnWidths = j["trackerColumnWidths"].get<std::vector<int>>();
@@ -154,9 +160,15 @@ bool saveSettings(const AppSettings& settings) {
         {"showSeedWait", settings.filter.showSeedWait},
         {"showSeeding", settings.filter.showSeeding},
     };
-    j["columnWidths"] = settings.columnWidths;
-    j["columnOrder"] = settings.columnOrder;
-    j["columnVisible"] = settings.columnVisible;
+    json columnLayoutsJson = json::object();
+    for (const auto& [name, layout] : settings.columnLayouts) {
+        columnLayoutsJson[name] = {
+            {"widths", layout.widths},
+            {"order", layout.order},
+            {"visible", layout.visible},
+        };
+    }
+    j["columnLayouts"] = columnLayoutsJson;
     j["trackerColumnWidths"] = settings.trackerColumnWidths;
     j["trackerColumnOrder"] = settings.trackerColumnOrder;
     j["trackerColumnVisible"] = settings.trackerColumnVisible;
