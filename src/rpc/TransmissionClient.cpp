@@ -270,6 +270,15 @@ bool TransmissionClient::setFilesPriority(int torrentId, const std::vector<int>&
     return !call("torrent-set", args.dump()).empty();
 }
 
+bool TransmissionClient::renamePath(int torrentId, const std::string& path, const std::string& newName) {
+    json args = {
+        {"ids", json::array({torrentId})},
+        {"path", path},
+        {"name", newName},
+    };
+    return !call("torrent-rename-path", args.dump()).empty();
+}
+
 TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath) {
     json args = {{"filename", urlOrPath}};
     std::string body = call("torrent-add", args.dump());

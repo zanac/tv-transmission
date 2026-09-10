@@ -39,6 +39,7 @@ enum class Str {
     WindowTitleTorrentList,
 
     DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate, MsgTorrentAddFailed,
+    ButtonRename, DialogTitleRename, LabelRenameNewName, MsgRenameFailed,
     ButtonOK, ButtonCancel, ButtonSave,
 
     DialogTitleConnection, DialogTitleServerSettings,

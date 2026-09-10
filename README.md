@@ -1,6 +1,6 @@
 # TV Transmission
 
-**Version 1.3** — stable release.
+**Version 1.5** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -9,7 +9,6 @@ written in C++17.
 It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
-<img width="1407" height="863" alt="image" src="https://github.com/user-attachments/assets/72ce67f2-73c0-48ec-8af1-31bcbf2afe6a" />
 
 ## Features
 
@@ -118,10 +117,12 @@ HTTP and nlohmann/json for parsing.
 - Click any row (not just the checkbox itself) to check or uncheck it;
   Space does the same for whichever row is focused, so the whole thing
   works from the keyboard alone once it's on
-- Press and hold the mouse on a row for under a second to turn it on
-  directly from there, with that row already checked — a shortcut for
-  when you're already reaching for the mouse, not a replacement for the
-  menu entry
+- Double-click a row to turn selection mode on directly from there,
+  with that row already checked; double-click again (on any row) to
+  turn it back off — a mouse shortcut for the same thing the menu entry
+  does, matching "start with one gesture, stop with the same gesture"
+  (see "Fixed bugs" below for why this replaced an earlier press-and-
+  hold version of the same shortcut)
 - Esc or Enter turns it back off, same as the menu entry — as does
   "Cancel selection" in the right-click context menu, which only shows
   up there while there's a selection to cancel
@@ -206,6 +207,16 @@ HTTP and nlohmann/json for parsing.
   Right-click for the same two actions instead, plus jumping straight
   to a specific priority level the cycling can't reach directly — no
   buttons for either, both are mouse-driven only
+- The same right-click context menu also has **Rename**, for the
+  focused row, file or folder alike — prompts for a new name (just the
+  last path segment; Transmission's own `torrent-rename-path` only ever
+  renames that, not the whole path) pre-filled with the current one,
+  then re-fetches the file list on success so every downstream detail
+  (a renamed folder's own full path, every descendant file's own path
+  if it was one, sort order shifting if the new name reorders it among
+  its siblings) comes from the same source of truth as everything else
+  here, rather than being patched in place for just this one case. A
+  failed rename shows the error and changes nothing
 - On a folder, "toggle wanted" turns every descendant off if they're
   all currently on, or turns them *all* on otherwise (including when
   they disagree) — so a folder in a "Mixed" state always resolves to
@@ -261,6 +272,9 @@ HTTP and nlohmann/json for parsing.
 - Right-click a row for a context menu: Start, Start Now, Stop, Verify,
   Reannounce, Remove, Delete (with files), Details, Files — right-clicking
   also selects that row first, even if it wasn't already focused
+- Middle-click a row to jump straight to its files window — a one-click
+  shortcut for the single most common reason to right-click and pick
+  "Files" from the menu, without going through it
 - Start Now (bypasses the download queue), Verify (rechecks local data
   against piece hashes), and Reannounce (asks trackers for more peers
   right away) — also reachable from the Torrent menu, not just the
@@ -710,12 +724,8 @@ Transmission's RPC exposes more than this client currently uses. Not
 implemented yet, but straightforward to add along the same lines as the
 actions above:
 
-- **Queue reordering** — move a torrent to the top/bottom of the
-  download queue, or up/down one position (`queue-move-top`/`-up`/
-  `-down`/`-bottom`)
 - **Change download location** for an already-added torrent
   (`torrent-set-location`)
-- **Rename a file or folder** inside a torrent (`torrent-rename-path`)
 - **Per-torrent seed ratio limit**, distinct from a speed limit
   (`seedRatioLimit`/`seedRatioMode` in `torrent-set`)
 - **Per-torrent bandwidth priority** (high/normal/low), distinct from
@@ -728,6 +738,85 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Four changes at once: renaming a file/folder, multi-selection
+switched from press-and-hold to double-click, a middle-click shortcut
+to a torrent's files window, and version 1.5.**
+
+**Rename** is the only genuinely new feature of the four. `TransmissionClient`
+gained `renamePath()` — its own RPC method (`torrent-rename-path`, not
+`torrent-set` despite the similar name), because Transmission only ever
+renames the *last* path component: it takes the item's current full
+path and a new leaf name, not a new full path. `FileTreeRow` (the files
+window's own per-row struct — see the multi-server work's own entries
+further up this file for the general shape) gained a `path` field to
+supply that full path: `emitTreeRows()` already recurses the folder
+tree building `depth`/`fileIndices`/etc. for each row, so it picked up
+building each row's own full path (parent's path + this row's own name)
+along the way, at no real extra cost. Wired into the same right-click
+context menu the wanted/priority actions already used, behind a new
+"Rename" entry, using tvision's own `inputBox()` for the "what should
+this be called" prompt (pre-filled with the current name) rather than
+building a whole dialog by hand for one text field. On success, the
+same full re-fetch every other action in this window already does
+picks up everything the rename could have changed (a renamed folder's
+own new path, every descendant file's own path if it was one, sort
+order shifting if the new name reorders it among its siblings) from
+the same source of truth as the rest of the window, rather than trying
+to patch `files_`/`rows_` in place for just this one case.
+
+**Multi-selection's entry gesture changed from a press-and-hold to a
+double-click, with double-click also being what exits it again** —
+asked for directly, not a bug. The old long-press watched the mouse in
+a blocking loop (`watchForLongPress()`, removed entirely along with the
+`kLongPressMs` constant) for up to 800ms before deciding whether to
+enter selection mode; a double-click makes the same decision
+immediately, and being the same gesture both ways ("double-click to
+start, double-click to stop") is easier to discover and remember than
+a gesture with no obvious mirror to undo it. The double-click-enters
+path shares its own event with `CellActivateFn` (e.g. the Queue
+Position column's own cycling) — that callback still gets first
+refusal, exactly as `RowActivateFn` used to before this dialog-opening
+its own case, only entering selection mode once it declines. The
+double-click-exits path reuses what used to just be a no-op: the
+second `mouseDown` of a double-click already arrived flagged
+`meDoubleClick` while in selection mode, previously skipped there so it
+wouldn't toggle the row twice and silently cancel itself back to the
+original state — now it calls `exitSelectionMode()` instead of doing
+nothing, since "the same click would have undone itself anyway" turned
+out to be the perfect signal for "this means leave", not just a case to
+ignore.
+
+**Middle-click on the main torrent list jumps straight to that
+torrent's files window** — a new `RowMiddleClickFn` callback on
+`TGridView` (mirroring `RowContextFn`'s own shape and, for the same
+reason documented on that one, has to be handled before
+`TListViewer::handleEvent()` ever sees the event: its own click-
+tracking loop doesn't check which button was pressed either).
+Deliberately doesn't touch right-click's own context menu at all —
+asked for explicitly, after an initial version of this same request
+would have replaced it instead; middle-click is a genuinely separate,
+additive gesture, not a substitute for anything already there.
+
+Verified each piece where it could actually be verified with
+confidence rather than only where it was easiest to: the double-click
+selection-mode toggle and the middle-click shortcut both confirmed on a
+real running instance (checkbox column appearing/disappearing across
+two double-clicks; a real files window opening, its own buttons and
+scrollbar visible, after a middle-click). Rename's own path-computation
+logic — genuinely new code, not a rewire of something already proven —
+got a dedicated, isolated test instead: the exact tree-building
+functions this file uses (copied into a standalone harness the same
+way `closeWindowsForClient()` got tested a few entries up this file,
+since they live in an anonymous namespace not reachable from outside
+it), fed a torrent with files nested three folders deep, confirming
+every row's own computed path exactly matched what `torrent-rename-path`
+would need for it — a folder three levels down and the file beneath it
+alike. Right-click delivering the "Rename" menu item itself wasn't
+re-verified beyond that: the mechanism is unmodified, existing code
+(`showContextMenuFor()`/`setRowContextCallback()`), already proven
+working by the wanted/priority actions already using the exact same
+menu.
 
 **Torrent-list column widths/order/visibility became per-server,
 having stayed one shared setting since the MDI work made that stop

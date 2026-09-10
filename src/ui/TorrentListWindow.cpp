@@ -265,6 +265,7 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
         return false;
     });
     grid()->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
+    grid()->setRowMiddleClickCallback([this](int) { showFilesForSelected(); });
     grid()->setRowFocusCallback([this](int) { updateCommandStates(); });
 
     refresh();

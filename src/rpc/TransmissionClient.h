@@ -116,6 +116,18 @@ public:
     // torrent-set's "priority-low"/"priority-normal"/"priority-high".
     bool setFilesPriority(int torrentId, const std::vector<int>& fileIndices, int priority);
 
+    // Renames a file or folder within a torrent — a separate RPC method
+    // of its own ("torrent-rename-path", not "torrent-set" despite the
+    // similar name), because Transmission only ever renames the LAST
+    // path component: `path` is the item's own CURRENT full path
+    // relative to the torrent's root (same convention as
+    // TorrentFile::name — a FileTreeRow's own `path` holds exactly
+    // this, whether the row is a file or a folder), `newName` is just
+    // the new leaf name, not a new full path. Only one torrent at a
+    // time — unlike most torrent-set actions, this RPC method's own
+    // spec doesn't support acting across several at once.
+    bool renamePath(int torrentId, const std::string& path, const std::string& newName);
+
     // Sets (or clears) a per-torrent speed limit override, and whether
     // the torrent honors the session's global limit at all.
     // downloadLimited=false/uploadLimited=false means "no limit of its

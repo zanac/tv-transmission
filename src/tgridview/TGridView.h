@@ -134,6 +134,15 @@ public:
     using CellBoldFn      = std::function<bool(int row, int col)>;             // optional
     using RowActivateFn  = std::function<void(int row)>;               // double-click / Enter
     using RowContextFn   = std::function<void(int row, TPoint screenPos)>; // right-click
+    // Middle mouse button click on a row — a second, independent
+    // "act on this row" gesture from RowActivateFn's own double-click/
+    // Enter, for a caller that wants a quick one-click shortcut to
+    // something specific (e.g. TorrentListWindow: middle-click jumps
+    // straight to a torrent's files window, without displacing what
+    // double-click/Enter already do). Not fired in selection mode, for
+    // the same reason RowActivateFn/CellActivateFn aren't either — see
+    // TGridRowsView::handleEvent()'s own doc comment.
+    using RowMiddleClickFn = std::function<void(int row)>;
     using RowFocusFn      = std::function<void(int row)>; // focused row changed (arrow keys, click, focusRow())
     // Like RowActivateFn, but fired specifically for a MOUSE
     // double-click, carrying the logical column it landed on — for a
@@ -175,6 +184,7 @@ public:
     void setCellBoldCallback(CellBoldFn fn);
     void setRowActivateCallback(RowActivateFn fn);
     void setRowContextCallback(RowContextFn fn);
+    void setRowMiddleClickCallback(RowMiddleClickFn fn);
     void setCellActivateCallback(CellActivateFn fn);
     void setRowFocusCallback(RowFocusFn fn);
     void setSortChangedCallback(SortChangedFn fn);
@@ -372,6 +382,7 @@ private:
     CellBoldFn cellBold_;
     RowActivateFn onRowActivate_;
     RowContextFn onRowContext_;
+    RowMiddleClickFn onRowMiddleClick_;
     CellActivateFn onCellActivate_;
     RowFocusFn onRowFocus_;
     SortChangedFn onSortChanged_;

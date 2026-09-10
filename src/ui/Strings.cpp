@@ -205,6 +205,18 @@ const char* tr(Str id) {
                         "Échec de l'ajout du torrent :\n%s",
                         "Hinzufügen des Torrents fehlgeschlagen:\n%s",
                         "No se pudo añadir el torrent:\n%s");
+        case Str::ButtonRename:
+            return pick("Rename", "Rinomina", "Renommer", "Umbenennen", "Renombrar");
+        case Str::DialogTitleRename:
+            return pick("Rename", "Rinomina", "Renommer", "Umbenennen", "Renombrar");
+        case Str::LabelRenameNewName:
+            return pick("New name:", "Nuovo nome:", "Nouveau nom :", "Neuer Name:", "Nuevo nombre:");
+        case Str::MsgRenameFailed:
+            return pick("Failed to rename:\n%s",
+                        "Rinomina non riuscita:\n%s",
+                        "Échec du renommage :\n%s",
+                        "Umbenennen fehlgeschlagen:\n%s",
+                        "No se pudo renombrar:\n%s");
 
         case Str::ButtonOK:     return "OK"; // same word in all five languages
         case Str::ButtonCancel: return pick("Cancel", "Annulla", "Annuler", "Abbrechen", "Cancelar");

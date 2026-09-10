@@ -32,6 +32,12 @@ struct FileTreeRow {
     int depth = 0;       // indentation level, root's direct children are 0
     bool isFolder = false;
     std::vector<int> fileIndices;
+    // Full path relative to the torrent's own root — same convention
+    // as TorrentFile::name (a file row's own `path` matches it
+    // exactly), used as torrent-rename-path's own "path" argument
+    // (see TransmissionClient::renamePath()) for renaming this row,
+    // file or folder alike.
+    std::string path;
 };
 
 class TorrentFilesWindow : public TDialog {
@@ -58,6 +64,7 @@ private:
     void setPriorityForFocused(int priority);
     void cyclePriorityForFocused(); // Low -> Normal -> High -> Low; Mixed resolves to Low
     void setAllWanted(bool wanted);
+    void renameFocused();
     void showContextMenuFor(int row, TPoint screenPos);
 
     int torrentId_;

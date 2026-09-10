@@ -9,6 +9,7 @@
 #define Uses_TMenu
 #define Uses_TMenuPopup
 #define Uses_TKeys
+#define Uses_MsgBox
 #include <tvision/tv.h>
 #include <cstdio>
 #include <map>
@@ -24,11 +25,23 @@ constexpr ushort cmSetPriorityLow = 223;
 constexpr ushort cmSetPriorityNormal = 224;
 constexpr ushort cmSetPriorityHigh = 225;
 constexpr ushort cmCloseFiles = 226;
+constexpr ushort cmRenameFile = 227;
 
 std::string formatFilePriority(int priority) {
     if (priority < 0) return tr(Str::PriorityLow);
     if (priority > 0) return tr(Str::PriorityHigh);
     return tr(Str::PriorityNormal);
+}
+
+// Same reasoning as ConnectionDialog.cpp's own formatMessage() (not
+// shared from there — this file has no other dependency on it): `fmt`
+// is one of our own tr() strings with a single "%s" placeholder,
+// `value` is a plain argument to it, not itself interpreted as a
+// format string.
+std::string formatMessage(const char* fmt, const std::string& value) {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), fmt, value.c_str());
+    return buf;
 }
 
 // Splits a torrent file's path on '/' — the separator Transmission's
@@ -87,22 +100,27 @@ TreeNode buildFileTree(const std::vector<TorrentFile>& files) {
 // indices found anywhere beneath `node` so the caller (a parent folder,
 // or the top-level call) can fold them into its own aggregate — a
 // folder's row ends up listing every descendant file's index, however
-// many levels deep, not just its immediate children.
+// many levels deep, not just its immediate children. `parentPath` is
+// the full path of `node`'s own parent (empty at the root), used to
+// build each row's own FileTreeRow::path alongside everything else.
 std::vector<int> emitTreeRows(const std::string& name, const TreeNode& node, int depth,
+                               const std::string& parentPath,
                                std::vector<FileTreeRow>& out) {
+    std::string fullPath = parentPath.empty() ? name : parentPath + "/" + name;
     if (node.isFile) {
-        out.push_back({name, depth, false, {node.fileIndex}});
+        out.push_back({name, depth, false, {node.fileIndex}, fullPath});
         return {node.fileIndex};
     }
     // The synthetic root itself (name == "") isn't a row — only real
     // folders (everything one level down from it or deeper) are.
     bool isRealFolder = !name.empty();
     size_t rowPos = out.size();
-    if (isRealFolder) out.push_back({name, depth, true, {}}); // fileIndices filled in below
+    if (isRealFolder) out.push_back({name, depth, true, {}, fullPath});
 
     std::vector<int> allIndices;
     for (auto& [childName, childNode] : node.children) {
-        auto childIndices = emitTreeRows(childName, childNode, depth + (isRealFolder ? 1 : 0), out);
+        auto childIndices = emitTreeRows(childName, childNode, depth + (isRealFolder ? 1 : 0),
+                                          isRealFolder ? fullPath : parentPath, out);
         allIndices.insert(allIndices.end(), childIndices.begin(), childIndices.end());
     }
     if (isRealFolder) out[rowPos].fileIndices = allIndices;
@@ -112,7 +130,7 @@ std::vector<int> emitTreeRows(const std::string& name, const TreeNode& node, int
 std::vector<FileTreeRow> buildFileTreeRows(const std::vector<TorrentFile>& files) {
     std::vector<FileTreeRow> rows;
     TreeNode root = buildFileTree(files);
-    emitTreeRows("", root, 0, rows);
+    emitTreeRows("", root, 0, "", rows);
     return rows;
 }
 
@@ -320,6 +338,40 @@ void TorrentFilesWindow::setAllWanted(bool wanted) {
     refresh();
 }
 
+void TorrentFilesWindow::renameFocused() {
+    int row = grid_->focusedRow();
+    if (row < 0 || row >= (int)rows_.size()) return;
+    const FileTreeRow& fr = rows_[row];
+    if (fr.path.empty()) return;
+
+    // Pre-filled with this row's own current name (just the last path
+    // segment) — inputBox() only ever asks for the new LEAF name, since
+    // that's all torrent-rename-path actually allows renaming (see
+    // TransmissionClient::renamePath()'s own comment); `fr.path` (the
+    // full path) is what that call needs separately, not something the
+    // user edits here.
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "%s", fr.name.c_str());
+    if (inputBox(tr(Str::DialogTitleRename), tr(Str::LabelRenameNewName), buf, sizeof(buf) - 1) != cmOK) {
+        return; // cancelled
+    }
+    std::string newName = buf;
+    if (newName.empty() || newName == fr.name) return; // nothing actually changed
+
+    if (!client_.renamePath(torrentId_, fr.path, newName)) {
+        messageBox(formatMessage(tr(Str::MsgRenameFailed), client_.lastError()), mfError | mfOKButton);
+        return;
+    }
+    // Transmission's own response already confirms the rename, but the
+    // simplest way to get every downstream detail right — this row's
+    // own new path, every descendant file's own TorrentFile::name if
+    // it was a folder, sort order shifting if the new name reorders it
+    // alphabetically among its siblings — is the same re-fetch every
+    // other action here already does, rather than trying to patch
+    // files_/rows_ in place for just this one case.
+    refresh();
+}
+
 void TorrentFilesWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // Same pattern as TorrentListWindow::showContextMenuFor() — see its
     // own comments for why the bounds are sized this way and why
@@ -333,7 +385,8 @@ void TorrentFilesWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::ButtonToggleWanted), cmToggleWanted, kbNoKey) +
         *new TMenuItem(tr(Str::ButtonPriorityLow), cmSetPriorityLow, kbNoKey) +
         *new TMenuItem(tr(Str::ButtonPriorityNormal), cmSetPriorityNormal, kbNoKey) +
-        *new TMenuItem(tr(Str::ButtonPriorityHigh), cmSetPriorityHigh, kbNoKey)
+        *new TMenuItem(tr(Str::ButtonPriorityHigh), cmSetPriorityHigh, kbNoKey) +
+        *new TMenuItem(tr(Str::ButtonRename), cmRenameFile, kbNoKey)
     );
     auto* popup = new TMenuPopup(r, menu);
     ushort chosen = TProgram::application->execView(popup);
@@ -357,6 +410,7 @@ void TorrentFilesWindow::handleEvent(TEvent& event) {
         case cmSetPriorityLow:    setPriorityForFocused(-1); clearEvent(event); break;
         case cmSetPriorityNormal: setPriorityForFocused(0);  clearEvent(event); break;
         case cmSetPriorityHigh:   setPriorityForFocused(1);  clearEvent(event); break;
+        case cmRenameFile:        renameFocused();           clearEvent(event); break;
         case cmCloseFiles:
             close();
             clearEvent(event);
