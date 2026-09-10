@@ -180,10 +180,11 @@ public:
 
     // Adds editText() as a new list entry (a no-op if empty, or already
     // present — focuses the existing match instead of duplicating it).
-    // Bound to the "[+]" button; also called directly by a caller that
-    // wants to ensure the currently-shown text is a real list entry
-    // without requiring the user to click "[+]" themselves first (e.g.
-    // ConnectionDialog's own Save button — see its own comment).
+    // Bound to the "[+]" button; also callable directly by a caller
+    // that wants to ensure the currently-shown text is a real list
+    // entry without requiring the user to click "[+]" themselves first
+    // (e.g. a "confirm and persist" action elsewhere that types a new
+    // name and saves it in one step).
     void addCurrentValue();
 
     // The name that was just added or removed by "[+]"/"[-]" — valid
