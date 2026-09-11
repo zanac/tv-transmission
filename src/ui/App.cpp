@@ -83,7 +83,22 @@ App::App(const AppSettings& initialSettings)
     // resize came along to correct it via growMode. deskTop has no
     // children yet at this point in the constructor, so there's nothing
     // for this relayout to disturb.
-    TRect deskRect = deskTop->getExtent();
+    //
+    // getBounds() here, NOT getExtent(): getExtent() always returns a
+    // rect starting at (0,0) — the view's OWN internal coordinate
+    // system (see TView::getExtent()) — throwing away deskTop's actual
+    // owner-relative position (row 1, one row below the menu bar, set
+    // by the framework's default initDeskTop()). Using getExtent() here
+    // made comboRowRect start at row 0 instead of row 1 — landing the
+    // combo box directly on top of the menu bar — while the "+1, then
+    // changeBounds()" below, applied to that same wrongly-zeroed rect,
+    // left deskTop's actual position unchanged at row 1 instead of
+    // moving it down to row 2. getBounds() (origin + size, relative to
+    // this — App itself, deskTop's owner) is the one that matches what
+    // changeBounds() itself expects, and what comboRowRect needs to be
+    // expressed in to end up in App's own coordinate space alongside
+    // the menu bar and the combo box.
+    TRect deskRect = deskTop->getBounds();
     TRect comboRowRect = deskRect;
     comboRowRect.b.y = comboRowRect.a.y + 1;
     deskRect.a.y += 1;
