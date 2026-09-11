@@ -26,7 +26,7 @@
 #define Uses_TEvent
 #define Uses_TFileDialog
 #define Uses_MsgBox
-#define Uses_TBackground
+#define Uses_TDrawBuffer
 #include <tvision/tv.h>
 
 #include <algorithm>
@@ -139,19 +139,40 @@ App::App(const AppSettings& initialSettings)
     // below — while the row spans the full terminal width), and an
     // empty TGroup area with no view covering it just shows through
     // to whatever's underneath rather than painting anything of its
-    // own. A plain TBackground, one blank-space pattern cell wide,
-    // fills that in with the application's own normal background
-    // color (resolved through the usual TView::getColor() palette
-    // chain, same as TDeskTop's own background — see tbkgrnd.cpp —
-    // so it's guaranteed to match the app's theme instead of a
-    // hardcoded color potentially drifting from it later), so the row
-    // reads as one continuous themed bar instead of an odd blank/
-    // dithered strip on either side of the box. Inserted BEFORE the
-    // combo box itself (not after): TGroup::insert() places new views
-    // at the front of the z-order, so whichever is inserted first ends
-    // up furthest back — this needs to stay behind serverCombo_, not
-    // draw over it.
-    insert(new TBackground(comboRowRect, ' '));
+    // own.
+    //
+    // A plain TBackground was tried first here, relying on the normal
+    // TView::getColor() palette chain (inserted directly into `this` —
+    // the App/TApplication itself — the same way TDeskTop resolves its
+    // own background). That chain does NOT reach the blue this project
+    // actually uses for window content: TorrentListWindow's rows are
+    // colored with hardcoded classic BIOS attribute bytes instead (see
+    // statusRowColor() in TorrentListWindow.cpp: TColorAttr(0x1X) —
+    // high nibble 1 = blue background, low nibble = the foreground for
+    // that status), never routed through tvision's own palette-index
+    // system at all. TBackground's chain-resolved color and this
+    // project's own hardcoded blue are simply two unrelated colors that
+    // happen to both get loosely called "blue" — which is exactly why
+    // the row came out visibly darker (tvision's own default) instead
+    // of matching (this project's own blue).
+    //
+    // So this draws directly with that same hardcoded scheme instead of
+    // going through getColor() at all — TColorAttr(0x1F), blue
+    // background / white foreground, matching statusRowColor()'s own
+    // fallback case — guaranteeing the exact same blue rather than
+    // something merely close to it.
+    class TComboBarBackground : public TView {
+    public:
+        explicit TComboBarBackground(const TRect& bounds) : TView(bounds) {
+            growMode = gfGrowHiX;
+        }
+        void draw() override {
+            TDrawBuffer b;
+            b.moveChar(0, ' ', TColorAttr(0x1F), size.x);
+            writeLine(0, 0, size.x, size.y, b);
+        }
+    };
+    insert(new TComboBarBackground(comboRowRect));
 
     // The server combo box itself, in the row just reserved above —
     // picking a name from it brings that server's window to the front
