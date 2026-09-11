@@ -63,6 +63,54 @@ TComboItem* buildServerComboItems(const AppSettings& settings, const std::string
     return head;
 }
 
+// Deliberately matches the menu bar's own black-on-white look (see the
+// comment where this is used in App::App()) rather than anything
+// resolved through TView::getColor()'s palette chain — that chain
+// doesn't land on a color already used anywhere else in this project.
+// Namespace-scope, not a local inside App::App(): the two local
+// classes below need it too, and a local class can't reach a variable
+// local to its enclosing function, constexpr or not.
+constexpr TColorAttr kComboBarColor = TColorAttr(0x70);
+
+// Fills the row the server combo box lives in — see where this is
+// inserted in App::App() for why the row needs its own fill at all
+// (nothing else covers it) and why this hardcodes a color instead of
+// going through getColor().
+class TComboBarBackground : public TView {
+public:
+    explicit TComboBarBackground(const TRect& bounds) : TView(bounds) {
+        growMode = gfGrowHiX;
+    }
+    void draw() override {
+        TDrawBuffer b;
+        b.moveChar(0, ' ', kComboBarColor, size.x);
+        writeLine(0, 0, size.x, size.y, b);
+    }
+};
+
+// A local subclass rather than a TComboBox::getPalette() edit, or a
+// hardcoded color inside TComboBox::draw() itself: TComboBox is shared
+// code (LanguageComboBox — see LanguageComboBox.cpp — is another
+// TComboBox, used elsewhere in this project, e.g. in the settings
+// dialog) and this menu-entry look is specifically something asked for
+// on the server combo only, not a general TComboBox restyle.
+// Overriding just draw() here, kept to the plain (non-editable)
+// rendering path only — this box is never made editable (no
+// setEditable(true) call anywhere in App::App()) — is the smallest
+// change that reaches only this one instance.
+class ServerComboBox : public TComboBox {
+public:
+    using TComboBox::TComboBox;
+    void draw() override {
+        TDrawBuffer b;
+        b.moveChar(0, ' ', kComboBarColor, size.x);
+        if (text != 0 && size.x > 3) b.moveStr(1, text, kComboBarColor, size.x - 3);
+        if (size.x > 1) b.moveChar(size.x - 2, '\x1F', kComboBarColor, 1);
+        writeLine(0, 0, size.x, 1, b);
+        hideCursor();
+    }
+};
+
 } // namespace
 
 
@@ -139,39 +187,11 @@ App::App(const AppSettings& initialSettings)
     // below — while the row spans the full terminal width), and an
     // empty TGroup area with no view covering it just shows through
     // to whatever's underneath rather than painting anything of its
-    // own.
-    //
-    // A plain TBackground was tried first here, relying on the normal
-    // TView::getColor() palette chain (inserted directly into `this` —
-    // the App/TApplication itself — the same way TDeskTop resolves its
-    // own background). That chain does NOT reach the blue this project
-    // actually uses for window content: TorrentListWindow's rows are
-    // colored with hardcoded classic BIOS attribute bytes instead (see
-    // statusRowColor() in TorrentListWindow.cpp: TColorAttr(0x1X) —
-    // high nibble 1 = blue background, low nibble = the foreground for
-    // that status), never routed through tvision's own palette-index
-    // system at all. TBackground's chain-resolved color and this
-    // project's own hardcoded blue are simply two unrelated colors that
-    // happen to both get loosely called "blue" — which is exactly why
-    // the row came out visibly darker (tvision's own default) instead
-    // of matching (this project's own blue).
-    //
-    // So this draws directly with that same hardcoded scheme instead of
-    // going through getColor() at all — TColorAttr(0x1F), blue
-    // background / white foreground, matching statusRowColor()'s own
-    // fallback case — guaranteeing the exact same blue rather than
-    // something merely close to it.
-    class TComboBarBackground : public TView {
-    public:
-        explicit TComboBarBackground(const TRect& bounds) : TView(bounds) {
-            growMode = gfGrowHiX;
-        }
-        void draw() override {
-            TDrawBuffer b;
-            b.moveChar(0, ' ', TColorAttr(0x1F), size.x);
-            writeLine(0, 0, size.x, size.y, b);
-        }
-    };
+    // own. TComboBarBackground (see this file's own namespace block
+    // above) fills it with the same hardcoded color the combo box
+    // itself uses below, so the whole reserved row reads as one
+    // continuous bar, like a menu entry sitting right below the real
+    // menu.
     insert(new TComboBarBackground(comboRowRect));
 
     // The server combo box itself, in the row just reserved above —
@@ -189,7 +209,7 @@ App::App(const AppSettings& initialSettings)
         toFocus ? toFocus->serverName() : std::string(), focusedIdx);
     TRect comboBounds(comboRowRect.a.x + 1, comboRowRect.a.y,
                        std::min(comboRowRect.a.x + 1 + 32, comboRowRect.b.x - 1), comboRowRect.b.y);
-    serverCombo_ = new TComboBox(comboBounds, serverItems, focusedIdx);
+    serverCombo_ = new ServerComboBox(comboBounds, serverItems, focusedIdx);
     // Deliberately growMode = 0 (the TView default, left unset): this
     // stays pinned to its fixed width and position in the top-left
     // corner, directly under the menu bar, regardless of terminal
