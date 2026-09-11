@@ -26,6 +26,7 @@
 #define Uses_TEvent
 #define Uses_TFileDialog
 #define Uses_MsgBox
+#define Uses_TBackground
 #include <tvision/tv.h>
 
 #include <algorithm>
@@ -132,6 +133,25 @@ App::App(const AppSettings& initialSettings)
         if (win && name == settings_.focusedServerAtClose) toFocus = win;
     }
     if (toFocus) toFocus->select();
+
+    // The row the combo box lives in is otherwise empty on both sides
+    // of it (the box itself is only ~33 columns wide — see comboBounds
+    // below — while the row spans the full terminal width), and an
+    // empty TGroup area with no view covering it just shows through
+    // to whatever's underneath rather than painting anything of its
+    // own. A plain TBackground, one blank-space pattern cell wide,
+    // fills that in with the application's own normal background
+    // color (resolved through the usual TView::getColor() palette
+    // chain, same as TDeskTop's own background — see tbkgrnd.cpp —
+    // so it's guaranteed to match the app's theme instead of a
+    // hardcoded color potentially drifting from it later), so the row
+    // reads as one continuous themed bar instead of an odd blank/
+    // dithered strip on either side of the box. Inserted BEFORE the
+    // combo box itself (not after): TGroup::insert() places new views
+    // at the front of the z-order, so whichever is inserted first ends
+    // up furthest back — this needs to stay behind serverCombo_, not
+    // draw over it.
+    insert(new TBackground(comboRowRect, ' '));
 
     // The server combo box itself, in the row just reserved above —
     // picking a name from it brings that server's window to the front
