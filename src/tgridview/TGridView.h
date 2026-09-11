@@ -289,8 +289,26 @@ public:
 
     // Flips one row's own checkbox. A no-op outside selection mode, or
     // for a row index outside [0, rowCount()) — callers don't need to
-    // range-check first.
+    // range-check first. Also becomes the new anchor for a subsequent
+    // selectRowRange() call — see that method's own comment.
     void toggleRowSelected(int row);
+    // Checks (never unchecks) every row between the current selection
+    // anchor and `row`, inclusive of both ends — the Shift+click
+    // "range select" gesture (TGridRowsView::handleEvent()). The
+    // anchor is whichever row was last affected by a plain
+    // toggleRowSelected() call — a click, Space, or the row selection
+    // mode was entered on — and does NOT move when this is called, so
+    // a further Shift+click extends or shrinks the same range rather
+    // than starting a new one from wherever the previous Shift+click
+    // landed. Rows outside the range keep whatever check state they
+    // already had, so this only adds to a selection, never removes
+    // from it — matching a plain click's own "toggle just this one"
+    // behavior, which never clears other rows either. A no-op outside
+    // selection mode, or for a row index outside [0, rowCount()). If
+    // there's no anchor yet (Shift+click before any plain click in
+    // this selection-mode session), this just checks `row` itself and
+    // makes it the anchor, same as a plain toggle would.
+    void selectRowRange(int row);
     // Every currently-checked row's index, in ascending order. Empty
     // outside selection mode, or if nothing's been checked yet.
     std::vector<int> selectedRows() const;
@@ -415,4 +433,11 @@ private:
     // setRowCount() — see its own comment); empty otherwise, so there's
     // nothing to keep updated for every grid that never uses this.
     std::vector<bool> selectedRows_;
+    // The fixed end of a Shift+click range — see selectRowRange()'s own
+    // comment. -1 while there's none yet (selection mode just entered
+    // with no initialRow). Reset to -1 by exitSelectionMode(); set by
+    // enterSelectionMode()'s own initialRow and by every
+    // toggleRowSelected() call; left untouched by selectRowRange()
+    // itself, on purpose.
+    int selectionAnchorRow_ = -1;
 };

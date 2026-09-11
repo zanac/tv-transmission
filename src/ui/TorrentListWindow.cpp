@@ -162,12 +162,18 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
-      // closable=false: this window only ever closes when the
-      // Connection dialog's own "[-]" removes the server (see App::
-      // showConnectionDialog()) — not from the window itself, since
-      // every configured server is meant to always have one open (see
-      // App's own constructor).
-      TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/false,
+      // fullScreen=true: every server window always fills the whole
+      // desktop, can't be moved/resized/zoomed by the user, and
+      // (same as before) only ever closes via the Connection dialog's
+      // own "[-]" — never from the window itself. With several
+      // servers configured, their windows now simply stack on top of
+      // each other, all the same size; the server combo box below the
+      // menu bar (see App::App()) is how the user brings a particular
+      // one to the front. closable is therefore irrelevant here (see
+      // TGridWindow's own comment on why it's ignored when fullScreen
+      // is true) but left as false for documentation's sake, matching
+      // the invariant this window is still subject to.
+      TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/true,
                   gvResizableColumns | gvReorderableColumns | gvMultiSelect,
                   /*closable=*/false),
       client_(client),

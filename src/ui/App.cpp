@@ -11,6 +11,7 @@
 #include "WindowListDialog.h"
 #include "AboutDialog.h"
 #include "BandwidthStatusLine.h"
+#include "../tvision-ext/TComboBox.h"
 #include "Strings.h"
 #include "../Config.h"
 
@@ -27,9 +28,42 @@
 #define Uses_MsgBox
 #include <tvision/tv.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+
+namespace {
+
+// Mirrors ConnectionDialog.cpp's own buildServerItems() (same idea:
+// one TComboItem per configured server, alphabetical since
+// AppSettings::servers is a std::map) — kept as a separate, local copy
+// rather than shared, matching how this project already keeps each
+// file's own small helpers local (see e.g. TorrentListWindow.cpp's
+// buildWindowTitle()) rather than growing a shared-utilities file for
+// a couple of lines of logic. The one difference: focusedName here is
+// whichever server actually ends up on top at startup (App::App() — it
+// may differ from ConnectionDialog's own notion of "the" active
+// server), not settings.activeServer.
+TComboItem* buildServerComboItems(const AppSettings& settings, const std::string& focusedName,
+                                   short& focusedIndex) {
+    TComboItem* head = nullptr;
+    TComboItem* tail = nullptr;
+    focusedIndex = 0;
+    short idx = 0;
+    for (const auto& [name, profile] : settings.servers) {
+        (void)profile;
+        TComboItem* item = new TComboItem(name.c_str(), 0, nullptr);
+        if (name == focusedName) focusedIndex = idx;
+        if (head == nullptr) head = tail = item;
+        else { tail->next = item; tail = item; }
+        idx++;
+    }
+    return head;
+}
+
+} // namespace
+
 
 App::App(const AppSettings& initialSettings)
     : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
@@ -40,35 +74,72 @@ App::App(const AppSettings& initialSettings)
     // to redo it here.
     lastRefresh_ = std::chrono::steady_clock::now();
 
+    // Reserves the row directly below the menu bar for the server combo
+    // box built further down — every server window below fills
+    // deskTop's own extent (see TorrentListWindow's own fullScreen=true
+    // constructor call), so this has to happen BEFORE any of them are
+    // created, or they'd be sized against the old, taller extent and
+    // then immediately overlap the combo box until the next terminal
+    // resize came along to correct it via growMode. deskTop has no
+    // children yet at this point in the constructor, so there's nothing
+    // for this relayout to disturb.
+    TRect deskRect = deskTop->getExtent();
+    TRect comboRowRect = deskRect;
+    comboRowRect.b.y = comboRowRect.a.y + 1;
+    deskRect.a.y += 1;
+    // changeBounds() rather than locate(): this is the same primitive
+    // tvision itself calls on deskTop when the terminal is resized
+    // (cascading down from TProgram, via deskTop's own growMode) — the
+    // direct "resize this view and relayout its children accordingly"
+    // operation, with none of locate()'s extra size-limit-clamping/
+    // centering logic that's meant for interactive dialogs, not a
+    // programmatic one-time desktop resize like this.
+    deskTop->changeBounds(deskRect);
+
     // Every configured server gets its own window on startup — see
     // AppSettings::servers' own comment on why there's no longer just
     // one "active" connection. Whichever one had focus when the app was
     // last closed (see shutDown()) ends up on top again; if that name
     // no longer matches anything (removed since, or a first run),
-    // whichever opens first just stays wherever TWindow::insert() put it.
+    // whichever opens first just stays wherever TWindow::insert() put
+    // it. Always opened at the full (now combo-row-adjusted) desktop
+    // extent — settings_.windowLayouts, still written by shutDown() for
+    // whatever future use, is no longer read back here: every server
+    // window is fullScreen now (see TorrentListWindow's own
+    // constructor), so a previous session's saved size/position — quite
+    // possibly smaller, from before this app enforced full-desktop
+    // windows — would otherwise flash on screen for a frame before the
+    // next terminal-resize event's growMode correction fixed it.
     TorrentListWindow* toFocus = nullptr;
     for (const auto& [name, profile] : settings_.servers) {
         (void)profile; // only the name is needed here — openServerWindow() looks up the profile itself
-        TRect bounds = deskTop->getExtent();
-        auto layoutIt = settings_.windowLayouts.find(name);
-        if (layoutIt != settings_.windowLayouts.end()) {
-            const WindowLayout& saved = layoutIt->second;
-            TRect r(saved.x, saved.y, saved.x + saved.w, saved.y + saved.h);
-            // Clamped against the CURRENT terminal size, which may well
-            // be different from whatever it was when this was saved —
-            // TRect::intersect() shrinks `r` to whatever overlap exists
-            // with the desktop's own extent. If that leaves basically
-            // nothing usable (the terminal's a lot smaller now, or the
-            // saved rect was degenerate to begin with), falls back to
-            // the full desktop extent already in `bounds` instead of
-            // opening something too small to actually use.
-            r.intersect(deskTop->getExtent());
-            if (r.b.x - r.a.x >= 40 && r.b.y - r.a.y >= 10) bounds = r;
-        }
-        TorrentListWindow* win = openServerWindow(name, bounds);
+        TorrentListWindow* win = openServerWindow(name, deskTop->getExtent());
         if (win && name == settings_.focusedServerAtClose) toFocus = win;
     }
     if (toFocus) toFocus->select();
+
+    // The server combo box itself, in the row just reserved above —
+    // picking a name from it brings that server's window to the front
+    // (see handleEvent()'s own cmComboBoxSelectionChanged case), which
+    // is the only way to do that by name now that server windows are
+    // fullScreen and simply stack on top of each other (Ctrl+F6 "Next"
+    // still cycles through them too, just not by name). Built AFTER the
+    // loop above, not before, so its own initially-focused entry can
+    // match whichever window really did end up on top (toFocus), rather
+    // than guessing independently and risking the two disagreeing right
+    // from startup.
+    short focusedIdx = 0;
+    TComboItem* serverItems = buildServerComboItems(settings_,
+        toFocus ? toFocus->serverName() : std::string(), focusedIdx);
+    TRect comboBounds(comboRowRect.a.x + 1, comboRowRect.a.y,
+                       std::min(comboRowRect.a.x + 1 + 32, comboRowRect.b.x - 1), comboRowRect.b.y);
+    serverCombo_ = new TComboBox(comboBounds, serverItems, focusedIdx);
+    // Deliberately growMode = 0 (the TView default, left unset): this
+    // stays pinned to its fixed width and position in the top-left
+    // corner, directly under the menu bar, regardless of terminal
+    // resizes — unlike the server windows themselves (see
+    // TGridWindow.cpp), which are MEANT to track the terminal size.
+    insert(serverCombo_);
 }
 
 TMenuBar* App::initMenuBar(TRect r) {
@@ -110,11 +181,14 @@ TMenuBar* App::initMenuBar(TRect r) {
             newLine() +
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
-            // Standard tvision commands. Every torrent-list window is
-            // now closable and tileable (see TGridWindow's own
-            // fullScreen=false path) alongside the "Torrent details"/
-            // files/tracker windows that already were — Tile/Cascade
-            // arranges all of them together, not just the latter.
+            // Standard tvision commands. Server windows are now
+            // fullScreen (see TorrentListWindow's own constructor) and
+            // therefore NOT tileable — Zoom/Tile/Cascade only ever act
+            // on the "Torrent details"/files/tracker windows, which
+            // still are. Next (Ctrl+F6) still cycles through every
+            // window regardless, server ones included — same as the
+            // new server combo box below the menu bar, just keyboard-
+            // driven instead of picked by name.
             *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
             *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
             *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
@@ -205,6 +279,30 @@ TorrentListWindow* App::openServerWindow(const std::string& name, const TRect& b
         settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible);
     deskTop->insert(win); // TorrentListWindow's own constructor already calls refresh() at the end — nothing more needed here
     return win;
+}
+
+void App::refreshServerCombo() {
+    if (!serverCombo_) return;
+    // Whatever name is currently shown stays focused if it's still in
+    // the rebuilt list — buildServerComboItems() falls back to the
+    // first entry (or an empty box, if settings_.servers is now empty
+    // entirely) when it isn't, e.g. right after this same name was
+    // just removed.
+    std::string currentName = serverCombo_->editText();
+    short focusedIdx = 0;
+    TComboItem* items = buildServerComboItems(settings_, currentName, focusedIdx);
+    serverCombo_->newList(items, focusedIdx);
+}
+
+void App::syncServerCombo() {
+    if (!serverCombo_) return;
+    TorrentListWindow* focused = focusedListWindow();
+    if (!focused) return; // some other window (or the combo itself) has focus — nothing to sync FROM
+    if (focused->serverName() == serverCombo_->editText()) return; // already in sync — see this method's own comment in App.h for why this check has to come first
+    auto values = serverCombo_->allValues();
+    auto it = std::find(values.begin(), values.end(), focused->serverName());
+    if (it == values.end()) return; // defensive; every configured server always has a matching combo entry (see refreshServerCombo()), so this shouldn't actually happen
+    serverCombo_->focusItem((short)std::distance(values.begin(), it));
 }
 
 void App::showAddTorrentDialog(const std::string& initialValue) {
@@ -309,6 +407,7 @@ void App::showConnectionDialog() {
         settings_.servers.erase(name);
         if (settings_.activeServer == name) settings_.activeServer.clear();
         saveSettings(settings_);
+        refreshServerCombo();
     };
 
     // Runs the moment Save/OK actually tests a connection successfully
@@ -339,6 +438,7 @@ void App::showConnectionDialog() {
         } else {
             openServerWindow(name, deskTop->getExtent());
         }
+        refreshServerCombo();
     };
 
     if (auto* dlg = createConnectionDialog(settings_, fields, onServerRemoved, onServerSaved)) {
@@ -612,6 +712,19 @@ void App::closeWindowsForClient(TransmissionClient* client) const {
 
 void App::handleEvent(TEvent& event) {
     TApplication::handleEvent(event);
+
+    if (event.what == evBroadcast && event.message.command == cmComboBoxSelectionChanged &&
+        event.message.infoPtr == serverCombo_) {
+        // Picking a server from the combo brings its window to the
+        // front — openServerWindow() already does exactly that (its
+        // "already open" branch, which every configured server always
+        // hits — see App::App()) rather than opening a new one, so
+        // there's nothing else to do here beyond calling it.
+        openServerWindow(serverCombo_->editText(), deskTop->getExtent());
+        clearEvent(event);
+        return;
+    }
+
     if (event.what != evCommand) return;
 
     switch (event.message.command) {
@@ -819,4 +932,9 @@ void App::idle() {
     // to act on.
     if (focusedGrid()) enableCommand(cmManageColumns);
     else disableCommand(cmManageColumns);
+    // Same reasoning as the two checks just above: cheap, no RPC
+    // involved, so just done on every tick rather than hooked into
+    // every individual way focus can change (Ctrl+F6, Alt+0's window
+    // list, clicking a window directly, ...) separately.
+    syncServerCombo();
 }

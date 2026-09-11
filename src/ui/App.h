@@ -14,6 +14,7 @@
 
 class TorrentListWindow;
 class TGridView;
+class TComboBox;
 
 class App : public TApplication {
 public:
@@ -47,6 +48,39 @@ private:
     void showColumnManagerDialog();
     void showWindowListDialog();
     void showAboutDialog();
+    // Rebuilds serverCombo_'s own item list from settings_.servers
+    // (alphabetical, same as the constructor's own initial build) —
+    // called after showConnectionDialog() adds, edits, or removes a
+    // server, so the combo never shows a name that's been removed, or
+    // misses one just added, without needing a restart. Keeps
+    // whichever name is currently shown focused if it still exists in
+    // the rebuilt list (falls back to the first entry otherwise, same
+    // as buildServerComboItems() always does for a name it can't
+    // find) — a no-op if serverCombo_ hasn't been created yet (it
+    // always has been by the time this could actually be called, but
+    // this stays a plain pointer check rather than an assumption, the
+    // same caution TGridView applies to its own optional callbacks).
+    void refreshServerCombo();
+    // Keeps serverCombo_'s own shown/focused entry matching whichever
+    // server's window actually has focus right now — called from
+    // idle() (see its own comment: same "every tick, act on whichever
+    // window currently has focus" pattern updateBandwidthStatus() and
+    // the cmManageColumns enable/disable already follow there), so
+    // switching windows any OTHER way than picking from the combo
+    // itself (Ctrl+F6 "Next", Alt+0's window list, ...) still leaves it
+    // showing the right name afterward. A no-op whenever there's
+    // nothing to change: no focused torrent-list window at all (some
+    // other kind of window has focus, or the combo itself does — left
+    // alone rather than fighting the user's own click into it), or the
+    // combo already shows the right name — that second check matters
+    // because TComboBox::focusItem() (see TComboBox.cpp) broadcasts
+    // unconditionally even when the index given is the one already
+    // focused, so calling it every single idle tick without first
+    // checking would mean a redundant broadcast (and, via handleEvent()
+    // 's own cmComboBoxSelectionChanged case, a redundant re-select of
+    // the already-focused window) on every tick rather than only when
+    // something actually changed.
+    void syncServerCombo();
     void updateBandwidthStatus(); // updates the D:/U: text in the status bar, from the FOCUSED window's own server
 
     // The TGridView belonging to whichever window currently has focus
@@ -97,6 +131,15 @@ private:
     // never invalidates existing elements' addresses.
     std::map<std::string, std::unique_ptr<TransmissionClient>> clients_;
     std::chrono::steady_clock::time_point lastRefresh_;
+    // The "pick a server, bring its window to the front" combo box
+    // shown in its own reserved row directly below the menu bar — see
+    // App::App() for why that row exists and how it's carved out of
+    // deskTop's own extent, and refreshServerCombo() for how this stays
+    // in sync with settings_.servers after the Connection dialog adds/
+    // edits/removes one. Owned by the TGroup it's inserted into (this
+    // app itself), same lifetime convention as every other view here —
+    // not deleted explicitly.
+    TComboBox* serverCombo_ = nullptr;
 };
 
 // Custom application commands (> tvision's cmUserBase)

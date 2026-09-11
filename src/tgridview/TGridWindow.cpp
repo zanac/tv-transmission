@@ -21,6 +21,20 @@ TGridWindow::TGridWindow(const TRect& bounds, TStringView title, bool fullScreen
         // this branch exists for. `closable` is ignored here for the
         // same reason: flags = 0 already covers it.
         flags = 0;
+        // Still needs to track the OWNER's size (normally TDeskTop) on
+        // a terminal resize — flags=0 only strips the interactive
+        // move/resize gestures, it says nothing about how this view
+        // reacts when its owner's own bounds change. Without this, a
+        // fullScreen window stays exactly the pixel size it was
+        // created at forever, silently leaving gaps (or clipping)
+        // after the terminal is resized, even though the user has no
+        // way to fix it by hand anymore (that's the whole point of
+        // flags=0). gfGrowHiX|gfGrowHiY keeps the top-left corner
+        // fixed and grows/shrinks the bottom-right one to match —
+        // exactly "always the full desktop", kept true across resizes
+        // rather than just true at creation time. Same pairing
+        // grid_->growMode already uses below, one level up.
+        growMode = gfGrowHiX | gfGrowHiY;
     } else {
         // The MDI case: free to be tiled/cascaded alongside whatever
         // else is open, unlike the fullScreen branch above. wfClose —

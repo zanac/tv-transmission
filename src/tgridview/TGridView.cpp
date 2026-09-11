@@ -549,8 +549,16 @@ public:
                     // Any (single) click on the row toggles it — not
                     // just a precise hit on the tiny "[X]" itself, which
                     // would be needlessly fiddly for something meant to
-                    // make batch-selecting easier.
-                    owner_->toggleRowSelected(row);
+                    // make batch-selecting easier. Holding Shift instead
+                    // checks the whole range between the selection
+                    // anchor and this row (see selectRowRange()) — the
+                    // familiar Explorer/Excel gesture for extending a
+                    // selection to a second point without clicking every
+                    // row in between.
+                    if (event.mouse.controlKeyState & kbShift)
+                        owner_->selectRowRange(row);
+                    else
+                        owner_->toggleRowSelected(row);
                     focusItemNum(row); // still moves focus there, same
                                         // as an ordinary click would
                     clearEvent(event);  // stops here — never reaches
@@ -735,7 +743,11 @@ void TGridView::enterSelectionMode(int initialRow) {
     if (!(options_ & gvMultiSelect) || selectionModeActive_) return;
     selectionModeActive_ = true;
     selectedRows_.assign(rowCount_, false);
-    if (initialRow >= 0 && initialRow < rowCount_) selectedRows_[initialRow] = true;
+    selectionAnchorRow_ = -1;
+    if (initialRow >= 0 && initialRow < rowCount_) {
+        selectedRows_[initialRow] = true;
+        selectionAnchorRow_ = initialRow; // so an immediate Shift+click has something to range from
+    }
     relayout(); // header/rows need to redraw with the new checkbox column
 }
 
@@ -743,12 +755,32 @@ void TGridView::exitSelectionMode() {
     if (!selectionModeActive_) return;
     selectionModeActive_ = false;
     selectedRows_.clear();
+    selectionAnchorRow_ = -1;
     relayout();
 }
 
 void TGridView::toggleRowSelected(int row) {
     if (!selectionModeActive_ || row < 0 || row >= (int)selectedRows_.size()) return;
     selectedRows_[row] = !selectedRows_[row];
+    selectionAnchorRow_ = row;
+    rows_->drawView();
+}
+
+void TGridView::selectRowRange(int row) {
+    if (!selectionModeActive_ || row < 0 || row >= (int)selectedRows_.size()) return;
+    if (selectionAnchorRow_ < 0 || selectionAnchorRow_ >= (int)selectedRows_.size()) {
+        // No usable anchor yet — fall back to a plain toggle-on so this
+        // is still a sensible first click rather than a silent no-op.
+        selectedRows_[row] = true;
+        selectionAnchorRow_ = row;
+        rows_->drawView();
+        return;
+    }
+    int lo = std::min(selectionAnchorRow_, row);
+    int hi = std::max(selectionAnchorRow_, row);
+    for (int i = lo; i <= hi; i++) selectedRows_[i] = true;
+    // selectionAnchorRow_ deliberately left unchanged — see this
+    // method's own doc comment in TGridView.h.
     rows_->drawView();
 }
 

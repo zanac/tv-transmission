@@ -103,25 +103,21 @@ protected:
 // the last remaining one, leaving nothing shown at all), or, also in
 // editable mode, directly typing/editing the text. Not fired for every
 // open/close of the popup, or for cursor movement alone (Left/Right/
-// Home/End) with no actual content change. cmComboBoxSelectionChanged
-// itself isn't declared here: the fork this was copied from added it
-// directly to views.h's own command enum (unconditionally, not gated
-// behind any Uses_TComboBox guard — see cmdcodes.h/views.h), so it's
-// already available from <tvision/tv.h> without needing anything
-// specific to this file included first.
+// Home/End) with no actual content change.
 
 // Broadcast when "[+]"/"[-]" (editable mode — see below) actually add
 // or remove a list entry — not fired for the no-op cases (adding text
 // that already matches an entry, or "[-]" with nothing matching the
 // current text; see addCurrentValue()/removeCurrentValue()'s own
-// comments). Unlike cmComboBoxSelectionChanged, these two are this
-// project's own addition, not something the tvision fork already
-// provides — picked the next two free values after 59 in the same
-// enum's own numbering (see views.h), rather than reusing anything
-// from cmUserBase upward, which is reserved for application-level
-// commands, not widget-level ones like this.
+// comments). These three are this project's own addition, not
+// something tvision itself provides — picked the next free values
+// after 59 in the same enum's own numbering (see views.h, which stops
+// at cmTimerExpired = 58), rather than reusing anything from
+// cmUserBase upward, which is reserved for application-level commands,
+// not widget-level ones like this.
 constexpr ushort cmComboBoxItemAdded = 60;
 constexpr ushort cmComboBoxItemRemoved = 61;
+constexpr ushort cmComboBoxSelectionChanged = 62;
 
 // A single-line, single-selection drop-down combo box. Clicking it, or
 // pressing Space/Enter/Down while it is focused, opens a TComboWindow
