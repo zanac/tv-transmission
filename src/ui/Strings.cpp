@@ -44,6 +44,10 @@ const char* tr(Str id) {
         case Str::MenuColumnsMenu:
             return pick("~C~olumns", "~C~olonne", "~C~olonnes", "~S~palten", "Co~l~umnas");
         case Str::MenuFilters:      return pick("~F~ilters...", "~F~iltri...", "~F~iltres...", "~F~ilter...", "~F~iltros...");
+        case Str::MenuConnectionsMenu:
+            return pick("Con~n~ections", "Conn~e~ssioni", "Co~n~nexions", "~V~erbindungen", "Co~n~exiones");
+        case Str::MenuConnectionsEmpty:
+            return pick("Empty", "Vuoto", "Vide", "Leer", "Vacío");
         case Str::MenuManageColumns:
             return pick("~M~anage columns...", "~G~estisci colonne...", "~G~érer les colonnes...",
                         "Spalten ~v~erwalten...", "~G~estionar columnas...");
@@ -184,6 +188,8 @@ const char* tr(Str id) {
 
         case Str::WindowTitleTorrentList:
             return pick("Torrents", "Torrent", "Torrents", "Torrents", "Torrents");
+        case Str::WindowTitleOffline:
+            return pick("(offline)", "(offline)", "(hors ligne)", "(offline)", "(sin conexión)");
 
         case Str::DialogTitleAddTorrent:
             return pick("Add torrent", "Aggiungi torrent", "Ajouter un torrent", "Torrent hinzufügen", "Añadir torrent");

@@ -6,7 +6,7 @@
 #include <vector>
 #include "../rpc/Tracker.h"
 #include "../rpc/TransmissionClient.h"
-#include "../tgridview/TGridView.h"
+#include "../tvision-ext/TGridView.h"
 
 // Non-modal window listing every tracker for one torrent — host, tier,
 // seeders, leechers, downloaded count, and a short status — built on

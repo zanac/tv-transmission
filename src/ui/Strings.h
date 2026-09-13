@@ -27,6 +27,7 @@ enum class Str {
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,
     MenuSettingsMenu, MenuColumnsMenu, MenuFilters,
+    MenuConnectionsMenu, MenuConnectionsEmpty,
     DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
     MsgLanguageChangeRestart,
     MsgServerAdded, MsgServerRemoved, MsgConnectionTestFailed,
@@ -36,7 +37,7 @@ enum class Str {
     DialogTitleWindowList,
     StatusAdd, StatusStart, StatusStop, StatusSettings, StatusQuit,
 
-    WindowTitleTorrentList,
+    WindowTitleTorrentList, WindowTitleOffline,
 
     DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate, MsgTorrentAddFailed,
     ButtonRename, DialogTitleRename, LabelRenameNewName, MsgRenameFailed,

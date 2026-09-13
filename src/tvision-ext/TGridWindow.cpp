@@ -1,0 +1,44 @@
+#include "TGridWindow.h"
+
+TGridWindow::TGridWindow(const TRect& bounds, TStringView title, bool fullScreen,
+                          ushort gridOptions, bool closable)
+    : TWindowInit(&TWindow::initFrame),
+      TWindow(bounds, title, wnNoNumber) {
+    if (fullScreen) {
+        // Same reasoning as this project's TorrentListWindow: meant to
+        // always occupy the whole desktop, so every window-management
+        // flag (move/resize/zoom/close) is removed rather than just
+        // disabled — wfClose in particular has to go because TWindow::
+        // close() would destroy(this), leaving whoever holds this
+        // pointer with a dangling reference on their next use of it.
+        // ofTileable deliberately NOT set here: TDeskTop::tile()/
+        // cascade() reposition via locate() regardless of the
+        // wfMove/wfGrow flags just stripped above (those only gate
+        // interactive keyboard/mouse move/resize, not programmatic
+        // repositioning) — marking a flags=0 window tileable would let
+        // a Tile/Cascade elsewhere on the desktop forcibly move or
+        // resize it, breaking the "always fills the desktop" invariant
+        // this branch exists for. `closable` is ignored here for the
+        // same reason: flags = 0 already covers it.
+        flags = 0;
+    } else {
+        // The MDI case: free to be tiled/cascaded alongside whatever
+        // else is open, unlike the fullScreen branch above. wfClose —
+        // otherwise part of TWindow's own default flags — is stripped
+        // back out when the caller doesn't want this one closable
+        // (see this constructor's own doc comment for why that's a
+        // real, separate need from fullScreen): the same
+        // dangling-pointer hazard the fullScreen branch avoids above
+        // applies here too, for any caller that (like this app's own
+        // TorrentListWindow) holds onto one of these across turns
+        // rather than only ever looking it up fresh.
+        options |= ofTileable;
+        if (!closable) flags &= ~wfClose;
+    }
+
+    TRect r = getExtent();
+    r.grow(-1, -1);
+    grid_ = new TGridView(r, gridOptions);
+    grid_->growMode = gfGrowHiX | gfGrowHiY;
+    insert(grid_);
+}

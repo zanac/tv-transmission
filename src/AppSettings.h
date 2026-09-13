@@ -76,16 +76,6 @@ struct ServerProfile {
     std::string password;
 };
 
-// A saved torrent-list window's own position and size — in character
-// cells (tvision's own coordinate unit), not pixels. Not clamped to
-// the current desktop here (that only makes sense against a live
-// terminal size, known only once the app is actually running — see
-// App's own constructor for where restoring one of these against
-// deskTop->getExtent() actually happens).
-struct WindowLayout {
-    int x = 0, y = 0, w = 100, h = 30;
-};
-
 // Settings the user can configure from the Connection/Server windows.
 struct AppSettings {
     int refreshIntervalSeconds = 5; // first option in the Connection window
@@ -116,13 +106,6 @@ struct AppSettings {
     // default than an exclusive choice.
     std::string activeServer;
 
-    // Every configured server's own torrent-list window opens on
-    // startup at whatever position/size it last had, keyed by the same
-    // logical server name as `servers` above — saved on exit (see
-    // App::shutDown()). A server with no entry here yet (never opened
-    // before, or an older settings.json predating this) falls back to
-    // an automatically arranged position instead.
-    std::map<std::string, WindowLayout> windowLayouts;
     // Which server's window had focus at the moment the app was last
     // closed — that's the one brought to the front on the next launch,
     // ahead of every other configured server's own window (all of them
@@ -143,11 +126,11 @@ struct AppSettings {
     // dragging a column's separator, double-clicking its header to
     // reorder, or the "Manage columns..." dialog), and belong to a
     // specific server's own window rather than being shared globally —
-    // each is independently resizable now that every configured server
-    // has its own MDI window (see AppSettings::windowLayouts' own
-    // comment for the parallel per-server treatment of position/size),
-    // so there's no single "the" torrent list anymore whose column
-    // layout would even mean one shared thing.
+    // each window still manages its own columns independently even
+    // though every one of them is always exactly the same size now
+    // (the whole desktop — see TorrentListWindow's own fullScreen
+    // comment), so there's no single "the" torrent list anymore whose
+    // column layout would even mean one shared thing.
     struct ColumnLayout {
         // Current width of each column, same order as SortColumn
         // (Name, Done, Size, Down, Up, Added, Status). Empty (or a

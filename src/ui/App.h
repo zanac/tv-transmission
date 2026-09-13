@@ -14,7 +14,6 @@
 
 class TorrentListWindow;
 class TGridView;
-class TComboBox;
 
 class App : public TApplication {
 public:
@@ -24,6 +23,13 @@ public:
     // base classes are being constructed, i.e. before any code in this
     // constructor's body can run. See main.cpp.
     explicit App(const AppSettings& initialSettings);
+    // Every in-flight async refresh needs detaching from multiHandle_
+    // BEFORE it's cleaned up (see the destructor's own comment in
+    // App.cpp) — declared explicitly rather than left to the implicit
+    // default, since relying on that would mean relying on exactly
+    // when C++ tears down deskTop's own child windows relative to this
+    // object's own body, which isn't something worth depending on.
+    ~App() override;
 
     static TMenuBar* initMenuBar(TRect r);
     static TStatusLine* initStatusLine(TRect r);
@@ -40,7 +46,7 @@ private:
     // showConnectionDialog() (a server just added/edited there that
     // isn't already showing gets its own window the same way, rather
     // than needing a restart to see it).
-    TorrentListWindow* openServerWindow(const std::string& name, const TRect& bounds);
+    TorrentListWindow* openServerWindow(const std::string& name);
     void showAddTorrentDialog(const std::string& initialValue = "");
     void showConnectionDialog();
     void showServerSettingsDialog();
@@ -48,40 +54,19 @@ private:
     void showColumnManagerDialog();
     void showWindowListDialog();
     void showAboutDialog();
-    // Rebuilds serverCombo_'s own item list from settings_.servers
-    // (alphabetical, same as the constructor's own initial build) —
-    // called after showConnectionDialog() adds, edits, or removes a
-    // server, so the combo never shows a name that's been removed, or
-    // misses one just added, without needing a restart. Keeps
-    // whichever name is currently shown focused if it still exists in
-    // the rebuilt list (falls back to the first entry otherwise, same
-    // as buildServerComboItems() always does for a name it can't
-    // find) — a no-op if serverCombo_ hasn't been created yet (it
-    // always has been by the time this could actually be called, but
-    // this stays a plain pointer check rather than an assumption, the
-    // same caution TGridView applies to its own optional callbacks).
-    void refreshServerCombo();
-    // Keeps serverCombo_'s own shown/focused entry matching whichever
-    // server's window actually has focus right now — called from
-    // idle() (see its own comment: same "every tick, act on whichever
-    // window currently has focus" pattern updateBandwidthStatus() and
-    // the cmManageColumns enable/disable already follow there), so
-    // switching windows any OTHER way than picking from the combo
-    // itself (Ctrl+F6 "Next", Alt+0's window list, ...) still leaves it
-    // showing the right name afterward. A no-op whenever there's
-    // nothing to change: no focused torrent-list window at all (some
-    // other kind of window has focus, or the combo itself does — left
-    // alone rather than fighting the user's own click into it), or the
-    // combo already shows the right name — that second check matters
-    // because TComboBox::focusItem() (see TComboBox.cpp) broadcasts
-    // unconditionally even when the index given is the one already
-    // focused, so calling it every single idle tick without first
-    // checking would mean a redundant broadcast (and, via handleEvent()
-    // 's own cmComboBoxSelectionChanged case, a redundant re-select of
-    // the already-focused window) on every tick rather than only when
-    // something actually changed.
-    void syncServerCombo();
     void updateBandwidthStatus(); // updates the D:/U: text in the status bar, from the FOCUSED window's own server
+    // Rebuilds the "Connections" menu's own item list from
+    // settings_.servers, marking whichever one's window currently has
+    // focus (a bullet and the item's whole text in the menu's own
+    // highlight color — see its own comment for why that's the closest
+    // a text-mode menu gets to "bold" without custom drawing) — or a
+    // single disabled "Empty" item if there are none configured at all.
+    // Called both when the server LIST itself changes (added via Save,
+    // removed via "[-]" — see showConnectionDialog()) and, from idle(),
+    // whenever which one has FOCUS changes, however that happened
+    // (clicking a different window directly, Window → Next, the Window
+    // List dialog, or this very menu).
+    void rebuildConnectionsMenu();
 
     // The TGridView belonging to whichever window currently has focus
     // (any TGridView-based window — a torrent list, the tracker list, a
@@ -131,15 +116,21 @@ private:
     // never invalidates existing elements' addresses.
     std::map<std::string, std::unique_ptr<TransmissionClient>> clients_;
     std::chrono::steady_clock::time_point lastRefresh_;
-    // The "pick a server, bring its window to the front" combo box
-    // shown in its own reserved row directly below the menu bar — see
-    // App::App() for why that row exists and how it's carved out of
-    // deskTop's own extent, and refreshServerCombo() for how this stays
-    // in sync with settings_.servers after the Connection dialog adds/
-    // edits/removes one. Owned by the TGroup it's inserted into (this
-    // app itself), same lifetime convention as every other view here —
-    // not deleted explicitly.
-    TComboBox* serverCombo_ = nullptr;
+    // Shared by every window's own async refresh (see TorrentListWindow::
+    // startAsyncRefresh()) rather than one CURLM per client — driving
+    // one multi handle's own curl_multi_perform()/curl_multi_info_read()
+    // once per idle() tick (see idle() itself) naturally covers however
+    // many refreshes happen to be in flight at once, without needing to
+    // loop over every client's own separate multi handle to ask each
+    // one individually.
+    CURLM* multiHandle_ = nullptr;
+    // Whichever server's own window rebuildConnectionsMenu() last saw
+    // focused, checked on every idle() tick — a plain string compare
+    // against focusedListWindow()'s own current serverName() is enough
+    // to tell whether focus actually moved since the last tick, so the
+    // menu is only rebuilt when it needs to be, not on every single
+    // tick regardless.
+    std::string lastConnectionsFocusedServer_;
 };
 
 // Custom application commands (> tvision's cmUserBase)
@@ -165,3 +156,11 @@ const ushort cmQueueMoveUp      = 118;
 const ushort cmQueueMoveDown    = 119;
 const ushort cmQueueMoveBottom  = 120;
 const ushort cmServerSettings   = 121;
+// Base for the "Connections" menu's own dynamic per-server commands
+// (see App::rebuildConnectionsMenu()) — one entry per configured
+// server, however many there are, so this needs real headroom rather
+// than the next single free value the way every other command above
+// gets one. 150 leaves a comfortable gap above cmServerSettings for
+// any future *fixed* command to still fit without bumping into this
+// range.
+const ushort cmConnectionBase   = 150;

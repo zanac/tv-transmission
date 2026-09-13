@@ -11,7 +11,7 @@ add_executable(tv-transmission
     ui/ConnectionDialog.cpp
     ui/ServerSettingsDialog.cpp
     ui/FilterDialog.cpp
-    tgridview/TGridColumnManagerDialog.cpp
+    tvision-ext/TGridColumnManagerDialog.cpp
     ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
@@ -21,8 +21,8 @@ add_executable(tv-transmission
     ui/TrackerListWindow.cpp
     ui/TrackerDetailWindow.cpp
     ui/Strings.cpp
-    tgridview/TGridView.cpp
-    tgridview/TGridWindow.cpp
+    tvision-ext/TGridView.cpp
+    tvision-ext/TGridWindow.cpp
     tvision-ext/TComboBox.cpp
 )
 

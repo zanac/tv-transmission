@@ -6,7 +6,7 @@
 #include <vector>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
-#include "../tgridview/TGridView.h"
+#include "../tvision-ext/TGridView.h"
 
 // Non-modal window listing every file within one torrent, grouped into
 // the same folder structure the torrent's own file paths describe —

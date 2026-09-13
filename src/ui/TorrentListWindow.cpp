@@ -27,8 +27,18 @@ namespace {
 // constructor), that's the part actually telling them apart; the
 // translated "Torrents" after it is just there for anyone glancing at
 // the title bar without already knowing what this app's windows are.
-std::string buildWindowTitle(const std::string& serverName) {
-    return serverName + " \xE2\x80\x94 " + tr(Str::WindowTitleTorrentList);
+// `connectionLost` appends a translated "(offline)" marker — set
+// whenever the most recent refresh attempt (sync or async — see
+// TorrentListWindow::updateTitleForConnectionState()) failed, cleared
+// the moment one succeeds again. A persistent marker in the title bar
+// rather than a messageBox popping up every refresh cycle: a server
+// that's actually down would otherwise mean a fresh popup every
+// refreshIntervalSeconds until it's back, which is far more disruptive
+// than something glanceable that's just... there until it isn't.
+std::string buildWindowTitle(const std::string& serverName, bool connectionLost) {
+    std::string title = serverName + " \xE2\x80\x94 " + tr(Str::WindowTitleTorrentList);
+    if (connectionLost) title += " " + std::string(tr(Str::WindowTitleOffline));
+    return title;
 }
 
 // Builds "[███████░░░░░░░░░]  42%" — the block characters (U+2588 full
@@ -162,20 +172,23 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
-      // fullScreen=true: every server window always fills the whole
-      // desktop, can't be moved/resized/zoomed by the user, and
-      // (same as before) only ever closes via the Connection dialog's
-      // own "[-]" — never from the window itself. With several
-      // servers configured, their windows now simply stack on top of
-      // each other, all the same size; the server combo box below the
-      // menu bar (see App::App()) is how the user brings a particular
-      // one to the front. closable is therefore irrelevant here (see
-      // TGridWindow's own comment on why it's ignored when fullScreen
-      // is true) but left as false for documentation's sake, matching
-      // the invariant this window is still subject to.
-      TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/true,
-                  gvResizableColumns | gvReorderableColumns | gvMultiSelect,
-                  /*closable=*/false),
+      // fullScreen=true: always exactly fills the desktop, tracking its
+      // own size as the terminal itself is resized (TWindow's own
+      // default growMode — gfGrowAll|gfGrowRel, set unconditionally in
+      // its own constructor — already does that automatically; nothing
+      // extra needed here for it). More than one of these can be open
+      // at once now (one per configured server, stacked — see App's own
+      // constructor and the "Connections" menu for how one is brought
+      // to the front over the others), unlike the single always-
+      // maximized window TGridWindow's own fullScreen mode was
+      // originally built for — but the same flags=0 (no move/resize/
+      // zoom/close) applies to each one independently either way, and
+      // is exactly what's wanted here: never smaller than the whole
+      // desktop, and only ever closed by the Connection dialog's own
+      // "[-]" removing that server (see App::showConnectionDialog()),
+      // never from the window itself.
+      TGridWindow(bounds, buildWindowTitle(serverName, /*connectionLost=*/false), /*fullScreen=*/true,
+                  gvResizableColumns | gvReorderableColumns | gvMultiSelect),
       client_(client),
       serverName_(serverName),
       initialTrackerColumnWidths_(initialTrackerColumnWidths),
@@ -429,7 +442,7 @@ void TorrentListWindow::retranslate() {
     // twindow.cpp) and freed with delete[] in its destructor — the same
     // pattern used for TStatusItem::text in BandwidthStatusLine.
     delete[] (char*)title;
-    title = newStr(buildWindowTitle(serverName_));
+    title = newStr(buildWindowTitle(serverName_, connectionLost_));
     applyColumnLabels(); // the sort "^"/"v" indicator is drawn by TGridView
                          // itself at draw time (see grid()->refresh() below),
                          // independent of the header label text — nothing
@@ -441,6 +454,37 @@ void TorrentListWindow::retranslate() {
 void TorrentListWindow::refresh() {
     allTorrents_ = client_.listTorrents();
     applyFilterAndSort();
+    // lastError().empty() means the attempt that just ran succeeded —
+    // see TransmissionClient::call()'s own comment on why every
+    // attempt clears it first, not just failures setting it, which is
+    // what makes this check meaningful right after the call above
+    // rather than possibly stale from some earlier one.
+    updateTitleForConnectionState(!client_.lastError().empty());
+}
+
+void TorrentListWindow::finishAsyncRefresh(CURLM* multi) {
+    bool ok = false;
+    std::vector<Torrent> result = client_.finishRefresh(multi, &ok);
+    if (ok) {
+        allTorrents_ = std::move(result);
+        applyFilterAndSort();
+    }
+    // On failure, deliberately leaves allTorrents_ (and so the
+    // displayed list) exactly as it was — a momentary network hiccup
+    // shouldn't blank out the last known state, only mark the title
+    // (see updateTitleForConnectionState() below) so it's visible
+    // without being disruptive.
+    updateTitleForConnectionState(!ok);
+}
+
+void TorrentListWindow::updateTitleForConnectionState(bool lost) {
+    if (lost == connectionLost_) return; // no change — most ticks, most of the time
+    connectionLost_ = lost;
+    // Same alloc/free convention as retranslate() itself uses for this
+    // same field — see its own comment.
+    delete[] (char*)title;
+    title = newStr(buildWindowTitle(serverName_, connectionLost_));
+    drawView();
 }
 
 void TorrentListWindow::setFilter(TorrentFilter filter) {
