@@ -54,18 +54,16 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
 
     // Two tab buttons rather than a menu or a TRadioButtons cluster —
     // simplest thing that reads as "two mutually exclusive views" at a
-    // glance. Whichever tab is ACTIVE has its own button DISABLED
-    // (greyed, unclickable) rather than some other visual marker —
-    // tvision's own menu items and buttons don't have an independent
-    // "currently selected" look of their own to draw on here the way a
-    // real tab control would, but "can't click the one you're already
-    // on" doubles as a perfectly legible state indicator on its own,
-    // and costs nothing extra to implement.
-    trackersTabButton_ = new TButton(TRect(r.a.x, tabY, r.a.x + 14, tabY + 2),
-                                      tr(Str::TabTrackers), cmSwitchToTrackersTab, bfNormal);
+    // glance, placed directly adjacent to each other (no gap) so they
+    // read as one two-part control rather than two separate buttons.
+    // Whichever tab is ACTIVE gets a persistently different background
+    // color (see TTabButton's own doc comment in the header for how) —
+    // both stay enabled/clickable either way.
+    trackersTabButton_ = new TTabButton(TRect(r.a.x, tabY, r.a.x + 11, tabY + 2),
+                                         tr(Str::TabTrackers), cmSwitchToTrackersTab);
     insert(trackersTabButton_);
-    peersTabButton_ = new TButton(TRect(r.a.x + 15, tabY, r.a.x + 29, tabY + 2),
-                                   tr(Str::TabPeers), cmSwitchToPeersTab, bfNormal);
+    peersTabButton_ = new TTabButton(TRect(r.a.x + 11, tabY, r.a.x + 19, tabY + 2),
+                                      tr(Str::TabPeers), cmSwitchToPeersTab);
     insert(peersTabButton_);
 
     // Resizable and reorderable; sortability is decided per tab (see
@@ -170,8 +168,8 @@ void TrackerPeerWindow::switchToTab(Tab tab) {
     }
 
     activeTab_ = tab;
-    trackersTabButton_->setState(sfDisabled, Boolean(tab == Tab::Trackers));
-    peersTabButton_->setState(sfDisabled, Boolean(tab == Tab::Peers));
+    trackersTabButton_->setActive(tab == Tab::Trackers);
+    peersTabButton_->setActive(tab == Tab::Peers);
 
     grid_->clearColumns();
     if (tab == Tab::Trackers) {

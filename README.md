@@ -172,12 +172,14 @@ HTTP and nlohmann/json for parsing.
 **Trackers and peers**
 - A "Trackers..." button in the torrent details window opens a
   separate, non-modal window with **two tabs — Trackers and Peers —
-  switched via two buttons at the top acting as tabs** (Turbo Vision
-  has no tab control of its own, so this is a hand-built approximation
-  rather than a native one — see "Fixed bugs" below for how). Whichever
-  tab is active has its own button disabled, doubling as the "you're
-  here" indicator. Both are built on `TGridView`, the same generic
-  widget the main list and the files window use
+  switched via two buttons at the top, placed directly against each
+  other, acting as tabs** (Turbo Vision has no tab control of its own,
+  so this is a hand-built approximation rather than a native one — see
+  "Fixed bugs" below for how). Whichever tab is active gets a
+  persistently different background color, doubling as the "you're
+  here" indicator — both stay clickable either way. Both tabs are built
+  on `TGridView`, the same generic widget the main list and the files
+  window use
 - **Trackers**: host, tier, seeders, leechers, downloaded count, and a
   short status (OK/Error) for every tracker on this torrent
 - **Peers**: address (`ip:port`), client name, download progress,
@@ -787,6 +789,75 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**The Trackers/Peers tab buttons: placed directly against each other,
+and the active one given a genuinely different background color
+instead of just being disabled.** Asked for directly, as a follow-up to
+the tabs themselves (see the entry right below this one).
+
+The color needed understanding `TButton`'s own palette system, not
+guessed at: `TButton::drawState()` (in tvision's own `tbutton.cpp`)
+picks one of several `getColor()` calls depending on state — plain
+`getColor(0x0501)` normally, `getColor(0x0703)` when the button happens
+to have keyboard focus (`sfSelected`). Each of those resolves through
+two palette-index lookups (`getColor()`'s own high/low byte split) into
+whatever `getPalette()` returns — and `getPalette()` is `virtual`,
+specifically so a subclass CAN swap in a different palette for its own
+instance without needing to touch `drawState()` at all, which isn't
+virtual and stays completely unmodified. `TTabButton` (a small `TButton`
+subclass, local to this window) does exactly that: an `active_` flag
+and a `setActive()` setter (calling `drawView()` after changing it),
+and a `getPalette()` override that swaps in a version of `TButton`'s own
+default palette with one index substituted — the one used in the plain,
+"nothing special" render path — for the value the SELECTED-button path
+already uses. The visible result reuses colors tvision already uses
+elsewhere for "this button is focused" rather than inventing a new one,
+so it looks consistent with everything else rather than clashing.
+Genuinely verified as a color difference, not assumed from the code
+alone: pyte (the terminal emulator library already used for testing
+this project throughout — see the many other entries in this file)
+tracks each cell's own foreground/background/reverse attributes, not
+just its character — reading those directly for a cell inside each tab
+button's own label confirmed the two really do resolve to different
+colors on a live running instance, not just that the palette math
+looked right on paper.
+
+Making the DISABLED state (grey, unclickable) was the active tab's
+whole indicator; needed dropping entirely, not just supplementing: at
+disabled, `drawState()`'s very first branch replaces the state-driven
+color logic above entirely (`getColor(0x0404)`, a completely different
+path). Keeping both the disabled state and this new color together
+would have meant the color override having no visible effect at all
+once the button was ALSO disabled. Both tab buttons now stay
+enabled/clickable regardless of which is active — clicking the one
+already showing is a harmless no-op (`switchToTab()` handles being
+called with the tab already active fine), and this fixes an unrelated
+inconsistency the disabled-based version had: once the color exists as
+its own independent signal, there's no more reason to prevent clicking
+the already-active tab at all.
+
+Placing the two buttons directly against each other (no gap in their
+own bounds — the second one starts exactly where the first one's rect
+ends) turned out to only get most of the way there on its own:
+`TButton::drawTitle()` centers its own title text by default, leaving
+padding on both sides, and every button draws its own one-column
+"shadow" along its right edge — together, adjacent buttons still read
+as visibly separate even with touching rects. Switching to
+`bfLeftJust` (left-justifies the title, starting one column in from the
+left edge rather than centered) and tightening each button's own width
+down to roughly its label's own length removed the CENTERING padding
+specifically, leaving only the shadow column and left-justify's own
+one-column margin between them — measured directly (again via pyte, the
+literal characters between where one button's label ends and the
+next's begins) at 3 columns, down from 7 before. The shadow itself is
+TButton's own per-instance visual, not something a bounds change alone
+can remove — going further would mean overriding `drawTitle()`/
+`drawState()` entirely rather than working within them, which felt like
+the wrong tradeoff for how much closer it would actually get. Re-
+verified the resized buttons still worked correctly for their actual
+job, not just that they looked closer together: clicking "Peers" at its
+own new, smaller coordinates still switched tabs and showed the right
+peer data.
 
 **`TrackerListWindow` renamed to `TrackerPeerWindow`.** Pointed out
 directly, right after the Peers tab landed (see the entry just below

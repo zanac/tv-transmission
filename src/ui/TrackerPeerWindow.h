@@ -10,6 +10,54 @@
 #include "../rpc/TransmissionClient.h"
 #include "../tvision-ext/TGridView.h"
 
+// TButton with a persistently different look for "this one is the
+// active tab" — used for the two tab buttons at the top of
+// TrackerPeerWindow (see its own doc comment for why two buttons stand
+// in for a genuine tab control tvision doesn't have). Reuses the SAME
+// color pairing tvision's own TButton already uses for a keyboard-
+// FOCUSED button (see drawState()'s own sfSelected branch in
+// tbutton.cpp) rather than inventing a new color from scratch — matches
+// the existing theme instead of clashing with it. TButton::getPalette()
+// is virtual specifically so a subclass CAN override just this one
+// piece; drawState() itself (not virtual, and so not overridden here)
+// keeps doing all its own state-driven color-selection logic
+// unchanged — it just resolves through a different palette string when
+// active_ is true. Both tab buttons stay enabled/clickable regardless
+// of which is active (unlike an earlier version of this that disabled
+// the active one instead — see "Fixed bugs" in the README for why):
+// clicking the one you're already on is a harmless no-op, and disabling
+// it would have meant losing this class's own color override entirely,
+// since TButton::drawState()'s disabled-state branch bypasses the
+// normal/selected color logic this depends on altogether.
+class TTabButton : public TButton {
+public:
+    TTabButton(const TRect& bounds, TStringView title, ushort command)
+        : TButton(bounds, title, command, bfLeftJust) {}
+
+    void setActive(bool active) {
+        if (active == active_) return;
+        active_ = active;
+        drawView();
+    }
+
+    TPalette& getPalette() const override {
+        // Index 1 substituted with index 3's own value: TButton::
+        // drawState()'s "normal, not specially focused" branch calls
+        // getColor(0x0501) (palette indices 5 and 1) — swapping index 1
+        // to match what index 3 holds makes that resolve to the exact
+        // same colors getColor(0x0703) (indices 7 and 3, the SELECTED-
+        // button case) already would under the unmodified palette.
+        // Index 5 doesn't need its own change: it already holds the
+        // same value as index 7 in TButton's own default palette
+        // (cpButton — see tbutton.cpp).
+        static TPalette activePalette("\x0C\x0B\x0C\x0D\x0E\x0E\x0E\x0F", 8);
+        return active_ ? activePalette : TButton::getPalette();
+    }
+
+private:
+    bool active_ = false;
+};
+
 // Non-modal window listing per-torrent live data, in one of two tabs —
 // Trackers (host, tier, seeders, leechers, downloaded count, status) or
 // Peers (address, client, progress, down/up speed, flags) — switched
@@ -110,8 +158,8 @@ private:
     int torrentId_;
     TransmissionClient& client_;
     TGridView* grid_ = nullptr;
-    TButton* trackersTabButton_ = nullptr;
-    TButton* peersTabButton_ = nullptr;
+    TTabButton* trackersTabButton_ = nullptr;
+    TTabButton* peersTabButton_ = nullptr;
     Tab activeTab_ = Tab::Trackers;
     std::vector<TrackerStat> trackers_;
     std::vector<Peer> peers_;
