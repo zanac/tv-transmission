@@ -32,7 +32,7 @@
 class TTabButton : public TButton {
 public:
     TTabButton(const TRect& bounds, TStringView title, ushort command)
-        : TButton(bounds, title, command, bfLeftJust) {}
+        : TButton(bounds, title, command, bfNormal) {}
 
     void setActive(bool active) {
         if (active == active_) return;
@@ -52,6 +52,38 @@ public:
         // (cpButton — see tbutton.cpp).
         static TPalette activePalette("\x0C\x0B\x0C\x0D\x0E\x0E\x0E\x0F", 8);
         return active_ ? activePalette : TButton::getPalette();
+    }
+
+    // TButton::draw() (== drawState(False), see tbutton.cpp — drawState
+    // itself isn't virtual, so this is the only hook available) always
+    // draws a one-column shadow along its own right edge, regardless of
+    // what's next to it — with two tab buttons placed directly against
+    // each other (no gap in their own bounds — see TrackerPeerWindow's
+    // own constructor), that shadow column is exactly what still read
+    // as a visible gap between them even once the bounds themselves
+    // touched. Rather than reimplementing drawState()'s own fairly
+    // involved rendering from scratch just to omit one column, this
+    // draws normally via the base class first, then overwrites that one
+    // column with a blank cell in this button's own current background
+    // color — recomputed here the same way drawState() itself would
+    // (disabled / selected / default / plain), so the patched-over
+    // column always matches whatever the rest of the button just drew,
+    // in whatever state it's actually in.
+    void draw() override {
+        TButton::draw();
+        TAttrPair cButton;
+        if ((state & sfDisabled) != 0) {
+            cButton = getColor(0x0404);
+        } else {
+            cButton = getColor(0x0501);
+            if ((state & sfActive) != 0) {
+                if ((state & sfSelected) != 0) cButton = getColor(0x0703);
+                else if (amDefault) cButton = getColor(0x0602);
+            }
+        }
+        TDrawBuffer b;
+        b.moveChar(0, ' ', cButton, 1);
+        writeLine(size.x - 1, 0, 1, 1, b);
     }
 
 private:

@@ -172,13 +172,14 @@ HTTP and nlohmann/json for parsing.
 **Trackers and peers**
 - A "Trackers..." button in the torrent details window opens a
   separate, non-modal window with **two tabs — Trackers and Peers —
-  switched via two buttons at the top, placed directly against each
-  other, acting as tabs** (Turbo Vision has no tab control of its own,
-  so this is a hand-built approximation rather than a native one — see
-  "Fixed bugs" below for how). Whichever tab is active gets a
-  persistently different background color, doubling as the "you're
-  here" indicator — both stay clickable either way. Both tabs are built
-  on `TGridView`, the same generic widget the main list and the files
+  switched via two same-width buttons at the top, seamlessly against
+  each other with no visible seam between them, acting as tabs** (Turbo
+  Vision has no tab control of its own, so this is a hand-built
+  approximation rather than a native one — see "Fixed bugs" below for
+  how). Whichever tab is active gets a persistently different
+  background color, doubling as the "you're here" indicator — both stay
+  clickable either way. Both tabs are built on `TGridView`, the same
+  generic widget the main list and the files
   window use
 - **Trackers**: host, tier, seeders, leechers, downloaded count, and a
   short status (OK/Error) for every tracker on this torrent
@@ -789,6 +790,54 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**The Trackers/Peers tab buttons, again: genuinely seamless now (no
+visible seam at all, not just a smaller one), and the same width.**
+Direct follow-up to the entry right below this one, after being told
+the two buttons still didn't look properly "attached" — they didn't:
+tightening their bounds and switching to left-justified text (see that
+entry) reduced the visible gap, but never eliminated it, because the
+actual cause was never the bounds or the text justification at all.
+
+`TButton::drawState()` (not virtual, so nothing before this could hook
+into it directly) always draws a one-column shadow along its own right
+edge, REGARDLESS of what's placed next to it — that column, not
+anything about spacing or centering, is what still read as a seam
+between two buttons whose bounds already touched exactly. `draw()`
+(which just calls `drawState(False)`) IS virtual, so `TTabButton`
+overrides it: calls the base class's own `TButton::draw()` first (all
+of `drawState()`'s own rendering happens completely unmodified), then
+patches over that one shadow column with a blank cell in this button's
+own current background color — recomputed with the exact same
+disabled/selected/default/plain logic `drawState()` itself uses
+internally, so the patched column always matches whatever color the
+rest of the button actually just drew, in whatever state it's actually
+in, rather than hardcoding one color that would only be right some of
+the time. With the seam itself solved directly, left-justification was
+no longer doing any real work — switched back to TButton's own default
+centered text, which (now that both buttons share one width — see
+below) is what actually makes each label read as centered within its
+own equal-sized tab, the way a real tab control's labels would be, not
+crowded against one shared left edge.
+
+Made both buttons the same width (16 columns each, sized for the longer
+"Trackers" label with the shorter "Peers" one centered within the same
+space) — asked for directly, alongside the seam fix, specifically to
+read as two equal tab slots rather than two differently-sized buttons
+that happen to be adjacent.
+
+Verified the seam itself directly, not just "looks closer together" the
+way the previous attempt's own measurement did: read the exact boundary
+cell — the one column where the Trackers button's own bounds end and
+the Peers button's own begin — via pyte's own per-cell attributes
+(background color specifically, not just checking for a non-space
+character) on a live running instance. It came back as a plain space in
+the SAME background color as everything around it, confirming the
+seam is genuinely gone rather than just narrower — not a shadow
+character, not a color break, nothing distinguishing it from the button
+surface on either side. The active/inactive color difference and the
+click-still-works check from the previous entry were both re-confirmed
+the same way, unchanged by either of these two follow-up changes.
 
 **The Trackers/Peers tab buttons: placed directly against each other,
 and the active one given a genuinely different background color

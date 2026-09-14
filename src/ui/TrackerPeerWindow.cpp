@@ -54,15 +54,19 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
 
     // Two tab buttons rather than a menu or a TRadioButtons cluster —
     // simplest thing that reads as "two mutually exclusive views" at a
-    // glance, placed directly adjacent to each other (no gap) so they
-    // read as one two-part control rather than two separate buttons.
-    // Whichever tab is ACTIVE gets a persistently different background
-    // color (see TTabButton's own doc comment in the header for how) —
-    // both stay enabled/clickable either way.
-    trackersTabButton_ = new TTabButton(TRect(r.a.x, tabY, r.a.x + 11, tabY + 2),
+    // glance, placed directly adjacent to each other (no visible gap —
+    // see TTabButton's own draw() override in the header for how, past
+    // just touching bounds) and given the SAME width so they read as
+    // two equal-sized tabs rather than two differently-sized buttons
+    // that happen to be next to each other. Whichever tab is ACTIVE
+    // gets a persistently different background color (see TTabButton's
+    // own getPalette() override) — both stay enabled/clickable either
+    // way.
+    constexpr int tabWidth = 16;
+    trackersTabButton_ = new TTabButton(TRect(r.a.x, tabY, r.a.x + tabWidth, tabY + 2),
                                          tr(Str::TabTrackers), cmSwitchToTrackersTab);
     insert(trackersTabButton_);
-    peersTabButton_ = new TTabButton(TRect(r.a.x + 11, tabY, r.a.x + 19, tabY + 2),
+    peersTabButton_ = new TTabButton(TRect(r.a.x + tabWidth, tabY, r.a.x + 2 * tabWidth, tabY + 2),
                                       tr(Str::TabPeers), cmSwitchToPeersTab);
     insert(peersTabButton_);
 
