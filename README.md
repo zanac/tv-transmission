@@ -794,6 +794,50 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Rapid switching between the Trackers and Peers tabs could eventually
+leave the list stuck showing nothing — two unrelated code paths were
+silently sharing one curl handle they should never have shared.**
+Reported directly ("switching quickly back and forth enough times, it
+eventually gets stuck").
+
+The cause: `TransmissionClient` kept exactly one persistent easy handle
+(`curl_`), reused by every synchronous call (`call()` — including
+`getTrackerStats()`/`getPeers()`, which is what each tab switch
+triggers) AND by the periodic async refresh (`startRefresh()`/
+`finishRefresh()`, which adds that same handle to a `CURLM*` via
+`curl_multi_add_handle()` and doesn't remove it again until the
+transfer completes). libcurl's own documentation is explicit that an
+easy handle currently attached to a multi handle must not be reused for
+a separate, direct `curl_easy_perform()` until it's been removed —
+which is exactly what happened whenever a tab switch's own synchronous
+call landed while the SAME window's periodic refresh had that handle
+mid-transfer: `call()` calls `curl_easy_reset()` and reuses it anyway,
+resetting state curl's own multi-handle bookkeeping was still relying
+on. This is undefined behavior, not a clean, loud failure — matching
+the reported symptom exactly: a stuck, empty list rather than a crash.
+
+Fixed by giving `TransmissionClient` a SECOND, entirely separate easy
+handle (`refreshCurl_`), used only by `startRefresh()`/`finishRefresh()`
+— `call()` keeps using `curl_` exclusively, and the two code paths can
+no longer collide no matter how the timing lines up. The one cost:
+a call from `getTrackerStats()`/`getPeers()`/etc. no longer reuses the
+exact same underlying TCP connection the periodic refresh's own handle
+already has open to the same host, opening a second connection
+instead — trivial next to correctness here.
+
+Verified as a real, reproducible bug, not a theoretical one, both
+before and after the fix: a threaded mock server (deliberately slow on
+the main list's own refresh, fast on tracker/peer requests, so the two
+could genuinely overlap rather than just queue behind each other) and a
+1-second refresh interval, then 20 rapid alternating clicks between the
+two tabs on a live running instance. Reverting the fix back to one
+shared handle reproduced real corruption within seconds — a details
+window opening with every field blank, not the crash originally
+expected, underscoring how this kind of bug tends to show up as
+"garbled" rather than "loud." The same 20-click sequence against the
+actual fix: correct data on every switch, main list still refreshing
+normally throughout, process alive and responsive at the end.
+
 **A real crash on every normal exit — `App`'s own destructor reading
 through a null `deskTop` pointer.** Reported directly, then reproduced
 and confirmed with a debug build under AddressSanitizer rather than

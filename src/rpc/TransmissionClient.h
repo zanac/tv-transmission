@@ -59,16 +59,16 @@ public:
                         std::string user = "", std::string password = "");
     // If a refresh is still in flight when this runs (a server removed
     // — see App::showConnectionDialog()'s own onServerRemoved — while
-    // its own periodic refresh hadn't completed yet), the easy handle
-    // gets detached from whichever CURLM it was added to BEFORE being
+    // its own periodic refresh hadn't completed yet), refreshCurl_ gets
+    // detached from whichever CURLM it was added to BEFORE being
     // cleaned up — curl_multi_remove_handle() first, matching
-    // startRefresh()'s own comment on why curl_ is safe to keep reusing
-    // afterward in general; here specifically, it also means the multi
-    // handle's own curl_multi_info_read() (see App::idle()) can never
-    // report a since-destroyed client's request as "done", so nothing
-    // downstream from that loop ever has to check whether the window
-    // it identifies still exists — it simply never gets asked about
-    // one that doesn't.
+    // startRefresh()'s own comment on why refreshCurl_ is safe to keep
+    // reusing afterward in general; here specifically, it also means
+    // the multi handle's own curl_multi_info_read() (see App::idle())
+    // can never report a since-destroyed client's request as "done",
+    // so nothing downstream from that loop ever has to check whether
+    // the window it identifies still exists — it simply never gets
+    // asked about one that doesn't.
     ~TransmissionClient();
 
     // Never copied or moved anywhere in this codebase (always used by
@@ -280,6 +280,28 @@ private:
     // std::string, for instance) — the only thing actually persisting
     // across calls on purpose is the connection itself.
     CURL* curl_ = nullptr;
+    // A SEPARATE easy handle from curl_ above, used ONLY by startRefresh()/
+    // finishRefresh() — never by call(). The two used to share curl_,
+    // which is unsafe: curl_multi_add_handle() (in startRefresh()) adds
+    // an easy handle to a multi transfer, and libcurl's own docs are
+    // explicit that an easy handle attached to a multi handle must not
+    // be used for a separate curl_easy_perform() (what call() does)
+    // until it's been removed again. With one shared handle, opening
+    // TrackerPeerWindow and switching between its Trackers/Peers tabs
+    // quickly enough (each switch calling getTrackerStats()/getPeers(),
+    // both synchronous call()s) could land while the SAME window's own
+    // periodic async refresh had that same handle mid-transfer,
+    // resetting and reusing it out from under curl's own multi-handle
+    // bookkeeping — observed as the app getting stuck with an empty
+    // list, not a clean crash, which is what use-after-free-adjacent
+    // API misuse like this tends to look like rather than something
+    // that fails loudly and immediately. Two handles means the two code
+    // paths can never collide, at the cost of one call() from
+    // getTrackerStats()/getPeers()/etc. not reusing the SAME underlying
+    // TCP connection the periodic refresh's own handle already has open
+    // to the same host — a second connection gets opened instead,
+    // trivial next to correctness here.
+    CURL* refreshCurl_ = nullptr;
     // Non-null exactly while a request started by startRefresh() is
     // still in flight — which CURLM it was added to (needed by both
     // finishRefresh(), to remove it again, and the destructor, to do

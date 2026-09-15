@@ -40,14 +40,15 @@ TransmissionClient::TransmissionClient(std::string host, int port,
                                         std::string user, std::string password)
     : host_(std::move(host)), port_(port),
       user_(std::move(user)), password_(std::move(password)),
-      curl_(curl_easy_init()) {}
+      curl_(curl_easy_init()), refreshCurl_(curl_easy_init()) {}
 
 TransmissionClient::~TransmissionClient() {
-    if (curl_) {
+    if (curl_) curl_easy_cleanup(curl_);
+    if (refreshCurl_) {
         if (refreshInFlight_ && refreshMulti_) {
-            curl_multi_remove_handle(refreshMulti_, curl_);
+            curl_multi_remove_handle(refreshMulti_, refreshCurl_);
         }
-        curl_easy_cleanup(curl_);
+        curl_easy_cleanup(refreshCurl_);
     }
     if (refreshHeaders_) curl_slist_free_all(refreshHeaders_);
 }
@@ -239,9 +240,9 @@ size_t TransmissionClient::refreshHeaderCallback(char* buffer, size_t size, size
 }
 
 void TransmissionClient::startRefresh(CURLM* multi, void* privateData) {
-    if (!curl_ || refreshInFlight_) return; // no handle to use, or one already running — see isRefreshInFlight()'s own doc comment
+    if (!refreshCurl_ || refreshInFlight_) return; // no handle to use, or one already running — see isRefreshInFlight()'s own doc comment
 
-    curl_easy_reset(curl_); // same reasoning as call() itself — see curl_'s own comment in the header
+    curl_easy_reset(refreshCurl_); // same reasoning as call() itself — see refreshCurl_'s own comment in the header
     refreshBody_.clear();
     refreshSessionIdHeader_.clear();
     lastError_.clear(); // same reasoning as call() itself — see its own comment
@@ -273,23 +274,23 @@ void TransmissionClient::startRefresh(CURLM* multi, void* privateData) {
     urlStream << "http://" << host_ << ":" << port_ << "/transmission/rpc";
     refreshUrl_ = urlStream.str();
 
-    curl_easy_setopt(curl_, CURLOPT_URL, refreshUrl_.c_str());
-    curl_easy_setopt(curl_, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, refreshPayload_.c_str());
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, refreshHeaders_);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, refreshWriteCallback);
-    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, this);
-    curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION, refreshHeaderCallback);
-    curl_easy_setopt(curl_, CURLOPT_HEADERDATA, this);
-    curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT, 5L);
-    curl_easy_setopt(curl_, CURLOPT_TIMEOUT, 15L);
-    curl_easy_setopt(curl_, CURLOPT_PRIVATE, privateData);
+    curl_easy_setopt(refreshCurl_, CURLOPT_URL, refreshUrl_.c_str());
+    curl_easy_setopt(refreshCurl_, CURLOPT_POST, 1L);
+    curl_easy_setopt(refreshCurl_, CURLOPT_POSTFIELDS, refreshPayload_.c_str());
+    curl_easy_setopt(refreshCurl_, CURLOPT_HTTPHEADER, refreshHeaders_);
+    curl_easy_setopt(refreshCurl_, CURLOPT_WRITEFUNCTION, refreshWriteCallback);
+    curl_easy_setopt(refreshCurl_, CURLOPT_WRITEDATA, this);
+    curl_easy_setopt(refreshCurl_, CURLOPT_HEADERFUNCTION, refreshHeaderCallback);
+    curl_easy_setopt(refreshCurl_, CURLOPT_HEADERDATA, this);
+    curl_easy_setopt(refreshCurl_, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(refreshCurl_, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(refreshCurl_, CURLOPT_PRIVATE, privateData);
     if (!user_.empty()) {
-        curl_easy_setopt(curl_, CURLOPT_USERNAME, user_.c_str());
-        curl_easy_setopt(curl_, CURLOPT_PASSWORD, password_.c_str());
+        curl_easy_setopt(refreshCurl_, CURLOPT_USERNAME, user_.c_str());
+        curl_easy_setopt(refreshCurl_, CURLOPT_PASSWORD, password_.c_str());
     }
 
-    curl_multi_add_handle(multi, curl_);
+    curl_multi_add_handle(multi, refreshCurl_);
     refreshMulti_ = multi;
     refreshInFlight_ = true;
 }
@@ -300,8 +301,8 @@ std::vector<Torrent> TransmissionClient::finishRefresh(CURLM* multi, bool* ok) {
     if (!refreshInFlight_) return result; // called out of turn — see this method's own doc comment
 
     long httpCode = 0;
-    curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &httpCode);
-    curl_multi_remove_handle(multi, curl_);
+    curl_easy_getinfo(refreshCurl_, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_multi_remove_handle(multi, refreshCurl_);
     refreshMulti_ = nullptr;
     refreshInFlight_ = false;
 
