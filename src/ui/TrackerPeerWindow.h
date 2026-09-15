@@ -2,138 +2,55 @@
 
 #define Uses_TDialog
 #define Uses_TButton
+#define Uses_TRadioButtons
+#define Uses_TSItem
 #include <tvision/tv.h>
 
+#include <functional>
 #include <vector>
 #include "../rpc/Tracker.h"
 #include "../rpc/Peer.h"
 #include "../rpc/TransmissionClient.h"
 #include "../tvision-ext/TGridView.h"
 
-// TButton with a persistently different look for "this one is the
-// active tab" — used for the two tab buttons at the top of
-// TrackerPeerWindow (see its own doc comment for why two buttons stand
-// in for a genuine tab control tvision doesn't have). Reuses the SAME
-// color pairing tvision's own TButton already uses for a keyboard-
-// FOCUSED button (see drawState()'s own sfSelected branch in
-// tbutton.cpp) rather than inventing a new color from scratch — matches
-// the existing theme instead of clashing with it. TButton::getPalette()
-// is virtual specifically so a subclass CAN override just this one
-// piece; drawState() itself (not virtual, and so not overridden here)
-// keeps doing all its own state-driven color-selection logic
-// unchanged — it just resolves through a different palette string when
-// active_ is true. Both tab buttons stay enabled/clickable regardless
-// of which is active (unlike an earlier version of this that disabled
-// the active one instead — see "Fixed bugs" in the README for why):
-// clicking the one you're already on is a harmless no-op, and disabling
-// it would have meant losing this class's own color override entirely,
-// since TButton::drawState()'s disabled-state branch bypasses the
-// normal/selected color logic this depends on altogether.
-class TTabButton : public TButton {
+// TRadioButtons with a callback fired whenever the selection actually
+// changes — clicking a different item, or moving to one with the
+// arrow keys (TRadioButtons's own movedTo() already changes which one
+// is selected immediately on arrow-key movement, not only on a
+// separate confirm step — see tradiobu.cpp). Used for TrackerPeerWindow's
+// own Trackers/Peers switch: tvision's own native control for "choose
+// one of a small fixed set", with its own marker glyph, keyboard
+// navigation, and focus handling already built in, rather than two
+// ordinary buttons standing in for a tab control tvision doesn't have
+// natively (see "Fixed bugs" in the README for the considerable trouble
+// that turned out to need, and why this replaced it outright instead of
+// refining it further).
+class TTrackerPeerRadio : public TRadioButtons {
 public:
-    TTabButton(const TRect& bounds, TStringView title, ushort command)
-        : TButton(bounds, title, command, bfNormal) {}
-
-    void setActive(bool active) {
-        if (active == active_) return;
-        active_ = active;
-        drawView();
+    using TRadioButtons::TRadioButtons;
+    std::function<void(int)> onChanged;
+    void press(int item) override {
+        TRadioButtons::press(item);
+        if (onChanged) onChanged(item);
     }
-
-    TPalette& getPalette() const override {
-        // Index 1 substituted with index 3's own value: TButton::
-        // drawState()'s "normal, not specially focused" branch calls
-        // getColor(0x0501) (palette indices 5 and 1) — swapping index 1
-        // to match what index 3 holds makes that resolve to the exact
-        // same colors getColor(0x0703) (indices 7 and 3, the SELECTED-
-        // button case) already would under the unmodified palette.
-        // Index 5 doesn't need its own change: it already holds the
-        // same value as index 7 in TButton's own default palette
-        // (cpButton — see tbutton.cpp).
-        static TPalette activePalette("\x0C\x0B\x0C\x0D\x0E\x0E\x0E\x0F", 8);
-        return active_ ? activePalette : TButton::getPalette();
+    void movedTo(int item) override {
+        TRadioButtons::movedTo(item);
+        if (onChanged) onChanged(item);
     }
-
-    // TButton::draw() (== drawState(False), see tbutton.cpp — drawState
-    // itself isn't virtual, so this is the only hook available) always
-    // draws a one-column shadow along its own right edge, regardless of
-    // what's next to it — with two tab buttons placed directly against
-    // each other (no gap in their own bounds — see TrackerPeerWindow's
-    // own constructor), that shadow column is exactly what still read
-    // as a visible gap between them even once the bounds themselves
-    // touched. Rather than reimplementing drawState()'s own fairly
-    // involved rendering from scratch just to omit one column, this
-    // draws normally via the base class first, then overwrites that one
-    // column with a blank cell in this button's own current background
-    // color — recomputed here the same way drawState() itself would
-    // (disabled / selected / default / plain), so the patched-over
-    // column always matches whatever the rest of the button just drew,
-    // in whatever state it's actually in.
-    // TButton::drawState() (see tbutton.cpp — not virtual, so this is
-    // the only hook available, via the virtual draw() that just calls
-    // it) shades BOTH edges of every button, not just the right one:
-    // b.putAttribute(0, cShadow) runs unconditionally for column 0 (the
-    // LEFT edge) on every row, alongside the right-edge shadow at
-    // column size.x-1 already patched below. Missing the left edge
-    // the first time this was fixed meant the SECOND tab button's own
-    // left edge was still shaded even after the first button's own
-    // right edge was patched — the seam between two adjacent tab
-    // buttons is made of two different edges, one from each button, not
-    // one. Both patched here the same way: draw normally via the base
-    // class, then overwrite each shaded column with a blank cell in
-    // this button's own current background color.
-    // TButton::drawState() (see tbutton.cpp — not virtual, so this is
-    // the only hook available, via the virtual draw() that just calls
-    // it) shades three places on every button, not the two already
-    // patched below: column 0 and column size.x-1 on the CONTENT row
-    // (row 0, since these buttons are only 2 rows tall — size.y-2==0,
-    // so the drawing loop only ever runs once), AND the entire LAST row
-    // (size.y-1) as one continuous shadow-colored strip underneath the
-    // button — visible as a solid "▀▀▀▀" band directly under each tab
-    // button in an actual run (caught from a screenshot with the strip
-    // marked directly, the same way the left-edge miss two entries
-    // above this one was). All three patched here the same way: draw
-    // normally via the base class, then overwrite each shaded region
-    // with a blank cell (or, for the bottom row, a whole blank row) in
-    // this button's own current background color.
-    void draw() override {
-        TButton::draw();
-        TAttrPair cButton;
-        if ((state & sfDisabled) != 0) {
-            cButton = getColor(0x0404);
-        } else {
-            cButton = getColor(0x0501);
-            if ((state & sfActive) != 0) {
-                if ((state & sfSelected) != 0) cButton = getColor(0x0703);
-                else if (amDefault) cButton = getColor(0x0602);
-            }
-        }
-        TDrawBuffer bEdge;
-        bEdge.moveChar(0, ' ', cButton, 1);
-        writeLine(0, 0, 1, 1, bEdge);
-        writeLine(size.x - 1, 0, 1, 1, bEdge);
-
-        TDrawBuffer bRow;
-        bRow.moveChar(0, ' ', cButton, size.x);
-        writeLine(0, size.y - 1, size.x, 1, bRow);
-    }
-
-private:
-    bool active_ = false;
 };
 
 // Non-modal window listing per-torrent live data, in one of two tabs —
 // Trackers (host, tier, seeders, leechers, downloaded count, status) or
 // Peers (address, client, progress, down/up speed, flags) — switched
-// via two buttons at the top acting as tabs (see switchToTab()), built
-// on TGridView (the same generic widget the main torrent list and the
-// files window use). Neither tab is part of the app's periodic
-// refresh (see TransmissionClient::getTrackerStats()/getPeers()) —
-// each is fetched on demand, whenever it's the one actually showing,
-// with a manual "Refresh" button and "Close". Column resizing/
-// reordering/showing-hiding is available too, but through the app's
-// single, focus-aware "Manage columns..." menu entry rather than a
-// button of its own here — see App::focusedGrid()/
+// via a two-item TRadioButtons cluster at the top acting as tabs (see
+// switchToTab()), built on TGridView (the same generic widget the main
+// torrent list and the files window use). Neither tab is part of the
+// app's periodic refresh (see TransmissionClient::getTrackerStats()/
+// getPeers()) — each is fetched on demand, whenever it's the one
+// actually showing, with a manual "Refresh" button and "Close". Column
+// resizing/reordering/showing-hiding is available too, but through the
+// app's single, focus-aware "Manage columns..." menu entry rather than
+// a button of its own here — see App::focusedGrid()/
 // showColumnManagerDialog(), and isPeersTabActive() below for how that
 // knows which tab's own columns to save.
 // Double-clicking a tracker row (only — peers have no equivalent) opens
@@ -215,15 +132,14 @@ private:
     // whichever initial*/current column layout belongs to it, and
     // re-fetches that tab's own data — called once from the
     // constructor (for the Trackers tab, shown first — see the
-    // constructor's own doc comment) and again on every tab-button
-    // click afterward.
+    // constructor's own doc comment) and again whenever the radio
+    // cluster's own selection changes afterward.
     void switchToTab(Tab tab);
 
     int torrentId_;
     TransmissionClient& client_;
     TGridView* grid_ = nullptr;
-    TTabButton* trackersTabButton_ = nullptr;
-    TTabButton* peersTabButton_ = nullptr;
+    TTrackerPeerRadio* tabRadio_ = nullptr;
     Tab activeTab_ = Tab::Trackers;
     std::vector<TrackerStat> trackers_;
     std::vector<Peer> peers_;

@@ -155,7 +155,7 @@ public:
         owner_->updateHScrollBarVisibility();
 
         TDrawBuffer b;
-        TColorAttr color = owner_->headerColor_ ? owner_->headerColor_() : TColorAttr(getColor(1));
+        TColorAttr color = getColor(1);
         b.moveChar(0, ' ', color, size.x);
         int offset = owner_->horizontalScrollOffset();
         // Fixed, never-scrolled — see drawScrolled()'s own doc comment.
@@ -714,7 +714,6 @@ void TGridView::setRowCount(int count) {
 
 void TGridView::setCellTextCallback(CellTextFn fn) { cellText_ = std::move(fn); }
 void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); }
-void TGridView::setHeaderColorCallback(HeaderColorFn fn) { headerColor_ = std::move(fn); }
 void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
 void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }

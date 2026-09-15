@@ -172,20 +172,14 @@ HTTP and nlohmann/json for parsing.
 **Trackers and peers**
 - A "Trackers..." button in the torrent details window opens a
   separate, non-modal window with **two tabs — Trackers and Peers —
-  switched via two same-width buttons at the top, seamlessly against
-  each other with no visible seam between them, acting as tabs** (Turbo
-  Vision has no tab control of its own, so this is a hand-built
-  approximation rather than a native one — see "Fixed bugs" below for
-  how). Whichever tab is active gets a persistently different
-  background color, doubling as the "you're here" indicator — both stay
-  clickable either way. Both tabs are built on `TGridView`, the same
-  generic widget the main list and the files
+  switched via a two-item radio-button cluster at the top** (Turbo
+  Vision has no tab control of its own; a native radio-button cluster,
+  with its own marker glyph and keyboard navigation already built in,
+  reads clearly enough as "choose one of these two" without needing one
+  — see "Fixed bugs" below for an earlier, hand-built button-based
+  attempt at this that didn't hold up). Both tabs are built on
+  `TGridView`, the same generic widget the main list and the files
   window use
-- Shown without the usual drop shadow other windows in this app have,
-  and each tab's own column headers use the same blue background as
-  the rows beneath them, rather than the plain label color every other
-  `TGridView`-based window's own headers still use by default — see
-  "Fixed bugs" below for both
 - **Trackers**: host, tier, seeders, leechers, downloaded count, and a
   short status (OK/Error) for every tracker on this torrent
 - **Peers**: address (`ip:port`), client name, download progress,
@@ -193,7 +187,7 @@ HTTP and nlohmann/json for parsing.
   for every peer currently connected
 - Columns, on either tab, can be resized, reordered, and shown/hidden —
   through the same single, focus-aware "Manage columns..." menu entry
-  the main list uses (see "Fixed bugs" below), automatically once this
+  the main list uses, automatically once this
   window has focus; there's no button of its own for it here. Rows
   aren't sortable by a column click on either tab, for related but
   different reasons: Transmission already returns trackers in tier
@@ -796,219 +790,41 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
-**The tab buttons' own bottom edge: a third shaded region, missed by
-both previous fixes.** Caught the same way the second one was — a
-screenshot with the exact spot marked directly, this time a solid dark
-band running the full width of both buttons, one row below them.
+**The Trackers/Peers switch, rebuilt on a native `TRadioButtons`
+cluster instead of two ordinary buttons pretending to be tabs.** The
+original version of this (two plain `TButton`s, whichever one active
+simply disabled) worked, but every attempt at making it actually LOOK
+like two attached tabs — a distinct color for the active one, no gap
+between them, no residual shading anywhere on either button — kept
+running into another edge `TButton::drawState()` shades that hadn't
+been patched yet: first the left/right edges of each button, then a
+whole extra shadow row underneath, each only found from a fresh
+screenshot after the previous fix seemed to check out. None of that
+was actually necessary: `TRadioButtons` is tvision's own control for
+exactly this "choose one of a small fixed set" case, complete with its
+own selection marker (a filled vs. empty circle, `(•)`/`( )`), keyboard
+navigation, and focus handling, none of which needs reimplementing or
+patching around piece by piece. Decided to stop refining the
+button-based version and replace it outright rather than continue
+finding and fixing one more edge case each time.
 
-`TButton::drawState()` shades three separate things, not the two
-`TTabButton::draw()` was already patching: column 0 and column
-`size.x-1` on the button's own content row (already fixed), AND the
-button's entire LAST row — with these buttons only 2 rows tall, that's
-row 1, drawn as one continuous shadow-colored strip the full width of
-the button, unconditionally, regardless of anything about what's next
-to it. Missed on both earlier passes because neither one was looking
-for a shading that spans an entire additional row rather than a column
-within an existing one. Patched the same way as the other two: after
-`TButton::draw()` runs normally, overwrite that whole last row with a
-blank line in this button's own current background color.
+`TTrackerPeerRadio` (a small `TRadioButtons` subclass, local to this
+window) overrides `press()`/`movedTo()` — both change which item is
+selected in the base class, `movedTo()` on arrow-key navigation without
+a separate confirm step, `press()` on an actual click — to also invoke
+an `onChanged` callback, the same callback-based pattern already used
+throughout this app for other custom controls. `TCluster`'s own layout
+switches between a vertical list and side-by-side columns based purely
+on the bounds it's given: a height of exactly one row is what makes
+"Trackers"/"Peers" lay out horizontally like tabs, rather than stacked
+on top of each other the way a taller cluster would default to.
 
-Verified directly rather than assumed fixed from the code change alone:
-read every cell's own background color along the row directly beneath
-both tab buttons on a live running instance — continuous green the
-entire width, no shadow-colored cells left anywhere in that row.
-
-**The Trackers/Peers window: no drop shadow, and column headers matching
-the rows' own blue background.** Asked for directly, as cosmetic
-follow-ups once the tab buttons themselves were settled.
-
-The shadow: every `TWindow` (and so every `TDialog`, since it derives
-from one) sets `state |= sfShadow` unconditionally in its own
-constructor (confirmed directly in tvision's own `twindow.cpp`, not
-assumed) — cleared here with `state &= ~sfShadow` right after
-`TrackerPeerWindow`'s own base construction, scoped to just this one
-window rather than globally for every window in the app, since only
-this one was asked about.
-
-The header color needed a genuinely new hook, not just a different
-value passed to an existing one: `TGridHeaderView` (part of the
-generic `TGridView` widget — see the multi-server work's own entries
-much further up this file for where that lives and why) always
-resolved its own color through the owning dialog's palette chain
-(`getColor(1)`, via a single-index palette matching plain
-`TStaticText`), with no way for an embedding window to override it
-directly — unlike each ROW's own color, which already had exactly this
-kind of hook (`RowColorFn`/`setRowColorCallback()`). Added the
-equivalent for the header: `HeaderColorFn`/`setHeaderColorCallback()`,
-optional (falls back to the existing palette-chain behavior when unset,
-so every other `TGridView`-based window in this app — the main list,
-the files window — keeps looking exactly as it already did, unaffected).
-`TrackerPeerWindow` sets it to the exact same hardcoded `TColorAttr`
-its own rows already use for the unfocused case, so the header visibly
-matches rather than coincidentally happening to look similar.
-
-Verified both on a live running instance rather than assumed from the
-code alone. The header color: read directly via pyte's own per-cell
-background attribute, both the header row and a data row beneath it —
-confirmed genuinely identical, not just similar-looking text colors.
-The shadow: less straightforward, since a stray dark region turned out
-to already exist nearby for an entirely unrelated reason (general
-desktop/window background, not anything to do with this window at all)
-— resolved by capturing the exact same screen region BEFORE
-`TrackerPeerWindow` was ever opened (only the details window visible)
-and comparing: identical either way, confirming that region was never
-this window's own shadow to begin with, and the fix didn't need to
-explain it away.
-
-**The Trackers/Peers seam, for real this time — the previous fix only
-patched one of the two edges that make it up.** Caught from a
-screenshot, not a report in words: a red X marked squarely between the
-two tab buttons showing the seam was still visibly there despite the
-entry right below this one claiming (and directly verifying) it was
-gone.
-
-The bug: `TButton::drawState()` shades BOTH edges of every button, not
-just the trailing one — `b.putAttribute(0, cShadow)` runs
-unconditionally for column 0 (the LEFT edge) on every row, right
-alongside the right-edge shadow at column `size.x-1` that was already
-being patched. The previous fix only ever patched the right edge —
-correct for making the FIRST button's own trailing edge blend into
-whatever comes next, but the seam between two adjacent tab buttons is
-actually made of two different edges from two different buttons: the
-first one's own right edge, AND the second one's own left edge. Missing
-the second one meant the Peers button's own left edge stayed shaded
-the whole time, regardless of anything done to the Trackers button.
-`TTabButton::draw()` now patches both — column 0 and column `size.x-1`
-— the same way, in the same current-state background color, on every
-button.
-
-Explains why the previous entry's own verification didn't catch this:
-it sampled one specific column, one column before "Peers" own text
-started — which, it turns out, landed inside the (already correctly
-patched) tail end of the Trackers button's own padding, not on the
-actual left edge of the Peers button itself. Verified properly this
-time: every single column across the entire visible seam, from
-"Trackers" through "Peers", checked individually via pyte's own
-per-cell background attribute — confirmed a continuous, unbroken
-background color the whole way across, not just one representative
-sample that happened to look fine.
-
-**The Trackers/Peers tab buttons, again: genuinely seamless now (no
-visible seam at all, not just a smaller one), and the same width.**
-Direct follow-up to the entry right below this one, after being told
-the two buttons still didn't look properly "attached" — they didn't:
-tightening their bounds and switching to left-justified text (see that
-entry) reduced the visible gap, but never eliminated it, because the
-actual cause was never the bounds or the text justification at all.
-
-`TButton::drawState()` (not virtual, so nothing before this could hook
-into it directly) always draws a one-column shadow along its own right
-edge, REGARDLESS of what's placed next to it — that column, not
-anything about spacing or centering, is what still read as a seam
-between two buttons whose bounds already touched exactly. `draw()`
-(which just calls `drawState(False)`) IS virtual, so `TTabButton`
-overrides it: calls the base class's own `TButton::draw()` first (all
-of `drawState()`'s own rendering happens completely unmodified), then
-patches over that one shadow column with a blank cell in this button's
-own current background color — recomputed with the exact same
-disabled/selected/default/plain logic `drawState()` itself uses
-internally, so the patched column always matches whatever color the
-rest of the button actually just drew, in whatever state it's actually
-in, rather than hardcoding one color that would only be right some of
-the time. With the seam itself solved directly, left-justification was
-no longer doing any real work — switched back to TButton's own default
-centered text, which (now that both buttons share one width — see
-below) is what actually makes each label read as centered within its
-own equal-sized tab, the way a real tab control's labels would be, not
-crowded against one shared left edge.
-
-Made both buttons the same width (16 columns each, sized for the longer
-"Trackers" label with the shorter "Peers" one centered within the same
-space) — asked for directly, alongside the seam fix, specifically to
-read as two equal tab slots rather than two differently-sized buttons
-that happen to be adjacent.
-
-Verified the seam itself directly, not just "looks closer together" the
-way the previous attempt's own measurement did: read the exact boundary
-cell — the one column where the Trackers button's own bounds end and
-the Peers button's own begin — via pyte's own per-cell attributes
-(background color specifically, not just checking for a non-space
-character) on a live running instance. It came back as a plain space in
-the SAME background color as everything around it, confirming the
-seam is genuinely gone rather than just narrower — not a shadow
-character, not a color break, nothing distinguishing it from the button
-surface on either side. The active/inactive color difference and the
-click-still-works check from the previous entry were both re-confirmed
-the same way, unchanged by either of these two follow-up changes.
-
-**The Trackers/Peers tab buttons: placed directly against each other,
-and the active one given a genuinely different background color
-instead of just being disabled.** Asked for directly, as a follow-up to
-the tabs themselves (see the entry right below this one).
-
-The color needed understanding `TButton`'s own palette system, not
-guessed at: `TButton::drawState()` (in tvision's own `tbutton.cpp`)
-picks one of several `getColor()` calls depending on state — plain
-`getColor(0x0501)` normally, `getColor(0x0703)` when the button happens
-to have keyboard focus (`sfSelected`). Each of those resolves through
-two palette-index lookups (`getColor()`'s own high/low byte split) into
-whatever `getPalette()` returns — and `getPalette()` is `virtual`,
-specifically so a subclass CAN swap in a different palette for its own
-instance without needing to touch `drawState()` at all, which isn't
-virtual and stays completely unmodified. `TTabButton` (a small `TButton`
-subclass, local to this window) does exactly that: an `active_` flag
-and a `setActive()` setter (calling `drawView()` after changing it),
-and a `getPalette()` override that swaps in a version of `TButton`'s own
-default palette with one index substituted — the one used in the plain,
-"nothing special" render path — for the value the SELECTED-button path
-already uses. The visible result reuses colors tvision already uses
-elsewhere for "this button is focused" rather than inventing a new one,
-so it looks consistent with everything else rather than clashing.
-Genuinely verified as a color difference, not assumed from the code
-alone: pyte (the terminal emulator library already used for testing
-this project throughout — see the many other entries in this file)
-tracks each cell's own foreground/background/reverse attributes, not
-just its character — reading those directly for a cell inside each tab
-button's own label confirmed the two really do resolve to different
-colors on a live running instance, not just that the palette math
-looked right on paper.
-
-Making the DISABLED state (grey, unclickable) was the active tab's
-whole indicator; needed dropping entirely, not just supplementing: at
-disabled, `drawState()`'s very first branch replaces the state-driven
-color logic above entirely (`getColor(0x0404)`, a completely different
-path). Keeping both the disabled state and this new color together
-would have meant the color override having no visible effect at all
-once the button was ALSO disabled. Both tab buttons now stay
-enabled/clickable regardless of which is active — clicking the one
-already showing is a harmless no-op (`switchToTab()` handles being
-called with the tab already active fine), and this fixes an unrelated
-inconsistency the disabled-based version had: once the color exists as
-its own independent signal, there's no more reason to prevent clicking
-the already-active tab at all.
-
-Placing the two buttons directly against each other (no gap in their
-own bounds — the second one starts exactly where the first one's rect
-ends) turned out to only get most of the way there on its own:
-`TButton::drawTitle()` centers its own title text by default, leaving
-padding on both sides, and every button draws its own one-column
-"shadow" along its right edge — together, adjacent buttons still read
-as visibly separate even with touching rects. Switching to
-`bfLeftJust` (left-justifies the title, starting one column in from the
-left edge rather than centered) and tightening each button's own width
-down to roughly its label's own length removed the CENTERING padding
-specifically, leaving only the shadow column and left-justify's own
-one-column margin between them — measured directly (again via pyte, the
-literal characters between where one button's label ends and the
-next's begins) at 3 columns, down from 7 before. The shadow itself is
-TButton's own per-instance visual, not something a bounds change alone
-can remove — going further would mean overriding `drawTitle()`/
-`drawState()` entirely rather than working within them, which felt like
-the wrong tradeoff for how much closer it would actually get. Re-
-verified the resized buttons still worked correctly for their actual
-job, not just that they looked closer together: clicking "Peers" at its
-own new, smaller coordinates still switched tabs and showed the right
-peer data.
+Verified on a live running instance, not just compiled: the marker
+correctly starts on "Trackers", clicking "Peers" moves it there and
+switches the grid to show peer data (address, client, progress, speeds)
+matching the mock's own — confirming both the visual selection and the
+underlying tab-switching logic survived the rewrite intact, not just
+that a `TRadioButtons` cluster renders without crashing.
 
 **`TrackerListWindow` renamed to `TrackerPeerWindow`.** Pointed out
 directly, right after the Peers tab landed (see the entry just below

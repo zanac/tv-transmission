@@ -134,16 +134,6 @@ public:
     // manage — whatever the callback returns right now is what's shown.
     using CellTextFn    = std::function<std::string(int row, int col)>;
     using RowColorFn     = std::function<TColorAttr(int row, bool focused)>; // optional
-    // Overrides the column header's own background/text color entirely
-    // when set — by default it resolves through the owner's own
-    // palette chain like any other TView (see TGridHeaderView::
-    // getPalette()), matching whatever plain label color the embedding
-    // app already uses elsewhere; this is for a caller that wants the
-    // header to instead match some other fixed color it's using for
-    // its own rows (e.g. via RowColorFn above), which a palette-chain
-    // color can't reliably do on its own since the two aren't
-    // necessarily resolved through the same mechanism.
-    using HeaderColorFn = std::function<TColorAttr()>; // optional
     using CellBoldFn      = std::function<bool(int row, int col)>;             // optional
     using RowActivateFn  = std::function<void(int row)>;               // double-click / Enter
     using RowContextFn   = std::function<void(int row, TPoint screenPos)>; // right-click
@@ -194,7 +184,6 @@ public:
     void setRowCount(int count);
     void setCellTextCallback(CellTextFn fn);
     void setRowColorCallback(RowColorFn fn);
-    void setHeaderColorCallback(HeaderColorFn fn);
     void setCellBoldCallback(CellBoldFn fn);
     void setRowActivateCallback(RowActivateFn fn);
     void setRowContextCallback(RowContextFn fn);
@@ -393,7 +382,6 @@ private:
 
     CellTextFn cellText_;
     RowColorFn rowColor_;
-    HeaderColorFn headerColor_;
     CellBoldFn cellBold_;
     RowActivateFn onRowActivate_;
     RowContextFn onRowContext_;

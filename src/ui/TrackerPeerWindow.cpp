@@ -22,8 +22,6 @@ std::string formatCount(int v) {
 // as TorrentDetailsWindow's cmApplySpeedLimits/cmCloseDetails).
 constexpr ushort cmRefreshTrackers = 210;
 constexpr ushort cmCloseTrackers = 211;
-constexpr ushort cmSwitchToTrackersTab = 212;
-constexpr ushort cmSwitchToPeersTab = 213;
 
 } // namespace
 
@@ -45,35 +43,31 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
       peerColumnOrder_(initialPeerColumnOrder),
       peerColumnVisible_(initialPeerColumnVisible) {
     options |= ofCentered;
-    // TWindow's own constructor sets this unconditionally (see
-    // twindow.cpp) — cleared here specifically for this window, not
-    // globally for every window in the app, since only this one was
-    // asked about.
-    state &= ~sfShadow;
 
     TRect r = getExtent();
     r.grow(-1, -1);
     r.b.y -= 3;   // room for the button row at the bottom
     int tabY = r.a.y;
-    r.a.y += 2;   // room for the tab-button row at the top
+    r.a.y += 2;   // room for the tab row at the top
 
-    // Two tab buttons rather than a menu or a TRadioButtons cluster —
-    // simplest thing that reads as "two mutually exclusive views" at a
-    // glance, placed directly adjacent to each other (no visible gap —
-    // see TTabButton's own draw() override in the header for how, past
-    // just touching bounds) and given the SAME width so they read as
-    // two equal-sized tabs rather than two differently-sized buttons
-    // that happen to be next to each other. Whichever tab is ACTIVE
-    // gets a persistently different background color (see TTabButton's
-    // own getPalette() override) — both stay enabled/clickable either
-    // way.
-    constexpr int tabWidth = 16;
-    trackersTabButton_ = new TTabButton(TRect(r.a.x, tabY, r.a.x + tabWidth, tabY + 2),
-                                         tr(Str::TabTrackers), cmSwitchToTrackersTab);
-    insert(trackersTabButton_);
-    peersTabButton_ = new TTabButton(TRect(r.a.x + tabWidth, tabY, r.a.x + 2 * tabWidth, tabY + 2),
-                                      tr(Str::TabPeers), cmSwitchToPeersTab);
-    insert(peersTabButton_);
+    // A two-item TRadioButtons cluster rather than two ordinary
+    // buttons standing in for a tab control tvision doesn't have
+    // natively — its own marker glyph already shows which one is
+    // selected, with keyboard navigation (arrow keys move AND select
+    // immediately — see TTrackerPeerRadio's own doc comment) and focus
+    // handling already built in, none of which needed reimplementing or
+    // patching around the way two plain TButtons pretending to be tabs
+    // did (see "Fixed bugs" in the README). height=1 in the bounds
+    // below is what makes TCluster's own layout arrange the two items
+    // side by side in one row instead of stacked vertically — its
+    // column-vs-row layout switches on exactly that (see TCluster::
+    // column() in tvision's own tcluster.cpp).
+    TSItem* tabItems = new TSItem(tr(Str::TabTrackers), new TSItem(tr(Str::TabPeers), nullptr));
+    tabRadio_ = new TTrackerPeerRadio(TRect(r.a.x, tabY, r.a.x + 34, tabY + 1), tabItems);
+    tabRadio_->onChanged = [this](int item) {
+        switchToTab(item == 0 ? Tab::Trackers : Tab::Peers);
+    };
+    insert(tabRadio_);
 
     // Resizable and reorderable; sortability is decided per tab (see
     // this class's own doc comment in the header for why neither one
@@ -134,14 +128,6 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
         return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
     });
-    // Matches the rows' own unfocused color above (0x1F) exactly,
-    // rather than the header's own default (resolved through this
-    // dialog's palette chain — see TGridHeaderView::getPalette()),
-    // which doesn't otherwise have any reason to end up looking the
-    // same as a hardcoded row color chosen independently.
-    grid_->setHeaderColorCallback([]() -> TColorAttr {
-        return TColorAttr(0x1F);
-    });
 
     // "Columns..." is no longer a button here — it's now the single,
     // focus-aware "Manage columns..." menu entry (see App::
@@ -185,8 +171,6 @@ void TrackerPeerWindow::switchToTab(Tab tab) {
     }
 
     activeTab_ = tab;
-    trackersTabButton_->setActive(tab == Tab::Trackers);
-    peersTabButton_->setActive(tab == Tab::Peers);
 
     grid_->clearColumns();
     if (tab == Tab::Trackers) {
@@ -343,8 +327,6 @@ void TrackerPeerWindow::handleEvent(TEvent& event) {
     switch (event.message.command) {
         case cmRefreshTrackers:      refresh();                    clearEvent(event); break;
         case cmCloseTrackers:        close();                       clearEvent(event); break;
-        case cmSwitchToTrackersTab:  switchToTab(Tab::Trackers);   clearEvent(event); break;
-        case cmSwitchToPeersTab:     switchToTab(Tab::Peers);      clearEvent(event); break;
     }
 }
 
