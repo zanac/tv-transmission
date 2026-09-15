@@ -180,6 +180,10 @@ HTTP and nlohmann/json for parsing.
   attempt at this that didn't hold up). Both tabs are built on
   `TGridView`, the same generic widget the main list and the files
   window use
+- The radio cluster's own background, and each tab's own column
+  headers, both use the same blue as the rows beneath them, rather than
+  the plain palette-resolved color every other `TGridView`-based
+  window's own headers still use by default — see "Fixed bugs" below
 - **Trackers**: host, tier, seeders, leechers, downloaded count, and a
   short status (OK/Error) for every tracker on this torrent
 - **Peers**: address (`ip:port`), client name, download progress,
@@ -789,6 +793,45 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Column headers and the radio cluster's own background, both matching
+the rows' blue — two separate gaps, closed with one shared trick.**
+Asked for directly, marked on a screenshot: the cluster's own teal
+background stopped right after "Peers" instead of continuing to the
+window's own right edge, and the column headers below it used the
+default palette color instead of matching the rows.
+
+The radio cluster: `TCluster::drawMultiBox()` (in tvision's own
+`tcluster.cpp`) already fills its ENTIRE bounds with one color before
+drawing anything on top (`b.moveChar(0, ' ', cNorm, size.x)`) — nothing
+needed patching here at all, unlike the shading `TButton::drawState()`
+turned out to do piece by piece (see the entry further down this file
+on why button-based tabs were abandoned for this same cluster). The
+gap was simply that the cluster's own bounds were only wide enough for
+the two labels, not the full row — widened to the grid's own full width
+below it, and its background now fills the whole row on its own, no
+override needed.
+
+The column headers needed a genuinely new hook, since `TGridHeaderView`
+(part of the generic `TGridView` widget) always resolved its own color
+through the owning dialog's palette chain, with no way for an embedding
+window to override it directly — unlike each ROW's own color, which
+already had exactly this kind of hook (`RowColorFn`/
+`setRowColorCallback()`). Added the equivalent for the header:
+`HeaderColorFn`/`setHeaderColorCallback()`, optional (falls back to the
+existing palette-chain behavior when unset, so every other
+`TGridView`-based window in this app — the main list, the files window
+— keeps looking exactly as it already did, unaffected).
+`TrackerPeerWindow` sets it to the exact same hardcoded `TColorAttr`
+its own rows already use for the unfocused case, so the header visibly
+matches rather than coincidentally happening to look similar.
+
+Verified both directly on a live running instance: every cell's own
+background color read individually from right after "Peers" to near
+the window's own right edge — uniform the whole way, confirming the
+cluster's own fill genuinely reaches the edge rather than just looking
+close in a quick glance. The header: read the same way against a data
+row beneath it — identical background on both.
 
 **The Trackers/Peers switch, rebuilt on a native `TRadioButtons`
 cluster instead of two ordinary buttons pretending to be tabs.** The

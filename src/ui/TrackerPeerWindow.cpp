@@ -63,7 +63,13 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     // column-vs-row layout switches on exactly that (see TCluster::
     // column() in tvision's own tcluster.cpp).
     TSItem* tabItems = new TSItem(tr(Str::TabTrackers), new TSItem(tr(Str::TabPeers), nullptr));
-    tabRadio_ = new TTrackerPeerRadio(TRect(r.a.x, tabY, r.a.x + 34, tabY + 1), tabItems);
+    // Spans the FULL row width (r.b.x, not just enough for the two
+    // labels) so its own background — TCluster::drawMultiBox() already
+    // fills its entire own bounds with one color before drawing
+    // anything on top (see tcluster.cpp) — extends all the way to the
+    // grid's own right edge instead of stopping right after "Peers",
+    // matching the same row the grid's own header sits on below it.
+    tabRadio_ = new TTrackerPeerRadio(TRect(r.a.x, tabY, r.b.x, tabY + 1), tabItems);
     tabRadio_->onChanged = [this](int item) {
         switchToTab(item == 0 ? Tab::Trackers : Tab::Peers);
     };
@@ -127,6 +133,17 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     // own meta-grid, for the same reason.
     grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
         return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
+    // Matches the rows' own unfocused color above (0x1F) exactly,
+    // rather than the header's own default (resolved through this
+    // dialog's palette chain — see TGridHeaderView::getPalette()),
+    // which doesn't otherwise have any reason to end up looking the
+    // same as a hardcoded row color chosen independently. Applies to
+    // whichever tab's own columns are currently loaded — set once here
+    // rather than in switchToTab() since the callback itself doesn't
+    // change between tabs, only what grid_ shows underneath it.
+    grid_->setHeaderColorCallback([]() -> TColorAttr {
+        return TColorAttr(0x1F);
     });
 
     // "Columns..." is no longer a button here — it's now the single,
