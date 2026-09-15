@@ -45,6 +45,11 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
       peerColumnOrder_(initialPeerColumnOrder),
       peerColumnVisible_(initialPeerColumnVisible) {
     options |= ofCentered;
+    // TWindow's own constructor sets this unconditionally (see
+    // twindow.cpp) — cleared here specifically for this window, not
+    // globally for every window in the app, since only this one was
+    // asked about.
+    state &= ~sfShadow;
 
     TRect r = getExtent();
     r.grow(-1, -1);
@@ -128,6 +133,14 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     // own meta-grid, for the same reason.
     grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
         return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
+    });
+    // Matches the rows' own unfocused color above (0x1F) exactly,
+    // rather than the header's own default (resolved through this
+    // dialog's palette chain — see TGridHeaderView::getPalette()),
+    // which doesn't otherwise have any reason to end up looking the
+    // same as a hardcoded row color chosen independently.
+    grid_->setHeaderColorCallback([]() -> TColorAttr {
+        return TColorAttr(0x1F);
     });
 
     // "Columns..." is no longer a button here — it's now the single,

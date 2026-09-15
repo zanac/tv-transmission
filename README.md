@@ -181,6 +181,11 @@ HTTP and nlohmann/json for parsing.
   clickable either way. Both tabs are built on `TGridView`, the same
   generic widget the main list and the files
   window use
+- Shown without the usual drop shadow other windows in this app have,
+  and each tab's own column headers use the same blue background as
+  the rows beneath them, rather than the plain label color every other
+  `TGridView`-based window's own headers still use by default — see
+  "Fixed bugs" below for both
 - **Trackers**: host, tier, seeders, leechers, downloaded count, and a
   short status (OK/Error) for every tracker on this torrent
 - **Peers**: address (`ip:port`), client name, download progress,
@@ -790,6 +795,48 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**The Trackers/Peers window: no drop shadow, and column headers matching
+the rows' own blue background.** Asked for directly, as cosmetic
+follow-ups once the tab buttons themselves were settled.
+
+The shadow: every `TWindow` (and so every `TDialog`, since it derives
+from one) sets `state |= sfShadow` unconditionally in its own
+constructor (confirmed directly in tvision's own `twindow.cpp`, not
+assumed) — cleared here with `state &= ~sfShadow` right after
+`TrackerPeerWindow`'s own base construction, scoped to just this one
+window rather than globally for every window in the app, since only
+this one was asked about.
+
+The header color needed a genuinely new hook, not just a different
+value passed to an existing one: `TGridHeaderView` (part of the
+generic `TGridView` widget — see the multi-server work's own entries
+much further up this file for where that lives and why) always
+resolved its own color through the owning dialog's palette chain
+(`getColor(1)`, via a single-index palette matching plain
+`TStaticText`), with no way for an embedding window to override it
+directly — unlike each ROW's own color, which already had exactly this
+kind of hook (`RowColorFn`/`setRowColorCallback()`). Added the
+equivalent for the header: `HeaderColorFn`/`setHeaderColorCallback()`,
+optional (falls back to the existing palette-chain behavior when unset,
+so every other `TGridView`-based window in this app — the main list,
+the files window — keeps looking exactly as it already did, unaffected).
+`TrackerPeerWindow` sets it to the exact same hardcoded `TColorAttr`
+its own rows already use for the unfocused case, so the header visibly
+matches rather than coincidentally happening to look similar.
+
+Verified both on a live running instance rather than assumed from the
+code alone. The header color: read directly via pyte's own per-cell
+background attribute, both the header row and a data row beneath it —
+confirmed genuinely identical, not just similar-looking text colors.
+The shadow: less straightforward, since a stray dark region turned out
+to already exist nearby for an entirely unrelated reason (general
+desktop/window background, not anything to do with this window at all)
+— resolved by capturing the exact same screen region BEFORE
+`TrackerPeerWindow` was ever opened (only the details window visible)
+and comparing: identical either way, confirming that region was never
+this window's own shadow to begin with, and the fix didn't need to
+explain it away.
 
 **The Trackers/Peers seam, for real this time — the previous fix only
 patched one of the two edges that make it up.** Caught from a
