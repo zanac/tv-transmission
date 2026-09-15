@@ -794,6 +794,58 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**A real crash on every normal exit — `App`'s own destructor reading
+through a null `deskTop` pointer.** Reported directly, then reproduced
+and confirmed with a debug build under AddressSanitizer rather than
+guessed at from the code alone: `App::~App()` used to loop over
+`allListWindows()` first, canceling any in-flight async refresh before
+cleaning up the shared `multiHandle_` — reasoning that every easy
+handle needs detaching before `curl_multi_cleanup()` runs on it (still
+true), and that doing it explicitly here was safer than depending on
+exactly when each window's own destructor happened to run relative to
+this one.
+
+That reasoning had a wrong assumption baked in: it assumed this
+destructor's own body runs BEFORE the windows themselves are torn
+down. It doesn't. By the time control reaches `~App()`, `TApplication::
+run()` has already called `shutDown()` as part of its own normal exit
+path — and tvision's own `TProgram::shutDown()` (`tprogram.cpp`) sets
+`deskTop = 0` before `TGroup::shutDown()` actually destroys every child
+view, cascading into each `TorrentListWindow`'s own `TransmissionClient`
+destructor, which ALREADY detaches safely from `multiHandle_` if a
+refresh happened to be in flight — the exact same safety net this loop
+was trying to provide again, just redundantly, and via a `deskTop`
+pointer that was already null by the time it ran. `allListWindows()`
+dereferences `TProgram::deskTop` without a null check, which is exactly
+where AddressSanitizer caught the SEGV: `App::allListWindows() ←
+App::~App() ← main()`, on every single normal exit, not some rare edge
+case.
+
+Fixed by simply removing the loop — `~App()` now only cleans up
+`multiHandle_` itself, since every client has already safely detached
+from it on its own by the time this destructor's body runs. Also
+removed `TransmissionClient::cancelRefresh()`/`TorrentListWindow::
+cancelAsyncRefresh()`, the two methods that loop existed to call —
+dead code once nothing calls them anymore, not kept around "just in
+case."
+
+Verified thoroughly, not just "no crash on a quick exit": a debug
+build under AddressSanitizer, first confirming the exact crash from a
+plain Alt-X quit, then confirming it was gone after the fix — and, to
+make sure the fix didn't just get lucky by exiting too fast to matter,
+a second run with a deliberately slow mock server (3s per response)
+and a 2-second refresh interval, sending Alt-X while a periodic async
+refresh was confirmed still in flight. Clean exit, code 0, no
+AddressSanitizer error, in both cases.
+
+**A stray blank row above the Trackers/Peers grid.** Marked directly on
+a screenshot: one row of empty space between the radio cluster and the
+column headers below it, left over from when that space was originally
+sized for two `TButton`s two rows tall each — the radio cluster
+replacing them is only one row tall, but the layout code reserving
+space above the grid was never adjusted down to match. Fixed by
+reserving one row instead of two.
+
 **Column headers and the radio cluster's own background, both matching
 the rows' blue — two separate gaps, closed with one shared trick.**
 Asked for directly, marked on a screenshot: the cluster's own teal

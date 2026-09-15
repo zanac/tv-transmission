@@ -23,12 +23,11 @@ public:
     // base classes are being constructed, i.e. before any code in this
     // constructor's body can run. See main.cpp.
     explicit App(const AppSettings& initialSettings);
-    // Every in-flight async refresh needs detaching from multiHandle_
-    // BEFORE it's cleaned up (see the destructor's own comment in
-    // App.cpp) — declared explicitly rather than left to the implicit
-    // default, since relying on that would mean relying on exactly
-    // when C++ tears down deskTop's own child windows relative to this
-    // object's own body, which isn't something worth depending on.
+    // Declared explicitly (not left to the implicit default) only to
+    // clean up multiHandle_ itself — see the destructor's own comment
+    // in App.cpp for why nothing else needs doing here, and for the
+    // crash an earlier, more "defensive" version of this actually
+    // caused by assuming otherwise.
     ~App() override;
 
     static TMenuBar* initMenuBar(TRect r);

@@ -92,19 +92,25 @@ App::App(const AppSettings& initialSettings)
 }
 
 App::~App() {
-    // Every in-flight async refresh needs to detach from multiHandle_
-    // BEFORE it's cleaned up — curl's own multi-handle docs require
-    // every easy handle removed first, and depending on exactly when
-    // each window's own TorrentListWindow/TransmissionClient destructor
-    // happens to run relative to this one (base-class-after-derived-
-    // body — see App.h's own comment on the destructor) isn't something
-    // worth relying on implicitly. Done explicitly here instead, before
-    // any of that runs at all — allListWindows() itself still works
-    // fine at this point, since deskTop and its own children haven't
-    // been torn down yet either.
-    for (TorrentListWindow* w : allListWindows()) {
-        w->cancelAsyncRefresh(multiHandle_);
-    }
+    // NOT looping over allListWindows() to cancel any in-flight async
+    // refresh here first — an earlier version of this did exactly that,
+    // reasoning that every easy handle needs detaching from
+    // multiHandle_ before curl_multi_cleanup() runs on it (still true —
+    // see curl's own multi-handle docs). That reasoning was correct;
+    // where it went wrong was assuming this destructor's own body runs
+    // BEFORE the windows themselves are torn down. It doesn't: by the
+    // time control reaches here, TApplication::run() has already called
+    // shutDown() as part of its own normal exit path (see main.cpp) —
+    // and TProgram::shutDown() (tprogram.cpp) sets deskTop = 0 before
+    // TGroup::shutDown() actually destroys every child view, cascading
+    // into each TorrentListWindow's own TransmissionClient destructor,
+    // which ALREADY detaches safely from multiHandle_ if a refresh
+    // happened to be in flight (see TransmissionClient's own destructor
+    // comment) — the same safety net this loop was trying to provide
+    // again, just redundantly, and via a deskTop pointer that's already
+    // null by this point. Confirmed the hard way: a live crash
+    // (AddressSanitizer SEGV) reading through that null pointer right
+    // here, on every normal exit.
     if (multiHandle_) curl_multi_cleanup(multiHandle_);
 }
 

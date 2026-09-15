@@ -123,18 +123,6 @@ public:
     // in this class already does.
     std::vector<Torrent> finishRefresh(CURLM* multi, bool* ok = nullptr);
 
-    // Detaches this client's own easy handle from `multi` if a refresh
-    // is currently in flight, without waiting for either the request to
-    // actually finish or this object's own destructor to eventually do
-    // it. Used by App's own destructor to guarantee every client has
-    // detached from the shared multi handle before IT is cleaned up
-    // (curl's own multi-handle docs require every easy handle removed
-    // first), explicitly and up front — rather than depending on
-    // exactly when C++'s own implicit destruction order gets around to
-    // each client's own destructor relative to the multi handle's own
-    // cleanup.
-    void cancelRefresh(CURLM* multi);
-
     // Adds a torrent from a URL (magnet or .torrent link) or local path.
     // See AddTorrentResult above for what the result distinguishes.
     AddTorrentResult addTorrent(const std::string& urlOrPath);

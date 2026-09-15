@@ -48,7 +48,7 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     r.grow(-1, -1);
     r.b.y -= 3;   // room for the button row at the bottom
     int tabY = r.a.y;
-    r.a.y += 2;   // room for the tab row at the top
+    r.a.y += 1;   // room for the tab row at the top — the radio cluster below is itself only 1 row tall
 
     // A two-item TRadioButtons cluster rather than two ordinary
     // buttons standing in for a tab control tvision doesn't have

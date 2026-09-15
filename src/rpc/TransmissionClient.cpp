@@ -294,14 +294,6 @@ void TransmissionClient::startRefresh(CURLM* multi, void* privateData) {
     refreshInFlight_ = true;
 }
 
-void TransmissionClient::cancelRefresh(CURLM* multi) {
-    if (refreshInFlight_ && refreshMulti_ == multi) {
-        curl_multi_remove_handle(multi, curl_);
-        refreshInFlight_ = false;
-        refreshMulti_ = nullptr;
-    }
-}
-
 std::vector<Torrent> TransmissionClient::finishRefresh(CURLM* multi, bool* ok) {
     std::vector<Torrent> result;
     if (ok) *ok = false;

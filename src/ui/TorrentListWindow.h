@@ -88,8 +88,6 @@ public:
     // just finished — never speculatively, and never twice for the
     // same startAsyncRefresh() call.
     void finishAsyncRefresh(CURLM* multi);
-    // Used only by App's own destructor — see its own comment there.
-    void cancelAsyncRefresh(CURLM* multi) { client_.cancelRefresh(multi); }
     // Re-syncs the shared Torrent-menu command enable/disable state
     // (see updateCommandStates()) to THIS window's own current
     // selection whenever it becomes the active one — enableCommand()/
