@@ -796,6 +796,28 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**The tab buttons' own bottom edge: a third shaded region, missed by
+both previous fixes.** Caught the same way the second one was — a
+screenshot with the exact spot marked directly, this time a solid dark
+band running the full width of both buttons, one row below them.
+
+`TButton::drawState()` shades three separate things, not the two
+`TTabButton::draw()` was already patching: column 0 and column
+`size.x-1` on the button's own content row (already fixed), AND the
+button's entire LAST row — with these buttons only 2 rows tall, that's
+row 1, drawn as one continuous shadow-colored strip the full width of
+the button, unconditionally, regardless of anything about what's next
+to it. Missed on both earlier passes because neither one was looking
+for a shading that spans an entire additional row rather than a column
+within an existing one. Patched the same way as the other two: after
+`TButton::draw()` runs normally, overwrite that whole last row with a
+blank line in this button's own current background color.
+
+Verified directly rather than assumed fixed from the code change alone:
+read every cell's own background color along the row directly beneath
+both tab buttons on a live running instance — continuous green the
+entire width, no shadow-colored cells left anywhere in that row.
+
 **The Trackers/Peers window: no drop shadow, and column headers matching
 the rows' own blue background.** Asked for directly, as cosmetic
 follow-ups once the tab buttons themselves were settled.

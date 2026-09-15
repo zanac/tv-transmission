@@ -82,6 +82,20 @@ public:
     // one. Both patched here the same way: draw normally via the base
     // class, then overwrite each shaded column with a blank cell in
     // this button's own current background color.
+    // TButton::drawState() (see tbutton.cpp — not virtual, so this is
+    // the only hook available, via the virtual draw() that just calls
+    // it) shades three places on every button, not the two already
+    // patched below: column 0 and column size.x-1 on the CONTENT row
+    // (row 0, since these buttons are only 2 rows tall — size.y-2==0,
+    // so the drawing loop only ever runs once), AND the entire LAST row
+    // (size.y-1) as one continuous shadow-colored strip underneath the
+    // button — visible as a solid "▀▀▀▀" band directly under each tab
+    // button in an actual run (caught from a screenshot with the strip
+    // marked directly, the same way the left-edge miss two entries
+    // above this one was). All three patched here the same way: draw
+    // normally via the base class, then overwrite each shaded region
+    // with a blank cell (or, for the bottom row, a whole blank row) in
+    // this button's own current background color.
     void draw() override {
         TButton::draw();
         TAttrPair cButton;
@@ -94,10 +108,14 @@ public:
                 else if (amDefault) cButton = getColor(0x0602);
             }
         }
-        TDrawBuffer b;
-        b.moveChar(0, ' ', cButton, 1);
-        writeLine(0, 0, 1, 1, b);
-        writeLine(size.x - 1, 0, 1, 1, b);
+        TDrawBuffer bEdge;
+        bEdge.moveChar(0, ' ', cButton, 1);
+        writeLine(0, 0, 1, 1, bEdge);
+        writeLine(size.x - 1, 0, 1, 1, bEdge);
+
+        TDrawBuffer bRow;
+        bRow.moveChar(0, ' ', cButton, size.x);
+        writeLine(0, size.y - 1, size.x, 1, bRow);
     }
 
 private:
