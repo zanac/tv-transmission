@@ -791,6 +791,39 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**The Trackers/Peers seam, for real this time — the previous fix only
+patched one of the two edges that make it up.** Caught from a
+screenshot, not a report in words: a red X marked squarely between the
+two tab buttons showing the seam was still visibly there despite the
+entry right below this one claiming (and directly verifying) it was
+gone.
+
+The bug: `TButton::drawState()` shades BOTH edges of every button, not
+just the trailing one — `b.putAttribute(0, cShadow)` runs
+unconditionally for column 0 (the LEFT edge) on every row, right
+alongside the right-edge shadow at column `size.x-1` that was already
+being patched. The previous fix only ever patched the right edge —
+correct for making the FIRST button's own trailing edge blend into
+whatever comes next, but the seam between two adjacent tab buttons is
+actually made of two different edges from two different buttons: the
+first one's own right edge, AND the second one's own left edge. Missing
+the second one meant the Peers button's own left edge stayed shaded
+the whole time, regardless of anything done to the Trackers button.
+`TTabButton::draw()` now patches both — column 0 and column `size.x-1`
+— the same way, in the same current-state background color, on every
+button.
+
+Explains why the previous entry's own verification didn't catch this:
+it sampled one specific column, one column before "Peers" own text
+started — which, it turns out, landed inside the (already correctly
+patched) tail end of the Trackers button's own padding, not on the
+actual left edge of the Peers button itself. Verified properly this
+time: every single column across the entire visible seam, from
+"Trackers" through "Peers", checked individually via pyte's own
+per-cell background attribute — confirmed a continuous, unbroken
+background color the whole way across, not just one representative
+sample that happened to look fine.
+
 **The Trackers/Peers tab buttons, again: genuinely seamless now (no
 visible seam at all, not just a smaller one), and the same width.**
 Direct follow-up to the entry right below this one, after being told

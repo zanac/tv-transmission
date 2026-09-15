@@ -69,6 +69,19 @@ public:
     // (disabled / selected / default / plain), so the patched-over
     // column always matches whatever the rest of the button just drew,
     // in whatever state it's actually in.
+    // TButton::drawState() (see tbutton.cpp — not virtual, so this is
+    // the only hook available, via the virtual draw() that just calls
+    // it) shades BOTH edges of every button, not just the right one:
+    // b.putAttribute(0, cShadow) runs unconditionally for column 0 (the
+    // LEFT edge) on every row, alongside the right-edge shadow at
+    // column size.x-1 already patched below. Missing the left edge
+    // the first time this was fixed meant the SECOND tab button's own
+    // left edge was still shaded even after the first button's own
+    // right edge was patched — the seam between two adjacent tab
+    // buttons is made of two different edges, one from each button, not
+    // one. Both patched here the same way: draw normally via the base
+    // class, then overwrite each shaded column with a blank cell in
+    // this button's own current background color.
     void draw() override {
         TButton::draw();
         TAttrPair cButton;
@@ -83,6 +96,7 @@ public:
         }
         TDrawBuffer b;
         b.moveChar(0, ' ', cButton, 1);
+        writeLine(0, 0, 1, 1, b);
         writeLine(size.x - 1, 0, 1, 1, b);
     }
 
