@@ -3,55 +3,50 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <cstdlib>
+#include <filesystem>
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace {
 
 std::string configDirPath() {
+#ifdef _WIN32
+    if (const char* appData = std::getenv("APPDATA"); appData && *appData)
+        return (fs::path(appData) / "tv-transmission").string();
+#endif
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/tv-transmission";
+        return (fs::path(xdg) / "tv-transmission").string();
     const char* home = std::getenv("HOME");
-    return std::string(home ? home : ".") + "/.config/tv-transmission";
+    return (fs::path(home ? home : ".") / ".config" / "tv-transmission").string();
 }
 
-// Minimal mkdir -p: creates one directory level at a time starting from
-// the root, ignoring "already exists" errors.
 bool ensureDirExists(const std::string& path) {
-    for (size_t i = 1; i <= path.size(); ++i) {
-        if (i == path.size() || path[i] == '/') {
-            std::string cur = path.substr(0, i);
-            if (!cur.empty()) mkdir(cur.c_str(), 0700);
-        }
-    }
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    std::error_code ec;
+    if (fs::is_directory(fs::path(path), ec)) return true;
+    ec.clear();
+    return fs::create_directories(fs::path(path), ec) || fs::is_directory(fs::path(path), ec);
 }
 
 } // namespace
 
 std::string configFilePath() {
-    return configDirPath() + "/settings.json";
+    return (fs::path(configDirPath()) / "settings.json").string();
 }
 
 AppSettings loadSettings() {
-    AppSettings settings; // starts from AppSettings.h's defaults
+    AppSettings settings;
     std::ifstream in(configFilePath());
-    if (!in) return settings; // first run, no file yet: defaults are fine
+    if (!in) return settings;
 
     try {
         json j;
         in >> j;
-        settings.refreshIntervalSeconds =
-            j.value("refreshIntervalSeconds", settings.refreshIntervalSeconds);
+        settings.refreshIntervalSeconds = j.value("refreshIntervalSeconds", settings.refreshIntervalSeconds);
 
-        // Deliberately does NOT look at any old top-level "host"/"port"/
-        // "user"/"password" keys a pre-multi-server settings.json might
-        // still have — see AppSettings.h's own comment on "servers" for
-        // why starting over (an empty `servers` map, same as a fresh
-        // install) was the deliberate choice over migrating them into a
-        // single entry here.
         if (j.contains("servers") && j["servers"].is_object()) {
             for (auto& [name, sj] : j["servers"].items()) {
                 ServerProfile p;
@@ -85,39 +80,28 @@ AppSettings loadSettings() {
         if (j.contains("columnLayouts") && j["columnLayouts"].is_object()) {
             for (auto& [name, cj] : j["columnLayouts"].items()) {
                 AppSettings::ColumnLayout layout;
-                if (cj.contains("widths") && cj["widths"].is_array()) {
+                if (cj.contains("widths") && cj["widths"].is_array())
                     layout.widths = cj["widths"].get<std::vector<int>>();
-                }
-                if (cj.contains("order") && cj["order"].is_array()) {
+                if (cj.contains("order") && cj["order"].is_array())
                     layout.order = cj["order"].get<std::vector<int>>();
-                }
-                if (cj.contains("visible") && cj["visible"].is_array()) {
+                if (cj.contains("visible") && cj["visible"].is_array())
                     layout.visible = cj["visible"].get<std::vector<bool>>();
-                }
                 settings.columnLayouts[name] = layout;
             }
         }
-        if (j.contains("trackerColumnWidths") && j["trackerColumnWidths"].is_array()) {
+        if (j.contains("trackerColumnWidths") && j["trackerColumnWidths"].is_array())
             settings.trackerColumnWidths = j["trackerColumnWidths"].get<std::vector<int>>();
-        }
-        if (j.contains("trackerColumnOrder") && j["trackerColumnOrder"].is_array()) {
+        if (j.contains("trackerColumnOrder") && j["trackerColumnOrder"].is_array())
             settings.trackerColumnOrder = j["trackerColumnOrder"].get<std::vector<int>>();
-        }
-        if (j.contains("trackerColumnVisible") && j["trackerColumnVisible"].is_array()) {
+        if (j.contains("trackerColumnVisible") && j["trackerColumnVisible"].is_array())
             settings.trackerColumnVisible = j["trackerColumnVisible"].get<std::vector<bool>>();
-        }
-        if (j.contains("peerColumnWidths") && j["peerColumnWidths"].is_array()) {
+        if (j.contains("peerColumnWidths") && j["peerColumnWidths"].is_array())
             settings.peerColumnWidths = j["peerColumnWidths"].get<std::vector<int>>();
-        }
-        if (j.contains("peerColumnOrder") && j["peerColumnOrder"].is_array()) {
+        if (j.contains("peerColumnOrder") && j["peerColumnOrder"].is_array())
             settings.peerColumnOrder = j["peerColumnOrder"].get<std::vector<int>>();
-        }
-        if (j.contains("peerColumnVisible") && j["peerColumnVisible"].is_array()) {
+        if (j.contains("peerColumnVisible") && j["peerColumnVisible"].is_array())
             settings.peerColumnVisible = j["peerColumnVisible"].get<std::vector<bool>>();
-        }
     } catch (const std::exception&) {
-        // Corrupted/malformed file: better to fall back to defaults than
-        // to block the app from starting.
         return AppSettings{};
     }
     return settings;
@@ -177,11 +161,8 @@ bool saveSettings(const AppSettings& settings) {
     out.close();
     if (!out) return false;
 
-    // The RPC password is obfuscated (see Obfuscation.h) rather than
-    // stored in plain text, but that's not real encryption — 0600
-    // permissions (only the current user can read the file) remain the
-    // actual protection here, so keep them regardless.
+#ifndef _WIN32
     chmod(path.c_str(), 0600);
-
+#endif
     return true;
 }
