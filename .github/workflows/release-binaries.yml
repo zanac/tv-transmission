@@ -1,0 +1,139 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Fetch Turbo Vision
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/magiblot/tvision external/tvision
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: vcpkg install curl:x64-windows-static nlohmann-json:x64-windows-static
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = Get-ChildItem -Path build -Filter tv-transmission.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "tv-transmission.exe not found" }
+          Copy-Item $exe.FullName dist/tv-transmission-windows-x64.exe
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-x64
+          path: dist/tv-transmission-windows-x64.exe
+          if-no-files-found: error
+
+  linux-appimage:
+    name: Linux x86_64 AppImage
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Fetch Turbo Vision
+        run: git clone --depth 1 https://github.com/magiblot/tvision external/tvision
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            curl \
+            libcurl4-openssl-dev \
+            libncursesw5-dev \
+            libgpm-dev \
+            libx11-dev \
+            libxmu-dev \
+            libxt-dev \
+            libxext-dev \
+            pkg-config \
+            fuse
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          chmod +x packaging/appimage/build-appimage.sh
+          ./packaging/appimage/build-appimage.sh
+
+      - name: Collect AppImage
+        run: |
+          test -f build/TvTransmission-x86_64.AppImage
+          mkdir -p dist
+          cp build/TvTransmission-x86_64.AppImage dist/TvTransmission-linux-x86_64.AppImage
+          chmod +x dist/TvTransmission-linux-x86_64.AppImage
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: dist/TvTransmission-linux-x86_64.AppImage
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - windows-x64
+      - linux-appimage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: release-windows-x64
+          path: release-assets
+
+      - name: Download Linux AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-x86_64
+          path: release-assets
+
+      - name: Create release and attach binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release-assets/tv-transmission-windows-x64.exe \
+            release-assets/TvTransmission-linux-x86_64.AppImage \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
