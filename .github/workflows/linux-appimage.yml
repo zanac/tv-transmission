@@ -2,9 +2,6 @@ name: Linux x86_64 AppImage
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build-appimage:
