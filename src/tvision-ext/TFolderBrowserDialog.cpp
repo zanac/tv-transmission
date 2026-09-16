@@ -147,7 +147,7 @@ TDialog* createFolderBrowserDialog(const std::string& initialPath, const TFolder
         if (!implPtr->atRoot_ && row == 0) return "..";
         int idx = row - (implPtr->atRoot_ ? 0 : 1);
         if (idx < 0 || idx >= (int)implPtr->subdirs_.size()) return "";
-        return implPtr->subdirs_[idx] + fs::path::preferred_separator;
+        return implPtr->subdirs_[idx] + fs::path(1, fs::path::preferred_separator).string();
     });
     dlg->grid_->setRowActivateCallback([implPtr](int row) {
         if (!implPtr->listOk_) return;
