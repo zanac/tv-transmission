@@ -64,6 +64,22 @@ there's nothing to keep in sync beyond the count.
 
 ## Design notes
 
+**Row and header colors default to a fixed white-on-blue/yellow-on-blue
+pair (`TColorAttr(0x1F)`/`(0x1E)`, black-on-white for the focused row)
+rather than resolving through the embedding view's own palette chain.**
+The first version did resolve through the palette chain
+(`getColor(1)`/`getColor(2)`), matching how most other tvision widgets
+pick their own colors — reverted once every single caller turned out
+to need `setRowColorCallback()`/`setHeaderColorCallback()` anyway, just
+to reproduce this exact same pair, because the palette-chain default
+didn't contrast enough inside a `TDialog` to see which row was focused,
+and resolved to a different color entirely depending on whether the
+embedding view was a `TWindow` or a `TDialog` (inconsistent for no
+reason an embedding app would want). Still fully overridable — set
+either callback for anything a caller genuinely needs to differ (e.g.
+a per-row status color) — this only changed what happens when neither
+is set.
+
 **Callback-based data source, not an internal `vector<vector<string>>`.**
 The first design considered was "the grid owns a table of strings,
 call `setData()` to update it." Rejected: that means formatting every
