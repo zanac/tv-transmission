@@ -1,0 +1,50 @@
+name: Windows x64 portable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/windows-x64
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: |
+          vcpkg install curl:x64-windows-static nlohmann-json:x64-windows-static
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Collect portable executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $exe = Get-ChildItem -Path build -Filter tv-transmission.exe -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "tv-transmission.exe not found" }
+          Copy-Item $exe.FullName dist/tv-transmission.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-transmission-windows-x64
+          path: dist/tv-transmission.exe
+          if-no-files-found: error
