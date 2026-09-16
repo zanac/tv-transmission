@@ -126,14 +126,22 @@ jobs:
           name: release-linux-x86_64
           path: release-assets
 
-      - name: Create release and attach binaries
+      - name: Create or update release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists: updating assets"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" \
             release-assets/tv-transmission-windows-x64.exe \
             release-assets/TvTransmission-linux-x86_64.AppImage \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
-            --verify-tag
+            --clobber
