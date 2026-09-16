@@ -74,6 +74,14 @@ struct ServerProfile {
     int port = 9091;
     std::string user;
     std::string password;
+    // The daemon's own RPC endpoint path — almost always the default,
+    // but some setups (a reverse proxy in front of the daemon, a
+    // non-standard transmission-daemon config) put it somewhere else.
+    // Stored and shown without a leading slash (matching how it's
+    // typed in the Connection dialog); TransmissionClient's own URL
+    // building adds exactly one regardless of whether this value
+    // already has one, so either form works if typed in by hand.
+    std::string rpcPath = "transmission/rpc";
 };
 
 // Settings the user can configure from the Connection/Server windows.

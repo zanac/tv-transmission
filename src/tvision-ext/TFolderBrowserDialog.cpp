@@ -9,31 +9,35 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
+#include <filesystem>
+#include <system_error>
 #include <vector>
 
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
+namespace fs = std::filesystem;
 
 namespace {
 
 constexpr ushort cmSelectFolder = 1;
 
 std::string joinPath(const std::string& base, const std::string& name) {
-    if (base.empty()) return name;
-    if (base.back() == '/') return base + name;
-    return base + "/" + name;
+    return (fs::path(base) / fs::path(name)).string();
 }
 
 // "/" for anything one level below the filesystem root, or already at
 // it — a single well-defined floor rather than needing a separate
 // "already at root" check at every call site.
 std::string parentPath(const std::string& path) {
-    if (path.empty() || path == "/") return "/";
-    auto pos = path.find_last_of('/');
-    if (pos == std::string::npos || pos == 0) return "/";
-    return path.substr(0, pos);
+    fs::path p(path);
+    if (p.empty()) return fs::current_path().string();
+    fs::path parent = p.parent_path();
+    if (parent.empty())
+        return p.root_path().empty() ? p.string() : p.root_path().string();
+    return parent.string();
+}
+
+bool isRootPath(const std::string& path) {
+    fs::path p(path);
+    return !p.root_path().empty() && p.lexically_normal() == p.root_path();
 }
 
 // Every readable subdirectory of `path`, alphabetically, name only (not
@@ -46,19 +50,18 @@ std::string parentPath(const std::string& path) {
 std::vector<std::string> listSubdirectories(const std::string& path, bool* ok) {
     std::vector<std::string> result;
     *ok = false;
-    DIR* dir = opendir(path.c_str());
-    if (!dir) return result;
+    std::error_code ec;
+    fs::directory_iterator it(
+        fs::path(path),
+        fs::directory_options::skip_permission_denied,
+        ec);
+    if (ec) return result;
     *ok = true;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") continue;
-        struct stat st;
-        if (stat(joinPath(path, name).c_str(), &st) != 0) continue;
-        if (!S_ISDIR(st.st_mode)) continue;
-        result.push_back(name);
+    for (const auto& entry : it) {
+        std::error_code typeError;
+        if (!entry.is_directory(typeError) || typeError) continue;
+        result.push_back(entry.path().filename().string());
     }
-    closedir(dir);
     std::sort(result.begin(), result.end());
     return result;
 }
@@ -91,10 +94,10 @@ public:
             }
             return;
         }
-        currentPath_ = path;
+        currentPath_ = fs::path(path).lexically_normal().string();
         subdirs_ = std::move(dirs);
         listOk_ = true;
-        atRoot_ = (currentPath_ == "/");
+        atRoot_ = isRootPath(currentPath_);
         setPathFieldText(currentPath_);
         if (grid_) {
             grid_->setRowCount((atRoot_ ? 0 : 1) + (int)subdirs_.size());
@@ -221,11 +224,19 @@ TDialog* createFolderBrowserDialog(const std::string& initialPath, const TFolder
 
     std::string start = initialPath;
     if (start.empty()) {
-        char buf[4096];
-        start = getcwd(buf, sizeof(buf)) ? buf : "/";
+        std::error_code ec;
+        fs::path cwd = fs::current_path(ec);
+        start = ec ? fs::path(".").string() : cwd.string();
     }
     dlg->navigateTo(start);
-    if (!dlg->listOk_) dlg->navigateTo("/"); // last-resort fallback: root is always readable
+    if (!dlg->listOk_) {
+        std::error_code ec;
+        fs::path cwd = fs::current_path(ec);
+        if (!ec)
+            dlg->navigateTo(cwd.root_path().empty()
+                ? cwd.string()
+                : cwd.root_path().string());
+    }
 
     return dlg;
 }

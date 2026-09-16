@@ -72,7 +72,11 @@ std::string formatUnixTimestamp(int64_t unixSeconds) {
     if (unixSeconds <= 0) return "";
     std::time_t t = static_cast<std::time_t>(unixSeconds);
     std::tm tmValue{};
+#ifdef _WIN32
+    localtime_s(&tmValue, &t);
+#else
     localtime_r(&t, &tmValue);
+#endif
     char buf[32];
     std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tmValue);
     return buf;

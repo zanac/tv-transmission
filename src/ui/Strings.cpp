@@ -265,6 +265,8 @@ const char* tr(Str id) {
                         "Transmission-Host:", "Host de Transmission:");
         case Str::LabelPort:
             return pick("RPC port:", "Porta RPC:", "Port RPC :", "RPC-Port:", "Puerto RPC:");
+        case Str::LabelRpcPath:
+            return pick("RPC path:", "Percorso RPC:", "Chemin RPC :", "RPC-Pfad:", "Ruta RPC:");
         case Str::LabelUser:
             return pick("User (optional):", "Utente (opzionale):", "Utilisateur (facultatif) :",
                         "Benutzer (optional):", "Usuario (opcional):");
@@ -596,6 +598,7 @@ const char* tr(Str id) {
 "Opzioni globali:\n"
 "  --host <host>       Host RPC di Transmission (default: dalle impostazioni salvate)\n"
 "  --port <porta>      Porta RPC di Transmission (default: dalle impostazioni salvate)\n"
+"  --rpc-path <path>   Percorso RPC di Transmission (default: transmission/rpc)\n"
 "  --user <utente>     Utente RPC (default: dalle impostazioni salvate)\n"
 "  --password <pass>   Password RPC (default: dalle impostazioni salvate)\n"
 "  -h, --help          Mostra questo messaggio\n"
@@ -604,7 +607,7 @@ const char* tr(Str id) {
 "impostazioni salvate (~/.config/tv-transmission/settings.json), lo\n"
 "stesso impostato dalla finestra Impostazioni della TUI, quindi non\n"
 "serve passarli a ogni comando. Ognuna delle opzioni --host/--port/\n"
-"--user/--password sovrascrive solo quel valore.";
+"--rpc-path/--user/--password sovrascrive solo quel valore.";
                 case Language::French: return
 "Usage : tv-transmission [options globales] <commande> [arguments]\n"
 "\n"
@@ -621,6 +624,7 @@ const char* tr(Str id) {
 "Options globales :\n"
 "  --host <hôte>       Hôte RPC de Transmission (par défaut : paramètres enregistrés)\n"
 "  --port <port>       Port RPC de Transmission (par défaut : paramètres enregistrés)\n"
+"  --rpc-path <chemin> Chemin RPC de Transmission (par défaut : transmission/rpc)\n"
 "  --user <utilisateur> Utilisateur RPC (par défaut : paramètres enregistrés)\n"
 "  --password <mdp>    Mot de passe RPC (par défaut : paramètres enregistrés)\n"
 "  -h, --help          Affiche ce message\n"
@@ -629,7 +633,7 @@ const char* tr(Str id) {
 "fichier de paramètres enregistrés (~/.config/tv-transmission/settings.json),\n"
 "le même que celui défini depuis la fenêtre Paramètres de la TUI, donc\n"
 "inutile de les repasser à chaque commande. Chacune des options\n"
-"--host/--port/--user/--password ne remplace que cette valeur-là.";
+"--host/--port/--rpc-path/--user/--password ne remplace que cette valeur-là.";
                 case Language::German: return
 "Verwendung: tv-transmission [globale Optionen] <Befehl> [Argumente]\n"
 "\n"
@@ -646,6 +650,7 @@ const char* tr(Str id) {
 "Globale Optionen:\n"
 "  --host <host>       Transmission-RPC-Host (Standard: aus gespeicherten Einstellungen)\n"
 "  --port <port>       Transmission-RPC-Port (Standard: aus gespeicherten Einstellungen)\n"
+"  --rpc-path <pfad>   Transmission-RPC-Pfad (Standard: transmission/rpc)\n"
 "  --user <benutzer>   RPC-Benutzername (Standard: aus gespeicherten Einstellungen)\n"
 "  --password <pass>   RPC-Passwort (Standard: aus gespeicherten Einstellungen)\n"
 "  -h, --help          Zeigt diese Meldung an\n"
@@ -654,7 +659,7 @@ const char* tr(Str id) {
 "Einstellungsdatei gelesen (~/.config/tv-transmission/settings.json),\n"
 "derselben, die im Einstellungsfenster der TUI festgelegt wird — sie\n"
 "müssen also nicht bei jedem Befehl erneut angegeben werden. Jede der\n"
-"Optionen --host/--port/--user/--password überschreibt nur diesen einen Wert.";
+"Optionen --host/--port/--rpc-path/--user/--password überschreibt nur diesen einen Wert.";
                 case Language::Spanish: return
 "Uso: tv-transmission [opciones globales] <comando> [argumentos]\n"
 "\n"
@@ -671,6 +676,7 @@ const char* tr(Str id) {
 "Opciones globales:\n"
 "  --host <host>       Host RPC de Transmission (por defecto: ajustes guardados)\n"
 "  --port <puerto>     Puerto RPC de Transmission (por defecto: ajustes guardados)\n"
+"  --rpc-path <ruta>   Ruta RPC de Transmission (por defecto: transmission/rpc)\n"
 "  --user <usuario>    Usuario RPC (por defecto: ajustes guardados)\n"
 "  --password <clave>  Contraseña RPC (por defecto: ajustes guardados)\n"
 "  -h, --help          Muestra este mensaje\n"
@@ -679,7 +685,7 @@ const char* tr(Str id) {
 "ajustes guardados (~/.config/tv-transmission/settings.json), el mismo\n"
 "que se configura desde la ventana Ajustes de la TUI, por lo que no hace\n"
 "falta pasarlos en cada comando. Cada una de las opciones\n"
-"--host/--port/--user/--password sobrescribe solo ese valor.";
+"--host/--port/--rpc-path/--user/--password sobrescribe solo ese valor.";
                 default: return
 "Usage: tv-transmission [global options] <command> [args]\n"
 "\n"
@@ -696,6 +702,7 @@ const char* tr(Str id) {
 "Global options:\n"
 "  --host <host>       Transmission RPC host (default: from saved settings)\n"
 "  --port <port>       Transmission RPC port (default: from saved settings)\n"
+"  --rpc-path <path>   Transmission RPC path (default: transmission/rpc)\n"
 "  --user <user>       RPC username (default: from saved settings)\n"
 "  --password <pass>   RPC password (default: from saved settings)\n"
 "  -h, --help          Show this message\n"
@@ -703,7 +710,7 @@ const char* tr(Str id) {
 "By default host/port/user/password are read from the saved settings\n"
 "file (~/.config/tv-transmission/settings.json), the same one set from\n"
 "the TUI's Settings window, so you don't need to pass them on every\n"
-"command. Any of --host/--port/--user/--password overrides just that\n"
+"command. Any of --host/--port/--rpc-path/--user/--password overrides just that\n"
 "one value.";
             }
             return ""; // unreachable (every Language enumerator handled above)

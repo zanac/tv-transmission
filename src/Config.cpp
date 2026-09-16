@@ -3,36 +3,39 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <cstdlib>
+#include <filesystem>
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace {
 
 std::string configDirPath() {
+#ifdef _WIN32
+    if (const char* appData = std::getenv("APPDATA"); appData && *appData)
+        return (fs::path(appData) / "tv-transmission").string();
+#endif
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return std::string(xdg) + "/tv-transmission";
+        return (fs::path(xdg) / "tv-transmission").string();
     const char* home = std::getenv("HOME");
-    return std::string(home ? home : ".") + "/.config/tv-transmission";
+    return (fs::path(home ? home : ".") / ".config" / "tv-transmission").string();
 }
 
-// Minimal mkdir -p: creates one directory level at a time starting from
-// the root, ignoring "already exists" errors.
 bool ensureDirExists(const std::string& path) {
-    for (size_t i = 1; i <= path.size(); ++i) {
-        if (i == path.size() || path[i] == '/') {
-            std::string cur = path.substr(0, i);
-            if (!cur.empty()) mkdir(cur.c_str(), 0700);
-        }
-    }
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+    std::error_code ec;
+    if (fs::is_directory(fs::path(path), ec)) return true;
+    ec.clear();
+    return fs::create_directories(fs::path(path), ec) ||
+           fs::is_directory(fs::path(path), ec);
 }
 
 } // namespace
 
 std::string configFilePath() {
-    return configDirPath() + "/settings.json";
+    return (fs::path(configDirPath()) / "settings.json").string();
 }
 
 AppSettings loadSettings() {
@@ -59,6 +62,7 @@ AppSettings loadSettings() {
                 p.port = sj.value("port", p.port);
                 p.user = sj.value("user", p.user);
                 p.password = deobfuscatePassword(sj.value("password", std::string()));
+                p.rpcPath = sj.value("rpcPath", p.rpcPath);
                 settings.servers[name] = p;
             }
         }
@@ -136,6 +140,7 @@ bool saveSettings(const AppSettings& settings) {
             {"port", p.port},
             {"user", p.user},
             {"password", obfuscatePassword(p.password)},
+            {"rpcPath", p.rpcPath},
         };
     }
     j["servers"] = serversJson;
@@ -181,7 +186,9 @@ bool saveSettings(const AppSettings& settings) {
     // stored in plain text, but that's not real encryption — 0600
     // permissions (only the current user can read the file) remain the
     // actual protection here, so keep them regardless.
+#ifndef _WIN32
     chmod(path.c_str(), 0600);
+#endif
 
     return true;
 }

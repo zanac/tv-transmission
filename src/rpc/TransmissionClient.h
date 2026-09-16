@@ -77,7 +77,8 @@ public:
     enum class AddTorrentResult { Added, Duplicate, Failed };
 
     TransmissionClient(std::string host, int port,
-                        std::string user = "", std::string password = "");
+                        std::string user = "", std::string password = "",
+                        std::string rpcPath = "transmission/rpc");
     // If a refresh is still in flight when this runs (a server removed
     // — see App::showConnectionDialog()'s own onServerRemoved — while
     // its own periodic refresh hadn't completed yet), refreshCurl_ gets
@@ -330,6 +331,12 @@ public:
     // next call().
     void setEndpoint(std::string host, int port);
     void setCredentials(std::string user, std::string password);
+    // Same reasoning as setEndpoint()/setCredentials() above — updates
+    // an already-constructed client's own RPC path in place (e.g. after
+    // editing an existing server's connection details, rather than
+    // adding a brand new one), rather than requiring the whole client
+    // object to be torn down and rebuilt just for this one field.
+    void setRpcPath(std::string rpcPath);
 
     // Last human-readable error (network, auth, RPC)
     const std::string& lastError() const { return lastError_; }
@@ -354,6 +361,7 @@ private:
 
     std::string host_;
     int port_;
+    std::string rpcPath_;
     std::string user_;
     std::string password_;
     std::string sessionId_;

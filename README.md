@@ -333,26 +333,31 @@ HTTP and nlohmann/json for parsing.
   dashes when no torrent-list window has focus at all
 
 **Connection (F9, "Settings" menu)**
-- Server name, refresh interval (seconds), host, port, RPC
-  username/password, interface language
+- Server name, refresh interval (seconds), host, port, RPC path,
+  RPC username/password, interface language
 - "Server name" is an editable combo (see "Fixed bugs" below for the
   widget itself) — the logical name a set of host/port/user/password is
   saved under, e.g. "home" or "seedbox". Picking a different existing
   name from the dropdown, or typing one directly, loads that server's
   own saved details into the other fields automatically if it matches
   one already saved; typing (or switching to) a name that doesn't
-  resets host/port/user/password to generic defaults instead of leaving
-  whatever the previously-shown server's own details were — those
-  aren't this (as yet unconfigured) server's details. "[+]" adds
+  resets host/port/rpcPath/user/password to generic defaults instead of
+  leaving whatever the previously-shown server's own details were —
+  those aren't this (as yet unconfigured) server's details. "[+]" adds
   whatever's currently shown as a list entry on its own (with a
   confirmation popup naming it), without saving anything under it yet
-- Host/port/user/password stay disabled — visibly dimmed, and skipped
-  entirely by Tab — until the name currently shown is actually a
-  registered entry in the combo, whether that's a name already saved
+- Host/port/RPC path/user/password stay disabled — visibly dimmed, and
+  skipped entirely by Tab — until the name currently shown is actually
+  a registered entry in the combo, whether that's a name already saved
   from a previous session or one just added this session via "[+]".
   There's nothing meaningful to configure for a name that's neither, so
   editing those fields is blocked outright rather than left looking
   editable with nothing real behind it
+- RPC path defaults to `transmission/rpc` (what transmission-daemon
+  itself listens on out of the box) — only worth changing behind a
+  reverse proxy or a non-standard daemon config. Accepted with or
+  without a leading slash; either way, exactly one ends up between
+  `host:port` and whatever's typed here
 - The button beneath — labeled **Save** or **OK** depending on
   whether what's shown right now already matches a saved server exactly
   — reflects whether there's anything new to persist. Save runs a real
@@ -817,6 +822,119 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Windows/MinGW portability — the user's own three patches (`Config.cpp`,
+`TextUtil.cpp`, `TFolderBrowserDialog.cpp`, swapping POSIX headers for
+`std::filesystem`/`localtime_s`) were correct, verified with an actual
+MinGW-w64 cross-compile and toolchain rather than by re-reading the
+diffs.** A real `x86_64-w64-mingw32-g++` toolchain and a from-source
+`libcurl` build (Schannel backend, so no separate OpenSSL dependency to
+also cross-compile) were both genuinely installed for this — testing
+"does this compile for Windows" by only reading C++ for platform-
+specific assumptions misses real compiler/header differences that only
+show up when something actually tries to compile it.
+
+Two real gaps found this way, neither in the user's own three patches:
+
+1. `TextUtil.h` used `int64_t` without including `<cstdint>` — silently
+   fine on Linux/glibc, where it arrives transitively through some
+   other standard header already included, but a hard compile error
+   under MinGW's own headers, which don't happen to pull it in the
+   same way. Fixed by including it directly rather than relying on
+   what any other header happens to include.
+2. The built `.exe`, once compilation succeeded, linked against MinGW's
+   own runtime as DLLs (`libgcc_s_seh-1.dll`, `libstdc++-6.dll`) —
+   present on the machine that built it (which has MinGW installed),
+   but not on an ordinary Windows machine the `.exe` would actually be
+   handed to. Fixed in the top-level `CMakeLists.txt`:
+   `-static-libgcc -static-libstdc++ -static` under `if(MINGW)`, which
+   only affects GCC's own runtime libraries — genuine Windows system
+   DLLs (`kernel32.dll`, `user32.dll`, ...) are unaffected either way,
+   always present on any real Windows install.
+
+Verified end to end, not just "it compiles now": the resulting `.exe`
+actually launched and ran correctly under Wine (a real, if imperfect,
+Windows environment) — `--help` printed its full text correctly, no
+missing-DLL errors. Went a step further for `Config.cpp` specifically,
+since path handling is exactly the kind of thing that can compile fine
+and still be subtly wrong at runtime: a small standalone program
+calling `saveSettings()`/`loadSettings()` directly, cross-compiled and
+run under Wine with `APPDATA` set to a fake directory — confirmed the
+directory and `settings.json` were genuinely created there, with
+correct native (`\`) path separators, and that saving a value and
+reloading it round-tripped correctly. Repeated the same standalone
+check on a native Linux build too, confirming the `#ifdef _WIN32`
+branch stays inert there and the existing `XDG_CONFIG_HOME`/`HOME`
+behavior is unchanged.
+
+Also swept the rest of the codebase for the same class of issue (any
+other file touching `dirent.h`, `unistd.h`, `sys/stat.h`, `getcwd`,
+`opendir`, `chmod`, signal handling, ...) — nothing else came up; the
+three files the user's own patches already covered were the only ones
+using anything POSIX-specific to begin with.
+
+**New: a configurable RPC path.** Asked for directly, with an explicit
+warning to check every place the old hardcoded `/transmission/rpc`
+touched — a good call, since two of the eight places this ended up
+needing weren't obvious from the request itself.
+
+`ServerProfile::rpcPath` (default `"transmission/rpc"`), threaded
+through: `TransmissionClient`'s own constructor and both URL-building
+call sites (the synchronous path and the async refresh path each build
+their own request URL separately); `Config.cpp`'s load/save; the
+Connection dialog (a new field, positioned right after the port field,
+following host/port's own established "disabled until the server name
+is registered" and "editing marks the dialog dirty" rules); and the
+CLI, which turned out to need its own `--rpc-path` flag (and a
+`--help` mention, in all five languages) to stay consistent with the
+existing `--host`/`--port`/`--user`/`--password` overrides it already
+had — easy to miss since the CLI isn't the Connection dialog and
+doesn't share code with it directly.
+
+A small helper (`normalizedRpcPath()`) inserts exactly one `/` between
+`host:port` and whatever's configured, accepting it typed either with
+or without a leading slash — one less thing to get wrong when typing
+it in by hand.
+
+**A second, genuine gap found while wiring the above through: editing
+an EXISTING server's connection details from an ALREADY-RUNNING
+window's own live client never took effect — only a fresh app launch
+picked it up.** `App.cpp`'s own `onServerSaved` already called
+`setEndpoint()`/`setCredentials()` on the live `TransmissionClient` for
+exactly this reason (updating an object already in use, rather than
+tearing it down and rebuilding it just to change one field) — but had
+no equivalent for the RPC path, since there wasn't one to update
+before now. Added `TransmissionClient::setRpcPath()`, following the
+same shape (clears the cached session ID too, same reasoning as the
+other two: the daemon being talked to may genuinely be a different one
+now).
+
+**A third, more serious gap in the very same area — editing an
+existing server's fields didn't reliably persist ANYTHING, not just
+the new RPC path field.** Found by testing the whole feature live
+rather than trusting the code: after editing the RPC path and
+confirming, the field showed the new value, but `settings.json` kept
+the old one. Traced to `ConnectionDialogImpl::handleEvent()`'s own
+"did the user just edit one of the connection fields" check — the one
+that's supposed to mark the dialog dirty so the button knows there's
+something to actually test and save. That check read `event.what ==
+evKeyDown` AFTER already calling `TDialog::handleEvent(event)` — by
+which point the focused `TInputLine` had already consumed the
+keystroke and cleared the event, so the check silently never matched,
+for ANY of the five connection fields, not just the new one. Confirmed
+by logging every keydown straight to a file rather than guessing —
+the log came back completely empty, which is exactly what a cleared
+event looks like from the outside. Fixed by capturing whether the
+event was a keydown BEFORE the base class call, not after.
+
+Verified end to end afterward, live, not just re-reading the fix:
+edited the RPC path on an already-saved, already-open server against a
+mock that only answered on a non-default path (returning 404 for the
+standard one, so there was no way to pass by accident); confirmed the
+dialog actually persisted it to `settings.json`, AND that the
+already-open window's own list started showing that mock's real data
+immediately afterward — both the save and the live-client update
+working together, not just one or the other.
 
 **"Session Statistics" resized — far too much empty space on the right
 of its own button row.** Marked directly on a screenshot: roughly 20

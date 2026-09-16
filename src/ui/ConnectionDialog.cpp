@@ -82,7 +82,8 @@ std::string getFieldText(TInputLine* field) {
     return buf;
 }
 
-// Fills host/port/user/password with `profile`'s own values — used both
+// Fills host/port/rpcPath/user/password with `profile`'s own values —
+// used both
 // for a name that matches an existing saved server (its real profile)
 // and for one that doesn't (a default-constructed ServerProfile, i.e.
 // 127.0.0.1:9091 with no user/password) — same helper either way, the
@@ -90,6 +91,7 @@ std::string getFieldText(TInputLine* field) {
 void setConnectionFields(ConnectionDialogFields& fields, const ServerProfile& profile) {
     setFieldText(fields.host, profile.host);
     setFieldText(fields.port, std::to_string(profile.port));
+    setFieldText(fields.rpcPath, profile.rpcPath);
     setFieldText(fields.user, profile.user);
     setFieldText(fields.password, profile.password);
 }
@@ -157,7 +159,8 @@ public:
         }
     }
 
-    // Enables or disables host/port/user/password together — there's
+    // Enables or disables host/port/rpcPath/user/password together —
+    // there's
     // nothing meaningful to configure for a server name that isn't
     // actually in the combo's own list yet (never saved, and not even
     // added via "[+]" this session), so editing them is blocked
@@ -173,20 +176,29 @@ public:
         Boolean disable = Boolean(!enabled);
         if (fields->host) fields->host->setState(sfDisabled, disable);
         if (fields->port) fields->port->setState(sfDisabled, disable);
+        if (fields->rpcPath) fields->rpcPath->setState(sfDisabled, disable);
         if (fields->user) fields->user->setState(sfDisabled, disable);
         if (fields->password) fields->password->setState(sfDisabled, disable);
     }
 
     void handleEvent(TEvent& event) override {
-        // Captured BEFORE dispatch: TDialog::handleEvent() below may
-        // move focus on its own (e.g. Tab), so `current` right after
-        // it no longer reliably says which field an evKeyDown was
-        // actually delivered to.
+        // Both captured BEFORE dispatch: TDialog::handleEvent() below
+        // may move focus on its own (e.g. Tab), so `current` right
+        // after it no longer reliably says which field an evKeyDown
+        // was actually delivered to — and the focused child (a plain
+        // TInputLine) calls clearEvent() once it's consumed a keydown
+        // for itself, so event.what itself no longer reads evKeyDown
+        // by the time control returns here either. Found by logging
+        // every keydown to a file and seeing the log come back empty —
+        // event.what checked AFTER the base call never once matched,
+        // which is what a cleared event looks like from out here.
         TView* focusedBefore = current;
+        bool wasKeyDown = (event.what == evKeyDown);
         TDialog::handleEvent(event);
 
-        if (event.what == evKeyDown && fields != nullptr &&
+        if (wasKeyDown && fields != nullptr &&
             (focusedBefore == fields->host || focusedBefore == fields->port ||
+             focusedBefore == fields->rpcPath ||
              focusedBefore == fields->user || focusedBefore == fields->password)) {
             // Any direct edit to the connection fields themselves (not
             // just switching servers via the combo) invalidates
@@ -266,6 +278,7 @@ public:
                         ServerProfile profile;
                         profile.host = getFieldText(fields->host);
                         profile.port = std::atoi(getFieldText(fields->port).c_str());
+                        profile.rpcPath = getFieldText(fields->rpcPath);
                         profile.user = getFieldText(fields->user);
                         profile.password = getFieldText(fields->password);
 
@@ -276,7 +289,8 @@ public:
                         // at whatever last actually worked until this
                         // one succeeds too.
                         TransmissionClient testClient(profile.host, profile.port,
-                                                       profile.user, profile.password);
+                                                       profile.user, profile.password,
+                                                       profile.rpcPath);
                         bool ok = false;
                         testClient.getSessionLimits(&ok);
                         if (ok) {
@@ -317,7 +331,7 @@ public:
 TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFields& fields,
                                  ServerRemovedCallback onServerRemoved,
                                  ServerSavedCallback onServerSaved) {
-    TRect r(0, 0, 60, 20);
+    TRect r(0, 0, 60, 22);
     auto* dlg = new ConnectionDialogImpl(r, tr(Str::DialogTitleConnection));
     dlg->options |= ofCentered;
 
@@ -367,8 +381,9 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     fields.host = addField(dlg, 8, tr(Str::LabelHost), initialProfile.host, 128);
     fields.port = addField(dlg, 10, tr(Str::LabelPort), std::to_string(initialProfile.port), 10);
     fields.port->setValidator(new TRangeValidator(1, 65535)); // valid TCP port range
-    fields.user = addField(dlg, 12, tr(Str::LabelUser), initialProfile.user, 128);
-    fields.password = addField(dlg, 14, tr(Str::LabelPassword), initialProfile.password, 128, /*masked=*/true);
+    fields.rpcPath = addField(dlg, 12, tr(Str::LabelRpcPath), initialProfile.rpcPath, 128);
+    fields.user = addField(dlg, 14, tr(Str::LabelUser), initialProfile.user, 128);
+    fields.password = addField(dlg, 16, tr(Str::LabelPassword), initialProfile.password, 128, /*masked=*/true);
 
     auto* impl = static_cast<ConnectionDialogImpl*>(dlg);
     impl->fields = &fields;
@@ -388,18 +403,18 @@ TDialog* createConnectionDialog(const AppSettings& current, ConnectionDialogFiel
     // broadcasting yet this early.
     impl->setConnectionFieldsEnabled(initialMatch);
 
-    // A blank row (16) between the last field and the buttons, rather
+    // A blank row (18) between the last field and the buttons, rather
     // than the buttons sitting immediately under Password. The
     // Save/OK button uses cmTestConnectionAndOK, not cmOK — see its
     // own definition above for why — but keeps bfDefault (Enter still
     // reaches it the same way a real cmOK button would). Starting
     // label matches impl->dirty_ (just set above): "Save" for a new/
     // unmatched server, "OK" for one that's already saved as-is.
-    auto* button = new TButton(TRect(20, 17, 30, 19),
+    auto* button = new TButton(TRect(20, 19, 30, 21),
         tr(impl->dirty_ ? Str::ButtonSave : Str::ButtonOK), cmTestConnectionAndOK, bfDefault);
     impl->saveOkButton = button;
     dlg->insert(button);
-    dlg->insert(new TButton(TRect(32, 17, 42, 19), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    dlg->insert(new TButton(TRect(32, 19, 42, 21), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;

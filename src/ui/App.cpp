@@ -256,7 +256,8 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     // dialog's "[-]" (see showConnectionDialog()) — never while its own
     // window still exists.
     auto client = std::make_unique<TransmissionClient>(profile.host, profile.port,
-                                                         profile.user, profile.password);
+                                                         profile.user, profile.password,
+                                                         profile.rpcPath);
     TransmissionClient& clientRef = *client;
     clients_[name] = std::move(client);
 
@@ -457,6 +458,7 @@ void App::showConnectionDialog() {
             if (clientIt != clients_.end()) {
                 clientIt->second->setEndpoint(profile.host, profile.port);
                 clientIt->second->setCredentials(profile.user, profile.password);
+                clientIt->second->setRpcPath(profile.rpcPath);
                 target->refresh();
             }
             target->select();

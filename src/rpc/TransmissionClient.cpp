@@ -34,11 +34,21 @@ size_t headerCallback(char* buffer, size_t size, size_t nitems, void* userdata) 
     return size * nitems;
 }
 
+// Exactly one "/" between host:port and whatever the user configured
+// as the RPC path — accepts it typed either with or without a leading
+// slash (ServerProfile's own field comment on why this normalization
+// exists rather than requiring one specific form).
+std::string normalizedRpcPath(const std::string& rpcPath) {
+    return (!rpcPath.empty() && rpcPath.front() == '/') ? rpcPath : "/" + rpcPath;
+}
+
 } // namespace
 
 TransmissionClient::TransmissionClient(std::string host, int port,
-                                        std::string user, std::string password)
+                                        std::string user, std::string password,
+                                        std::string rpcPath)
     : host_(std::move(host)), port_(port),
+      rpcPath_(std::move(rpcPath)),
       user_(std::move(user)), password_(std::move(password)),
       curl_(curl_easy_init()), refreshCurl_(curl_easy_init()) {}
 
@@ -76,7 +86,7 @@ std::string TransmissionClient::call(const std::string& method,
     std::string payloadStr = payload.dump();
 
     std::ostringstream urlStream;
-    urlStream << "http://" << host_ << ":" << port_ << "/transmission/rpc";
+    urlStream << "http://" << host_ << ":" << port_ << normalizedRpcPath(rpcPath_);
     std::string url = urlStream.str();
 
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -271,7 +281,7 @@ void TransmissionClient::startRefresh(CURLM* multi, void* privateData) {
     }
 
     std::ostringstream urlStream;
-    urlStream << "http://" << host_ << ":" << port_ << "/transmission/rpc";
+    urlStream << "http://" << host_ << ":" << port_ << normalizedRpcPath(rpcPath_);
     refreshUrl_ = urlStream.str();
 
     curl_easy_setopt(refreshCurl_, CURLOPT_URL, refreshUrl_.c_str());
@@ -589,6 +599,11 @@ void TransmissionClient::setCredentials(std::string user, std::string password) 
     user_ = std::move(user);
     password_ = std::move(password);
     sessionId_.clear();
+}
+
+void TransmissionClient::setRpcPath(std::string rpcPath) {
+    rpcPath_ = std::move(rpcPath);
+    sessionId_.clear(); // the previous session is no longer valid
 }
 
 bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
