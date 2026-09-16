@@ -1,6 +1,7 @@
 # TV Transmission
 
 **Version 1.5.2** — stable release.
+<img width="1407" height="863" alt="image" src="https://github.com/user-attachments/assets/74e9149a-fbe6-4153-8b02-4757f81db5b6" />
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
