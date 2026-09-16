@@ -105,35 +105,40 @@ private:
 } // namespace
 
 TDialog* createSessionStatsDialog(const SessionStats& initial, TransmissionClient& client) {
-    TRect r(0, 0, 50, 18);
+    // Width chosen so the button row's own right margin (from "Close"'s
+    // own right edge to the dialog's right edge) matches "Refresh"'s
+    // own left margin exactly (both 2) — asked for directly, after the
+    // original 50-column width left roughly 20 columns of empty space
+    // on the right of "Close" against only 2 on the left of "Refresh".
+    TRect r(0, 0, 32, 18);
     auto* dlg = new SessionStatsDialogImpl(r, tr(Str::DialogTitleSessionStats), client);
     dlg->options |= ofCentered;
 
-    dlg->insert(new TStaticText(TRect(2, 2, 46, 3), tr(Str::LabelCurrentSession)));
+    dlg->insert(new TStaticText(TRect(2, 2, 30, 3), tr(Str::LabelCurrentSession)));
     dlg->insert(new TStaticText(TRect(2, 3, 16, 4), tr(Str::LabelStatsDownloaded)));
-    dlg->curDownloadLabel = new TResultLabel(TRect(18, 3, 46, 4), formatDownloaded(initial.currentDownloadedBytes));
+    dlg->curDownloadLabel = new TResultLabel(TRect(18, 3, 30, 4), formatDownloaded(initial.currentDownloadedBytes));
     dlg->insert(dlg->curDownloadLabel);
     dlg->insert(new TStaticText(TRect(2, 4, 16, 5), tr(Str::LabelStatsUploaded)));
-    dlg->curUploadLabel = new TResultLabel(TRect(18, 4, 46, 5), formatUploaded(initial.currentUploadedBytes));
+    dlg->curUploadLabel = new TResultLabel(TRect(18, 4, 30, 5), formatUploaded(initial.currentUploadedBytes));
     dlg->insert(dlg->curUploadLabel);
     dlg->insert(new TStaticText(TRect(2, 5, 16, 6), tr(Str::LabelStatsActive)));
-    dlg->curActiveLabel = new TResultLabel(TRect(18, 5, 46, 6), formatActive(initial.currentSecondsActive));
+    dlg->curActiveLabel = new TResultLabel(TRect(18, 5, 30, 6), formatActive(initial.currentSecondsActive));
     dlg->insert(dlg->curActiveLabel);
 
-    dlg->insert(new TStaticText(TRect(2, 7, 46, 8), tr(Str::LabelAllTime)));
+    dlg->insert(new TStaticText(TRect(2, 7, 30, 8), tr(Str::LabelAllTime)));
     dlg->insert(new TStaticText(TRect(2, 8, 16, 9), tr(Str::LabelStatsDownloaded)));
-    dlg->allDownloadLabel = new TResultLabel(TRect(18, 8, 46, 9), formatDownloaded(initial.cumulativeDownloadedBytes));
+    dlg->allDownloadLabel = new TResultLabel(TRect(18, 8, 30, 9), formatDownloaded(initial.cumulativeDownloadedBytes));
     dlg->insert(dlg->allDownloadLabel);
     dlg->insert(new TStaticText(TRect(2, 9, 16, 10), tr(Str::LabelStatsUploaded)));
-    dlg->allUploadLabel = new TResultLabel(TRect(18, 9, 46, 10), formatUploaded(initial.cumulativeUploadedBytes));
+    dlg->allUploadLabel = new TResultLabel(TRect(18, 9, 30, 10), formatUploaded(initial.cumulativeUploadedBytes));
     dlg->insert(dlg->allUploadLabel);
     dlg->insert(new TStaticText(TRect(2, 10, 16, 11), tr(Str::LabelStatsActive)));
-    dlg->allActiveLabel = new TResultLabel(TRect(18, 10, 46, 11), formatActive(initial.cumulativeSecondsActive));
+    dlg->allActiveLabel = new TResultLabel(TRect(18, 10, 30, 11), formatActive(initial.cumulativeSecondsActive));
     dlg->insert(dlg->allActiveLabel);
 
     char startedBuf[64];
     std::snprintf(startedBuf, sizeof(startedBuf), tr(Str::LabelStatsStarted), initial.cumulativeSessionCount);
-    dlg->startedLabel = new TResultLabel(TRect(2, 11, 46, 12), startedBuf);
+    dlg->startedLabel = new TResultLabel(TRect(2, 11, 30, 12), startedBuf);
     dlg->insert(dlg->startedLabel);
 
     dlg->insert(new TButton(TRect(2, 14, 15, 16), tr(Str::ButtonRefresh), cmRefreshStats, bfDefault));

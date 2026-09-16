@@ -817,6 +817,27 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**"Session Statistics" resized — far too much empty space on the right
+of its own button row.** Marked directly on a screenshot: roughly 20
+columns of empty space to the right of "Close" against only 2 to the
+left of "Refresh", left over from when the dialog's own width (50) was
+never actually tied to what its buttons needed. Measured precisely
+before changing anything (a live running instance's own cell contents,
+not eyeballed): confirmed exactly that 20-vs-2 asymmetry, and — while
+checking — that the height already left exactly one blank row between
+the buttons' own shadow and the bottom border, matching what was
+separately asked for there; no change needed on that axis, confirmed
+rather than assumed.
+
+Narrowed to 32 (`"Close"`'s own right edge at 30, plus a matching
+2-column margin), with every label/value field's own width narrowed to
+match (was 46, unused space that would have gone stale once the dialog
+itself got narrower). Verified against the same large, multi-digit
+values as the original screenshot (55551h+ of active time, 40+TB
+transferred, a session count of 421) to make sure nothing got clipped
+by the narrower fields — confirmed on a live running instance, not
+assumed from the arithmetic alone.
+
 **`TGridView`'s own default HEADER color, unified too — the entry right
 below this one fixed the wrong thing.** Clarified with a screenshot,
 the two column-header rows circled directly: what actually looked
