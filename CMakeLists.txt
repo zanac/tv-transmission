@@ -4,6 +4,18 @@ project(tv-transmission LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# On MinGW, GCC's own runtime (libgcc, libstdc++, and libwinpthread if
+# threading is used) is normally linked as a DLL — one a plain Windows
+# install doesn't have, unlike genuine Windows system DLLs (kernel32,
+# user32, ...), which -static-libgcc/-static-libstdc++/-static leave
+# untouched either way. Without this, the built .exe only runs where
+# MinGW's own runtime DLLs happen to already be present (e.g. right
+# next to it, or on the machine that built it) — not on an ordinary
+# Windows machine it'd actually be distributed to.
+if(MINGW)
+    add_link_options(-static-libgcc -static-libstdc++ -static)
+endif()
+
 # --- Turbo Vision (magiblot/tvision) as a submodule in external/tvision ---
 # If missing, add it with:
 #   git submodule add https://github.com/magiblot/tvision external/tvision

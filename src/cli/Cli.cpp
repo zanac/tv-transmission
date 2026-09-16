@@ -58,8 +58,8 @@ int runCli(int argc, char** argv, AppSettings settings) {
 
     // Starts from whichever server is currently active in the saved
     // settings (see AppSettings::activeProfile()) — the --host/--user/
-    // --password flags below only need to be given at all when
-    // overriding that, or when nothing's been configured yet.
+    // --password/--rpc-path flags below only need to be given at all
+    // when overriding that, or when nothing's been configured yet.
     ServerProfile profile = settings.activeProfile();
 
     // Global options can appear anywhere on the command line, mixed in
@@ -68,6 +68,7 @@ int runCli(int argc, char** argv, AppSettings settings) {
         std::string a = argv[i];
         if (a == "--host" && i + 1 < argc) profile.host = argv[++i];
         else if (a == "--port" && i + 1 < argc) profile.port = std::atoi(argv[++i]);
+        else if (a == "--rpc-path" && i + 1 < argc) profile.rpcPath = argv[++i];
         else if (a == "--user" && i + 1 < argc) profile.user = argv[++i];
         else if (a == "--password" && i + 1 < argc) profile.password = argv[++i];
         else if (a == "--delete-data") deleteData = true;
@@ -87,7 +88,7 @@ int runCli(int argc, char** argv, AppSettings settings) {
     // main(), then possibly overridden above): no need to type
     // --host/--user/--password again if a server's already saved and
     // active via the TUI's Connection window.
-    TransmissionClient client(profile.host, profile.port, profile.user, profile.password);
+    TransmissionClient client(profile.host, profile.port, profile.user, profile.password, profile.rpcPath);
 
     if (cmd == "list") {
         auto torrents = client.listTorrents();

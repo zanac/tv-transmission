@@ -33,6 +33,9 @@ struct ConnectionDialogFields {
     TComboBox* serverName = nullptr;
     TInputLine* host = nullptr;
     TInputLine* port = nullptr;
+    // The daemon's own RPC endpoint path — see ServerProfile::rpcPath's
+    // own comment for why this exists and how it's normalized.
+    TInputLine* rpcPath = nullptr;
     TInputLine* user = nullptr;
     TInputLine* password = nullptr;
     LanguageComboBox* language = nullptr;

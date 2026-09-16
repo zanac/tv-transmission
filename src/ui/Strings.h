@@ -46,7 +46,7 @@ enum class Str {
     ButtonOK, ButtonCancel, ButtonSave, ButtonSelect,
 
     DialogTitleConnection, DialogTitleServerSettings, DialogTitleSessionStats, DialogTitleSelectFolder,
-    LabelRefreshSeconds, LabelHost, LabelPort, LabelUser, LabelPassword, LabelLanguage,
+    LabelRefreshSeconds, LabelHost, LabelPort, LabelRpcPath, LabelUser, LabelPassword, LabelLanguage,
     LabelServerName, DefaultServerName,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
 

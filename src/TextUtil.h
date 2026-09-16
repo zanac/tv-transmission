@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <cstdint>
 
 // Pads or truncates a UTF-8 string to exactly `width` terminal COLUMNS,
 // counting codepoints rather than bytes.
