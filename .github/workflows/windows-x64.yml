@@ -2,10 +2,6 @@ name: Windows x64 portable
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - build/windows-x64
 
 jobs:
   build:
