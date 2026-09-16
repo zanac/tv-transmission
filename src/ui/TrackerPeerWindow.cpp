@@ -130,17 +130,10 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
     // widget's own fallback instead of something every caller needed to
     // repeat.
     //
-    // Matches the rows' own unfocused color (0x1F, TGridView's own
-    // default now, see above) exactly, rather than the header's own
-    // dialog's palette chain — see TGridHeaderView::getPalette()),
-    // which doesn't otherwise have any reason to end up looking the
-    // same as a hardcoded row color chosen independently. Applies to
-    // whichever tab's own columns are currently loaded — set once here
-    // rather than in switchToTab() since the callback itself doesn't
-    // change between tabs, only what grid_ shows underneath it.
-    grid_->setHeaderColorCallback([]() -> TColorAttr {
-        return TColorAttr(0x1F);
-    });
+    // No setHeaderColorCallback() here either anymore — TGridView's own
+    // default (yellow-on-blue, matching the main torrent list's own
+    // header) already applies without asking for it, the same
+    // unification already applied to row colors above.
 
     // "Columns..." is no longer a button here — it's now the single,
     // focus-aware "Manage columns..." menu entry (see App::

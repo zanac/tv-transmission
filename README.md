@@ -817,6 +817,37 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**`TGridView`'s own default HEADER color, unified too — the entry right
+below this one fixed the wrong thing.** Clarified with a screenshot,
+the two column-header rows circled directly: what actually looked
+inconsistent across windows was never the DATA rows (already fixed,
+correctly, in the entry below) — it was each grid's own header row.
+The main torrent list's own header showed yellow-on-blue; every other
+`TGridView`-based window's own header showed white-on-blue instead.
+
+The cause was almost identical to the row-color case, just one level
+up: `TGridView`'s own header fallback (when no `HeaderColorFn` is set)
+resolved through the owning window's own palette chain
+(`getColor(1)`), and a `TWindow` (what the main torrent list is built
+on) and a `TDialog` (every other `TGridView` user in this app) resolve
+that same index differently — the main list's own yellow was never a
+deliberate choice, just an incidental side effect of which base class
+it happens to use. `TrackerPeerWindow` was the one window that had
+already noticed the mismatch and worked around it with an explicit
+`setHeaderColorCallback()` — but to white, matching its OWN row color,
+not yellow, matching the main list's.
+
+Fixed the same way as the row-color entry below: moved yellow-on-blue
+(`TColorAttr(0x1E)`) into `TGridView` itself as what happens when no
+`HeaderColorFn` is set, removed `TrackerPeerWindow`'s own now-redundant
+explicit override entirely.
+
+Verified directly this time, not assumed from getting the row-color fix
+right: read both header rows' own actual cell colors on a live running
+instance — main list's own header and `TrackerPeerWindow`'s own header
+both `fg=brightbrown bg=blue` (tvision/pyte's own name for this
+palette's "yellow"), not just similar-looking text.
+
 **`TGridView`'s own default row color, unified — one shared fallback
 instead of the same callback copy-pasted into four separate files.**
 Asked for directly: the main torrent list's own rows (colored by

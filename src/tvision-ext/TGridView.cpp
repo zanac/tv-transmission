@@ -155,7 +155,20 @@ public:
         owner_->updateHScrollBarVisibility();
 
         TDrawBuffer b;
-        TColorAttr color = owner_->headerColor_ ? owner_->headerColor_() : TColorAttr(getColor(1));
+        // Falls back to yellow-on-blue directly (TColorAttr(0x1E)) when
+        // no callback is set, rather than resolving through the owner's
+        // own palette chain (getColor(1)) the way this used to — the
+        // SAME kind of unification already applied to row colors just
+        // below (see TGridRowsView::draw()'s own comment on why): the
+        // main torrent list's own header already showed yellow-on-blue,
+        // but only incidentally, from TWindow's own default palette
+        // resolving index 1 that way — a TDialog-based window (every
+        // OTHER TGridView user in this app) resolves the very same
+        // index differently, which is what made headers look
+        // inconsistent across windows despite nobody having asked for
+        // that difference. Every caller that used to set this
+        // explicitly to match — TrackerPeerWindow — no longer needs to.
+        TColorAttr color = owner_->headerColor_ ? owner_->headerColor_() : TColorAttr(0x1E);
         b.moveChar(0, ' ', color, size.x);
         int offset = owner_->horizontalScrollOffset();
         // Fixed, never-scrolled — see drawScrolled()'s own doc comment.
