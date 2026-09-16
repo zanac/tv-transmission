@@ -4,8 +4,10 @@
 #include "TorrentFilesWindow.h"
 #include "TrackerPeerWindow.h"
 #include "AddTorrentDialog.h"
+#include "../tvision-ext/TFolderBrowserDialog.h"
 #include "ConnectionDialog.h"
 #include "ServerSettingsDialog.h"
+#include "SessionStatsDialog.h"
 #include "FilterDialog.h"
 #include "../tvision-ext/TGridColumnManagerDialog.h"
 #include "WindowListDialog.h"
@@ -133,6 +135,14 @@ TMenuBar* App::initMenuBar(TRect r) {
         *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
 
+    // Same nested-submenu construction as queueMenu just above — see
+    // its own comment for why the (TMenuItem&) cast below is needed.
+    TSubMenu* priorityMenu = new TSubMenu(tr(Str::MenuPriority), kbNoKey);
+    *priorityMenu +
+        *new TMenuItem(tr(Str::MenuPriorityLow), cmSetPriorityLow, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityNormal), cmSetPriorityNormal, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityHigh), cmSetPriorityHigh, kbNoKey);
+
     // A single disabled placeholder to start — this runs before App's
     // own constructor has settings_ populated at all (see TProgInit's
     // own ordering, in the comment on this class in App.h), so the
@@ -163,28 +173,11 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
             newLine() +
             static_cast<TMenuItem&>(*queueMenu) +
+            static_cast<TMenuItem&>(*priorityMenu) +
             newLine() +
             *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
-        *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
-            // Standard tvision commands. Every torrent-list window
-            // always exactly fills the desktop now (see
-            // TorrentListWindow's own fullScreen comment) and stacks
-            // rather than tiles alongside the others — Tile/Cascade
-            // here only ever affects the "Torrent details"/files/
-            // tracker windows, which are still ordinary, independently
-            // sized and positioned MDI windows. Bringing a specific
-            // server's own window to the front is what the
-            // "Connections" menu (below) is for instead.
-            *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
-            *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
-            *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
-            newLine() +
-            *new TMenuItem(tr(Str::MenuWindowTile), cmTile, kbNoKey) +
-            *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
-            newLine() +
-            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
         *connectionsSubMenu +
         *new TSubMenu(tr(Str::MenuColumnsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
@@ -196,9 +189,28 @@ TMenuBar* App::initMenuBar(TRect r) {
             // that there's only one plain item) into the single column
             // manager dialog — see ColumnManagerDialog.h.
             *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
+        *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
+            // Standard tvision commands. Every torrent-list window
+            // always exactly fills the desktop now (see
+            // TorrentListWindow's own fullScreen comment) and stacks
+            // rather than tiles alongside the others — Tile/Cascade
+            // here only ever affects the "Torrent details"/files/
+            // tracker windows, which are still ordinary, independently
+            // sized and positioned MDI windows. Bringing a specific
+            // server's own window to the front is what the
+            // "Connections" menu (above) is for instead.
+            *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
+            *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
+            *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuWindowTile), cmTile, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
+            newLine() +
+            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9) +
             *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuSessionStats), cmSessionStats, kbNoKey) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)
     );
@@ -271,7 +283,7 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     return win;
 }
 
-void App::showAddTorrentDialog(const std::string& initialValue) {
+void App::showAddTorrentDialog(const std::string& initialValue, const std::string& initialDestination) {
     // Adds to whichever server's window currently has focus — the same
     // "act on the focused one" rule every other Torrent-menu command
     // follows now that there's more than one to choose from.
@@ -279,17 +291,24 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
     if (!target) return;
     auto clientIt = clients_.find(target->serverName());
     if (clientIt == clients_.end()) return;
+    TransmissionClient& client = *clientIt->second;
 
     TInputLine* urlField = nullptr;
-    auto* dlg = createAddTorrentDialog(urlField, initialValue);
+    auto* dlg = createAddTorrentDialog(urlField, client, initialValue, initialDestination);
     if (!dlg) return;
     ushort result = execView(dlg);
-    std::string url = (result == cmOK) ? addTorrentDialogResult(urlField) : "";
+    // Captured regardless of which command ended the dialog — Browse
+    // and Change... both reopen this same dialog afterward (see their
+    // own branches below), and whatever the user had already typed/
+    // chosen needs to survive that round trip either way, not just on
+    // a genuine cmOK.
+    std::string url = addTorrentDialogResult(urlField);
+    std::string destination = addTorrentDialogDestination(dlg);
     destroy(dlg);
 
     if (result == cmOK) {
         if (!url.empty()) {
-            auto addResult = clientIt->second->addTorrent(url);
+            auto addResult = client.addTorrent(url, destination);
             if (addResult == TransmissionClient::AddTorrentResult::Duplicate) {
                 messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
             } else if (addResult == TransmissionClient::AddTorrentResult::Failed) {
@@ -301,7 +320,7 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
                 // concrete to show instead of doing nothing.
                 char buf[512];
                 std::snprintf(buf, sizeof(buf), tr(Str::MsgTorrentAddFailed),
-                    clientIt->second->lastError().c_str());
+                    client.lastError().c_str());
                 messageBox(buf, mfError | mfOKButton);
             }
         }
@@ -323,7 +342,10 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
         // first, THEN opening TFileDialog directly from `this` (one
         // level of nesting, exactly like every other dialog in this
         // app, including "Add torrent" itself), avoids that entirely —
-        // simpler than maintaining a hand-built browser.
+        // simpler than maintaining a hand-built browser. The SAME
+        // reasoning is why "Change..." below opens TFolderBrowserDialog
+        // the same way, rather than nesting that inside this dialog
+        // either.
         auto* fileDlg = new TFileDialog("*.torrent", tr(Str::DialogTitleBrowseTorrent),
             tr(Str::LabelAddTorrentUrl), fdOpenButton, 0);
         ushort fileResult = execView(fileDlg);
@@ -341,8 +363,35 @@ void App::showAddTorrentDialog(const std::string& initialValue) {
 
         // Reopen with whatever was picked pre-filled — Browse fills the
         // field, it doesn't add the torrent by itself; the user still
-        // confirms (or edits further, or cancels) from here.
-        showAddTorrentDialog(chosenPath);
+        // confirms (or edits further, or cancels) from here. The
+        // destination chosen before Browse was clicked carries over
+        // unchanged (Browse only ever affects the URL/file field).
+        showAddTorrentDialog(chosenPath.empty() ? url : chosenPath, destination);
+        return;
+    }
+
+    if (result == cmNo) {
+        // "Change..." (destination folder) was clicked — same "close
+        // first, one level of nesting" reasoning as Browse just above.
+        // Labels built from this app's own translated strings right
+        // here rather than baked into TFolderBrowserDialog itself,
+        // which has no translation system of its own to draw on (see
+        // its own header comment) — the same pattern already used for
+        // TGridColumnManagerDialog's own labels.
+        TFolderBrowserLabels labels;
+        labels.title = tr(Str::DialogTitleSelectFolder);
+        labels.pathLabel = tr(Str::LabelFolderPath);
+        labels.selectButton = tr(Str::ButtonSelect);
+        labels.cancelButton = tr(Str::ButtonCancel);
+        labels.unreadableDirectory = tr(Str::MsgFolderUnreadable);
+        auto* folderDlg = createFolderBrowserDialog(destination, labels);
+        ushort folderResult = execView(folderDlg);
+        std::string chosenFolder = (folderResult == cmOK) ? folderBrowserResult(folderDlg) : destination;
+        destroy(folderDlg);
+
+        // Reopens with the URL/file field exactly as it was — "Change..."
+        // only ever affects the destination.
+        showAddTorrentDialog(url, chosenFolder);
     }
 }
 
@@ -482,7 +531,7 @@ void App::showServerSettingsDialog() {
     SessionLimits sessionLimits = client.getSessionLimits(&sessionLimitsFetched);
 
     ServerSettingsDialogFields fields;
-    if (auto* dlg = createServerSettingsDialog(sessionLimits, fields)) {
+    if (auto* dlg = createServerSettingsDialog(sessionLimits, fields, client)) {
         if (execView(dlg) == cmOK) {
             // Only pushed back if the fetch above actually succeeded.
             // Otherwise the dialog's fields were showing meaningless
@@ -495,6 +544,28 @@ void App::showServerSettingsDialog() {
                 client.setSessionLimits(serverSettingsDialogResult(fields));
             }
         }
+        destroy(dlg);
+    }
+}
+
+void App::showSessionStatsDialog() {
+    // Same "acts on whichever server's window currently has focus"
+    // reasoning as showServerSettingsDialog() just above — session
+    // stats are the connected daemon's own state too.
+    TorrentListWindow* focused = focusedListWindow();
+    if (!focused) return;
+    auto clientIt = clients_.find(focused->serverName());
+    if (clientIt == clients_.end()) return;
+    TransmissionClient& client = *clientIt->second;
+
+    // A failed initial fetch still opens the dialog (showing all
+    // zeros) rather than silently doing nothing — its own "Refresh"
+    // button gives an easy way to retry without reopening it, and
+    // there's no "push changes back" step here (unlike Server Settings)
+    // that a failed fetch would need to guard against.
+    SessionStats stats = client.getSessionStats();
+    if (auto* dlg = createSessionStatsDialog(stats, client)) {
+        execView(dlg);
         destroy(dlg);
     }
 }
@@ -853,12 +924,28 @@ void App::handleEvent(TEvent& event) {
             if (auto* w = focusedListWindow()) w->queueMoveBottomForSelected();
             clearEvent(event);
             break;
+        case cmSetPriorityLow:
+            if (auto* w = focusedListWindow()) w->setPriorityForSelected(-1);
+            clearEvent(event);
+            break;
+        case cmSetPriorityNormal:
+            if (auto* w = focusedListWindow()) w->setPriorityForSelected(0);
+            clearEvent(event);
+            break;
+        case cmSetPriorityHigh:
+            if (auto* w = focusedListWindow()) w->setPriorityForSelected(1);
+            clearEvent(event);
+            break;
         case cmSettings:
             showConnectionDialog();
             clearEvent(event);
             break;
         case cmServerSettings:
             showServerSettingsDialog();
+            clearEvent(event);
+            break;
+        case cmSessionStats:
+            showSessionStatsDialog();
             clearEvent(event);
             break;
         case cmFilters:

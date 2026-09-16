@@ -10,8 +10,10 @@ add_executable(tv-transmission
     ui/AddTorrentDialog.cpp
     ui/ConnectionDialog.cpp
     ui/ServerSettingsDialog.cpp
+    ui/SessionStatsDialog.cpp
     ui/FilterDialog.cpp
     tvision-ext/TGridColumnManagerDialog.cpp
+    tvision-ext/TFolderBrowserDialog.cpp
     ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp

@@ -33,9 +33,14 @@ struct ServerSettingsDialogFields {
 // Creates the "Server Configuration" dialog pre-filled with
 // `sessionLimits` (fetched via TransmissionClient::getSessionLimits()
 // before calling this — a live RPC call), and populates `fields` with
-// pointers to each individual field.
+// pointers to each individual field. `client` is held by reference for
+// the dialog's own lifetime — its "Test port"/"Update blocklist"
+// buttons call straight into it and show the result inline, unlike
+// every other field here which only round-trips through `fields`/
+// serverSettingsDialogResult() once the dialog closes.
 TDialog* createServerSettingsDialog(const SessionLimits& sessionLimits,
-                                     ServerSettingsDialogFields& fields);
+                                     ServerSettingsDialogFields& fields,
+                                     TransmissionClient& client);
 
 // Call after execView() == cmOK, BEFORE destroy(dialog) (otherwise the
 // pointers in `fields` are no longer valid).

@@ -1,11 +1,14 @@
 #include "ServerSettingsDialog.h"
 #include "Strings.h"
 
+#define Uses_TDialog
 #define Uses_TButton
 #define Uses_TStaticText
 #define Uses_TSItem
 #define Uses_TValidator
 #define Uses_TRangeValidator
+#define Uses_TEvent
+#define Uses_TScreen
 #include <tvision/tv.h>
 
 #include <cstdio>
@@ -13,6 +16,100 @@
 #include <vector>
 
 namespace {
+
+// Local to this dialog: scoped to its own handleEvent, same reasoning
+// as similar local command constants elsewhere in this project (e.g.
+// TrackerPeerWindow's own cmRefreshTrackers).
+constexpr ushort cmTestPort = 230;
+constexpr ushort cmUpdateBlocklist = 231;
+
+// TStaticText with a settable body — the base class only ever takes
+// its text at construction (see tstatict.cpp: text(newStr(aText))),
+// with no setText() of its own, since a plain label normally never
+// needs to change after being built. This one does: "Test port"/
+// "Update blocklist" show their result INLINE once clicked, not via a
+// popup (a popup for a result the user can just look at again a moment
+// later, right there in the same dialog, would be one more thing to
+// dismiss for no benefit). Same newStr()/delete[] convention the base
+// class itself already uses for `text`, and the same "replace the
+// pointer, then ask for a redraw" approach this project already uses
+// for a TView's own title (see TorrentListWindow::updateTitleForConnectionState()).
+class TResultLabel : public TStaticText {
+public:
+    TResultLabel(const TRect& bounds, TStringView aText) : TStaticText(bounds, aText) {}
+    void setText(const std::string& s) {
+        delete[] (char*)text;
+        text = newStr(s.c_str());
+        drawView();
+    }
+};
+
+// The only dialog on this project that needs to act on a live
+// TransmissionClient WHILE still open, rather than only reading its
+// fields back once closed (see serverSettingsDialogResult() below,
+// which every other field on this dialog still goes through) — "Test
+// port"/"Update blocklist" each make an ordinary blocking RPC call
+// (client_.testPort()/updateBlocklist(), same call() and so same 15s
+// timeout as every other action in this app) and show the result
+// INLINE, without closing the dialog. flushScreen() forces the
+// "Testing..."/"Updating..." text to actually reach the terminal
+// BEFORE that blocking call starts — drawView() alone only updates
+// tvision's own in-memory screen buffer, which wouldn't otherwise
+// reach the real terminal until control returns from this same
+// handleEvent() call, by which point the blocking call has already
+// finished and there'd be nothing left to show it for.
+class ServerSettingsDialogImpl : public TDialog {
+public:
+    ServerSettingsDialogImpl(const TRect& bounds, TStringView title, TransmissionClient& client)
+        : TWindowInit(&TDialog::initFrame), TDialog(bounds, title), client_(client) {}
+
+    void handleEvent(TEvent& event) override {
+        TDialog::handleEvent(event);
+        if (event.what != evCommand) return;
+        switch (event.message.command) {
+            case cmTestPort: {
+                if (portLabel) {
+                    portLabel->setText(tr(Str::ResultTesting));
+                    TScreen::flushScreen();
+                }
+                bool portOpen = false;
+                bool ok = client_.testPort(&portOpen);
+                if (portLabel) {
+                    portLabel->setText(!ok ? tr(Str::ResultPortTestFailed)
+                                            : tr(portOpen ? Str::ResultPortOpen : Str::ResultPortClosed));
+                }
+                clearEvent(event);
+                break;
+            }
+            case cmUpdateBlocklist: {
+                if (blocklistLabel) {
+                    blocklistLabel->setText(tr(Str::ResultUpdating));
+                    TScreen::flushScreen();
+                }
+                int ruleCount = 0;
+                bool ok = client_.updateBlocklist(&ruleCount);
+                if (blocklistLabel) {
+                    if (!ok) {
+                        blocklistLabel->setText(tr(Str::ResultBlocklistFailed));
+                    } else {
+                        char buf[64];
+                        std::snprintf(buf, sizeof(buf), tr(Str::ResultBlocklistUpdated), ruleCount);
+                        blocklistLabel->setText(buf);
+                    }
+                }
+                clearEvent(event);
+                break;
+            }
+        }
+    }
+
+    // Set by createServerSettingsDialog() once built.
+    TResultLabel* portLabel = nullptr;
+    TResultLabel* blocklistLabel = nullptr;
+
+private:
+    TransmissionClient& client_;
+};
 
 // Shared by both the global and the alt-speed sections: an input line
 // pre-filled with `value`, validated to a sane KB/s range.
@@ -29,9 +126,10 @@ TInputLine* addLimitField(TDialog* dlg, TRect r, int value) {
 } // namespace
 
 TDialog* createServerSettingsDialog(const SessionLimits& sessionLimits,
-                                     ServerSettingsDialogFields& fields) {
-    TRect r(0, 0, 60, 19);
-    auto* dlg = new TDialog(r, tr(Str::DialogTitleServerSettings));
+                                     ServerSettingsDialogFields& fields,
+                                     TransmissionClient& client) {
+    TRect r(0, 0, 60, 25);
+    auto* dlg = new ServerSettingsDialogImpl(r, tr(Str::DialogTitleServerSettings), client);
     dlg->options |= ofCentered;
 
     // --- Global (session-wide) speed limits ---
@@ -73,8 +171,26 @@ TDialog* createServerSettingsDialog(const SessionLimits& sessionLimits,
     fields.altSpeedUploadLimit = addLimitField(dlg, TRect(28, 13, 38, 14), sessionLimits.altSpeedUp);
     dlg->insert(new TStaticText(TRect(39, 13, 44, 14), tr(Str::UnitKBs)));
 
-    dlg->insert(new TButton(TRect(20, 16, 30, 18), tr(Str::ButtonOK), cmOK, bfDefault));
-    dlg->insert(new TButton(TRect(32, 16, 42, 18), tr(Str::ButtonCancel), cmCancel, bfNormal));
+    // --- Network: on-demand daemon-side checks, not persisted settings
+    // — see TransmissionClient::testPort()/updateBlocklist() for why
+    // there's nothing here to pre-fill or save back; each button's own
+    // result appears in the label right next to it, inline, the moment
+    // that one blocking call finishes (see ServerSettingsDialogImpl's
+    // own comment on why a popup wasn't used instead).
+    dlg->insert(new TStaticText(TRect(2, 15, 56, 16), tr(Str::LabelNetworkSection)));
+
+    dlg->insert(new TButton(TRect(2, 16, 20, 18), tr(Str::ButtonTestPort), cmTestPort, bfNormal));
+    auto* portLabel = new TResultLabel(TRect(22, 16, 56, 17), "");
+    dlg->insert(portLabel);
+    static_cast<ServerSettingsDialogImpl*>(dlg)->portLabel = portLabel;
+
+    dlg->insert(new TButton(TRect(2, 19, 20, 21), tr(Str::ButtonUpdateBlocklist), cmUpdateBlocklist, bfNormal));
+    auto* blocklistLabel = new TResultLabel(TRect(22, 19, 56, 20), "");
+    dlg->insert(blocklistLabel);
+    static_cast<ServerSettingsDialogImpl*>(dlg)->blocklistLabel = blocklistLabel;
+
+    dlg->insert(new TButton(TRect(20, 22, 30, 24), tr(Str::ButtonOK), cmOK, bfDefault));
+    dlg->insert(new TButton(TRect(32, 22, 42, 24), tr(Str::ButtonCancel), cmCancel, bfNormal));
 
     dlg->selectNext(False);
     return dlg;

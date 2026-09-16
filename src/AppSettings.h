@@ -78,7 +78,7 @@ struct ServerProfile {
 
 // Settings the user can configure from the Connection/Server windows.
 struct AppSettings {
-    int refreshIntervalSeconds = 5; // first option in the Connection window
+    int refreshIntervalSeconds = 1; // first option in the Connection window
 
     // Every server the user has ever named via the Connection dialog's
     // server combo, keyed by that logical name — added/removed there

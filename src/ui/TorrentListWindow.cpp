@@ -287,6 +287,10 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
             cycleQueueActionForRow(row);
             return true;
         }
+        if (col == static_cast<int>(SortColumn::Priority)) {
+            cyclePriorityForRow(row);
+            return true;
+        }
         return false;
     });
     grid()->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
@@ -664,6 +668,11 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuQueueMoveUp), cmQueueMoveUp, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
+    TSubMenu* priorityMenu = new TSubMenu(tr(Str::MenuPriority), kbNoKey);
+    *priorityMenu +
+        *new TMenuItem(tr(Str::MenuPriorityLow), cmSetPriorityLow, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityNormal), cmSetPriorityNormal, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityHigh), cmSetPriorityHigh, kbNoKey);
     // operator+(TMenuItem&, TMenuItem&) walks to the end of the first
     // item's existing chain and appends the second one there (see
     // menu.cpp), mutating that chain in place — so `items` (bound to
@@ -679,7 +688,8 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
-        static_cast<TMenuItem&>(*queueMenu);
+        static_cast<TMenuItem&>(*queueMenu) +
+        static_cast<TMenuItem&>(*priorityMenu);
     // Only meaningful — and only shown — while there's a selection to
     // cancel. Reuses cmSelectMultiple itself rather than a separate
     // command: its own handler (see App.cpp) already does exactly
@@ -885,6 +895,13 @@ void TorrentListWindow::queueMoveBottomForSelected() {
     refresh();
 }
 
+void TorrentListWindow::setPriorityForSelected(int priority) {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.setPriority(t->id, priority);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
 void TorrentListWindow::cycleQueueActionForRow(int row) {
     if (row < 0 || row >= (int)visible_.size()) return;
     int id = visible_[row].id;
@@ -895,6 +912,14 @@ void TorrentListWindow::cycleQueueActionForRow(int row) {
         case 3: client_.queueMoveBottom(id); break;
     }
     queueActionCycle_ = (queueActionCycle_ + 1) % 4;
+    refresh();
+}
+
+void TorrentListWindow::cyclePriorityForRow(int row) {
+    if (row < 0 || row >= (int)visible_.size()) return;
+    const Torrent& t = visible_[row];
+    int next = (t.bandwidthPriority <= -1) ? 0 : (t.bandwidthPriority == 0) ? 1 : -1;
+    client_.setPriority(t.id, next);
     refresh();
 }
 

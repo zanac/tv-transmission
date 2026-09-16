@@ -39,6 +39,9 @@ const char* tr(Str id) {
                         "~V~erbindung...", "C~o~nexión...");
         case Str::MenuServerSettings:
             return pick("~S~erver...", "~S~erver...", "~S~erveur...", "~S~erver...", "~S~ervidor...");
+        case Str::MenuSessionStats:
+            return pick("Session ~S~tatistics...", "~S~tatistiche sessione...", "~S~tatistiques de session...",
+                        "Sitzungs~s~tatistik...", "E~s~tadísticas de sesión...");
         case Str::MenuQuit:      return pick("~Q~uit", "~E~sci", "~Q~uitter", "~B~eenden", "~S~alir");
         case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración");
         case Str::MenuColumnsMenu:
@@ -123,6 +126,14 @@ const char* tr(Str id) {
         case Str::MenuQueueMoveBottom:
             return pick("Move to ~B~ottom", "Porta in ~f~ondo", "Déplacer tout en ~b~as",
                         "Ganz nach u~n~ten", "Mover al ~f~inal");
+        case Str::MenuPriority:
+            return pick("Priorit~y~", "Priorit~à~", "Priorit~é~", "P~r~iorität", "Prioridad");
+        case Str::MenuPriorityLow:
+            return pick("~L~ow", "~B~assa", "~B~asse", "~N~iedrig", "~B~aja");
+        case Str::MenuPriorityNormal:
+            return pick("~N~ormal", "~N~ormale", "~N~ormale", "~N~ormal", "~N~ormal");
+        case Str::MenuPriorityHigh:
+            return pick("~H~igh", "~A~lta", "~H~aute", "~H~och", "~A~lta");
         case Str::MenuDeleteWithData:
             return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
                         "~L~öschen (mit Dateien)", "~B~orrar (con archivos)");
@@ -199,6 +210,12 @@ const char* tr(Str id) {
                         "Lien magnet, URL .torrent ou chemin local :",
                         "Magnet-Link, .torrent-URL oder lokaler Pfad:",
                         "Enlace magnet, URL .torrent o ruta local:");
+        case Str::LabelFolderPath:
+            return pick("Path:", "Percorso:", "Chemin :", "Pfad:", "Ruta:");
+        case Str::MsgFolderUnreadable:
+            return pick("(cannot read this directory)", "(impossibile leggere questa cartella)",
+                        "(impossible de lire ce dossier)", "(Ordner kann nicht gelesen werden)",
+                        "(no se puede leer esta carpeta)");
         case Str::MsgTorrentDuplicate:
             return pick("This torrent was already in the list.",
                         "Questo torrent era già presente nella lista.",
@@ -227,12 +244,19 @@ const char* tr(Str id) {
         case Str::ButtonOK:     return "OK"; // same word in all five languages
         case Str::ButtonCancel: return pick("Cancel", "Annulla", "Annuler", "Abbrechen", "Cancelar");
         case Str::ButtonSave: return pick("Save", "Salva", "Enregistrer", "Speichern", "Guardar");
+        case Str::ButtonSelect: return pick("Select", "Seleziona", "Sélectionner", "Auswählen", "Seleccionar");
 
         case Str::DialogTitleConnection:
             return pick("Connection", "Connessione", "Connexion", "Verbindung", "Conexión");
         case Str::DialogTitleServerSettings:
             return pick("Server Configuration", "Configurazione server", "Configuration du serveur",
                         "Server-Konfiguration", "Configuración del servidor");
+        case Str::DialogTitleSessionStats:
+            return pick("Session Statistics", "Statistiche sessione", "Statistiques de session",
+                        "Sitzungsstatistik", "Estadísticas de sesión");
+        case Str::DialogTitleSelectFolder:
+            return pick("Select Folder", "Seleziona cartella", "Sélectionner un dossier",
+                        "Ordner auswählen", "Seleccionar carpeta");
         case Str::LabelRefreshSeconds:
             return pick("Refresh (seconds):", "Refresh (secondi):", "Actualisation (secondes) :",
                         "Aktualisierung (Sekunden):", "Actualización (segundos):");
@@ -343,6 +367,8 @@ const char* tr(Str id) {
         case Str::ButtonTrackers: return pick("Trackers...", "Tracker...", "Trackers...", "Tracker...", "Trackers...");
         case Str::ButtonRefresh: return pick("Refresh", "Aggiorna", "Actualiser", "Aktualisieren", "Actualizar");
         case Str::ButtonBrowse: return pick("Browse...", "Sfoglia...", "Parcourir...", "Durchsuchen...", "Examinar...");
+        case Str::ButtonChangeFolder: return pick("Change...", "Cambia...", "Changer...", "Ändern...", "Cambiar...");
+        case Str::ButtonVerify: return pick("Verify", "Verifica", "Vérifier", "Prüfen", "Verificar");
         case Str::TabTrackers: return pick("Trackers", "Tracker", "Trackers", "Trackers", "Trackers");
         case Str::TabPeers: return pick("Peers", "Peer", "Pairs", "Peers", "Pares");
         case Str::DialogTitleBrowseTorrent:
@@ -419,6 +445,44 @@ const char* tr(Str id) {
         case Str::LabelAltSpeedUpload:
             return pick("Upload limit:", "Limite upload:", "Limite d'envoi :",
                         "Upload-Limit:", "Límite de subida:");
+        case Str::LabelNetworkSection:
+            return pick("Network", "Rete", "Réseau", "Netzwerk", "Red");
+        case Str::ButtonTestPort:
+            return pick("Test port", "Test porta", "Tester le port", "Port testen", "Probar puerto");
+        case Str::ButtonUpdateBlocklist:
+            return pick("Update blocklist", "Aggiorna blocklist", "MAJ liste noire",
+                        "Sperrliste aktualisieren", "Actualizar lista de bloqueo");
+        case Str::LabelCurrentSession:
+            return pick("Current session", "Sessione corrente", "Session en cours",
+                        "Aktuelle Sitzung", "Sesión actual");
+        case Str::LabelAllTime:
+            return pick("All time", "Sempre", "Total", "Insgesamt", "Total");
+        case Str::LabelStatsDownloaded:
+            return pick("Downloaded:", "Scaricato:", "Téléchargé :", "Heruntergeladen:", "Descargado:");
+        case Str::LabelStatsUploaded:
+            return pick("Uploaded:", "Caricato:", "Envoyé :", "Hochgeladen:", "Subido:");
+        case Str::LabelStatsActive:
+            return pick("Active:", "Attivo:", "Actif :", "Aktiv:", "Activo:");
+        case Str::LabelStatsStarted:
+            return pick("Started %d times", "Avviato %d volte", "Démarré %d fois",
+                        "%d Mal gestartet", "Iniciado %d veces");
+        case Str::ResultPortOpen:
+            return pick("Port: open", "Porta: aperta", "Port : ouvert", "Port: offen", "Puerto: abierto");
+        case Str::ResultPortClosed:
+            return pick("Port: closed", "Porta: chiusa", "Port : fermé", "Port: geschlossen", "Puerto: cerrado");
+        case Str::ResultPortTestFailed:
+            return pick("Port: test failed", "Porta: test fallito", "Port : échec du test",
+                        "Port: Test fehlgeschlagen", "Puerto: prueba fallida");
+        case Str::ResultBlocklistUpdated:
+            return pick("Blocklist: %d rules", "Blocklist: %d regole", "Liste noire : %d règles",
+                        "Sperrliste: %d Regeln", "Lista de bloqueo: %d reglas");
+        case Str::ResultBlocklistFailed:
+            return pick("Blocklist: update failed", "Blocklist: aggiornamento fallito",
+                        "Liste noire : échec", "Sperrliste: Fehler", "Lista de bloqueo: error");
+        case Str::ResultTesting:
+            return pick("Testing...", "Test in corso...", "Test en cours...", "Teste...", "Probando...");
+        case Str::ResultUpdating:
+            return pick("Updating...", "Aggiornamento...", "Mise à jour...", "Aktualisiere...", "Actualizando...");
         case Str::CheckAltSpeedEnabled:
             return pick("Enable 'Speed Limit' mode", "Abilita modalità 'Limite velocità'",
                         "Activer le mode « Limite de vitesse »", "Modus 'Geschwindigkeitslimit' aktivieren",

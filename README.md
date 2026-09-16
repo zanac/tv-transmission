@@ -1,6 +1,6 @@
 # TV Transmission
 
-**Version 1.5.1** — stable release.
+**Version 1.5.2** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -397,6 +397,28 @@ HTTP and nlohmann/json for parsing.
   daemon's actual state is at the moment the dialog opens, including
   changes made some other way (another client, a script) since this
   app last checked
+- A "Network" section with two on-demand daemon-side checks — "Test
+  port" (is the daemon's own configured incoming peer port reachable
+  from outside) and "Update blocklist" (re-download and reload the IP
+  blocklist from whatever URL the daemon's already configured with —
+  this app has no UI for setting that URL itself, only for triggering
+  the update). Each shows its own result inline, next to its own
+  button, the moment that one call finishes — not a popup, so it stays
+  visible without needing to be dismissed, and doesn't interrupt
+  anything else on the same dialog
+
+**Session Statistics ("Session Statistics..." — "Settings" menu)**
+- Current-session and all-time (cumulative) totals for the connected
+  daemon: bytes downloaded/uploaded and time active, plus how many
+  times the daemon itself has been started, ever — Transmission's own
+  `session-stats` RPC, the same live-fetch-each-time approach as Server
+  Configuration just above rather than anything stored in this app's
+  own settings file
+- Read-only: nothing here round-trips into a setting, so unlike Server
+  Configuration there's no OK to confirm — just "Refresh" (re-fetches
+  and updates every value in place) and "Close"
+- Acts on whichever server's window currently has focus, same as
+  Server Configuration and "Manage columns..."
 
 **Filters ("Columns" menu)**
 - Narrows the main list to torrents matching ALL active filters (AND,
@@ -464,7 +486,14 @@ where Transmission has no ratio to report yet; ETA is "—" when it
 can't be estimated (not downloading, or not yet enough data to guess);
 completion date is "—" for a torrent that hasn't finished yet; queue
 position is shown 1-based (matching how you'd count it, not
-Transmission's own 0-based internal numbering).
+Transmission's own 0-based internal numbering). Bandwidth priority is
+editable, not just shown: double-clicking that column cycles Low →
+Normal → High → Low for the focused row (same mechanism as queue
+position's own double-click cycling just below), and the same three
+choices are also on a "Priority" submenu — both the main menu bar and
+the list's own right-click context menu, right next to "Queue" —
+applying to every currently selected torrent at once, or just the
+focused one outside selection mode.
 
 **Input validation**
 - Every numeric field (refresh interval, RPC port, global and
@@ -783,16 +812,283 @@ actions above:
   (`torrent-set-location`)
 - **Per-torrent seed ratio limit**, distinct from a speed limit
   (`seedRatioLimit`/`seedRatioMode` in `torrent-set`)
-- **Per-torrent bandwidth priority** (high/normal/low), distinct from
-  the absolute KB/s limit already implemented (`bandwidthPriority`)
-- **Incoming port test** (`port-test`) and **blocklist update**
-  (`blocklist-update`) — session-level, would fit in the Settings dialog
-- **Free disk space** for a given path (`free-space`) — useful before
-  adding a large torrent
 
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**The destination folder chosen in "Add torrent" was never actually
+sent anywhere — the whole feature had no effect on where a torrent
+actually got saved.** Found while checking something else entirely
+(how a wrong/nonexistent destination gets handled), not from a report
+against the feature itself — worth documenting since it's the kind of
+gap that's easy to miss: everything ELSE about the feature worked
+(the label showed the chosen folder, "Verify" showed its free space,
+switching folders refreshed both correctly), so there was nothing
+visibly broken to notice.
+
+`TransmissionClient::addTorrent()` only ever sent `{"filename":
+urlOrPath}` to `torrent-add` — no `download-dir` argument at all, so
+Transmission always used its own default regardless of what "Add
+torrent" showed as the destination. `App::showAddTorrentDialog()`'s own
+`cmOK` handling had `destination` sitting right there, already captured
+for the Browse/Change reopen cycle, and simply never passed it to
+`addTorrent()`. Fixed by giving `addTorrent()` an optional
+`downloadDir` parameter (empty by default, so the CLI's own call site
+— which has no destination concept — needed no change at all) that
+becomes `torrent-add`'s own `download-dir` argument when non-empty, and
+passing `destination` through from the one call site that has one.
+
+This also surfaced a real, worth-naming limitation rather than a bug to
+fix: `TFolderBrowserDialog`'s own folder list only ever looks at the
+LOCAL filesystem (this app's own machine), while `download-dir` is a
+path on the DAEMON's own filesystem — the same machine only when
+managing a local `transmission-daemon`, not necessarily so for a remote
+one. RPC has no "list a directory on the daemon" method to browse the
+real one instead, so this is accepted as a known gap rather than
+something to work around — picking a folder that exists locally but not
+on a remote daemon is possible, and would fail the same way any other
+invalid `download-dir` does (see the verification below).
+
+Verified two things together, not just that the fix compiled: first,
+that `download-dir` actually reaches the RPC request with the exact
+value shown in the dialog — confirmed by having a mock log every
+`torrent-add` call's own arguments and checking both a default-folder
+add and a changed-folder add each logged the right one. Second, that a
+destination the DAEMON itself rejects (simulated: locally readable, so
+the folder browser accepts it, but the mock's own `torrent-add` handler
+treats that specific path as invalid) surfaces Transmission's own error
+text in a normal error messageBox — "Failed to add the torrent: No such
+directory: ..." — rather than failing silently or crashing, reusing the
+exact same error-reporting path duplicate/invalid-torrent failures
+already went through.
+
+**A real use-after-free, found while building the folder browser below —
+`close()` used on a MODAL dialog instead of the correct `endModal()`.**
+Two dialogs (`SessionStatsDialog`'s own "Close" button, and this same
+new `TFolderBrowserDialog`'s own first version of its "Cancel" button)
+both used a custom command handled with `close()` — the same idiom this
+app's own NON-modal windows (`TorrentDetailsWindow`, `TrackerPeerWindow`,
+and others, all opened via `insertWindow()`) already use correctly for
+their own Close buttons. The difference that matters: `TWindow::close()`
+(`twindow.cpp`) calls `destroy(this)` directly — deleting the object
+immediately. For a non-modal window that's fine; nothing else is
+waiting on it. For a MODAL dialog (opened via `execView()`), it's a
+genuine use-after-free: `TGroup::execute()`'s own event loop (`do {
+getEvent(e); handleEvent(e); } while (!valid(endState))`) is still
+running further up the very same call stack when `handleEvent()`
+returns, and it goes on to call `valid()` on `this` — now a dangling
+pointer, since `close()` already freed it moments earlier from inside
+that same `handleEvent()` call.
+
+Confirms `close()` genuinely deletes the object (not just calling this
+class's own hoped-for behavior for it), by reading `TWindow::close()`
+directly rather than assuming: `if (valid(cmClose)) { frame = 0;
+destroy(this); }`. `TDialog`'s own base `handleEvent()` already turns
+the STANDARD commands (`cmOK`/`cmCancel`/`cmYes`/`cmNo`) into
+`endModal()` on its own — correctly, safely — which is why every OTHER
+dialog in this app (`ServerSettingsDialog`, `ConnectionDialog`, ...)
+never needed a custom Close/Cancel handler of its own at all. Fixed
+both by removing the custom command and its handler entirely, using
+plain `cmCancel` on the button instead — letting the exact same
+built-in mechanism every other dialog already relies on handle it,
+rather than reinventing (and this time, breaking) it.
+
+Not caught by reading the code alone: found from a live run where
+Cancel-ing the new folder browser silently failed to return control to
+"Add torrent" afterward — the dialog visually disappeared (matching
+what `close()`'s own `destroy(this)` does), but the app never resumed
+as expected, which is the outward symptom a `valid()` call on freed
+memory tends to produce rather than an immediate, obvious crash.
+Verified fixed the same way: the identical Cancel action, followed by
+confirming "Add torrent" reopens correctly showing its own previous
+destination and free-space values unchanged, i.e. that the whole
+close→reopen round trip actually completes end to end now.
+
+**New: destination folder and free disk space in "Add torrent," and
+a new reusable folder-picker dialog to go with it.** Genuinely new
+functionality, not a bug fix — the folder-browser dialog itself, and
+the design reasoning behind it (why not tvision's own `TChDirDialog`),
+is documented on its own further down; this entry is specifically
+about wiring it into "Add torrent."
+
+"Add torrent" gained a destination label (the server's own default
+download directory at first, changeable via a new "Change..." button)
+and a free-space label next to it (fetched automatically the moment
+the dialog opens, plus its own "Verify" button to re-check later) —
+`TransmissionClient::getDefaultDownloadDir()`/`getFreeSpace()`, both new,
+both the same synchronous `call()`/15s-timeout pattern every other
+action in this class already uses. "Change..." follows the exact same
+"close this dialog first, then open the next one, then reopen this one
+again" pattern already established for "Browse..." (see the entry
+further down on why nesting a second modal dialog directly inside this
+one isn't safe) — opening the new folder-browser dialog below rather
+than nesting it, then reopening "Add torrent" with whatever was chosen,
+alongside whatever URL/file value was already typed, so neither field
+loses what was there before the other one changed.
+
+Verified end to end on a live running instance, not just that each
+piece compiled: opened "Add torrent" and confirmed the destination and
+free space both populated correctly without any click needed first;
+clicked "Change...", navigated into a subfolder, confirmed with
+"Select" — back in "Add torrent," both the destination AND the free
+space had updated to that subfolder's own specific value (a mock
+returning a genuinely different number per exact path, not the same
+value regardless — otherwise a stale number would have looked
+identical to a correctly refreshed one).
+
+**New: `TFolderBrowserDialog`, a from-scratch folder-picker added to
+`tvision-ext/`.** Built specifically to back "Change..." above, after
+concluding tvision's own `TChDirDialog` was a dead end for this exact
+purpose — Windows-path assumptions baked into its own public API, a
+still-open memory-safety report against it, and even the one person
+who'd tried adapting it for "choose a folder" specifically had given up
+and written a new one instead (all found by actually reading that
+project's own GitHub history — issue #137, PR #141 — rather than
+assuming `TChDirDialog` would just work). Reaches the same conclusion,
+independently, for the same reason.
+
+Deliberately minimal, matching what was actually asked for rather than
+building in extra scope: no tree view, no "New Folder" button — a
+single-level navigator (list the current directory, double-click or
+Enter to descend, ".." to go back up), the same model tvision's own
+`TFileDialog` already uses for picking a FILE, applied here to picking
+a DIRECTORY instead. Built on this project's own `TGridView` rather
+than tvision's `TOutline`, for the same reason `TorrentFilesWindow`'s
+own file tree already is — one consistent look across every list in
+an app that embeds this, not a second, differently-styled list widget
+appearing only here. The path field at the top is directly editable —
+typing a path and pressing Enter navigates there, intercepted before
+`TDialog`'s own base `handleEvent()` gets a chance to treat Enter as
+"press whatever button has `bfDefault`" instead (a plain `TInputLine`
+doesn't consume Enter on its own, so without this, typing a path and
+pressing Enter would have instead tried to confirm the dialog with
+whatever was ALREADY in `currentPath_`, ignoring what was just typed).
+No dependency on this app's own translation system, matching
+`TGridColumnManagerDialog`'s own established pattern for this same
+codebase: every label passed in via a `TFolderBrowserLabels` struct
+with plain-English defaults, built from this app's own `tr()`-based
+strings right before opening it.
+
+**New: a "Session Statistics" dialog.** Genuinely new functionality, not
+a bug fix — an idea floated much earlier in this project's own history
+and only now actually built.
+
+`TransmissionClient::getSessionStats()`: a new `SessionStats` struct
+(current-session and cumulative/all-time byte counts, active-time, and
+daemon start count) fetched via the `session-stats` RPC method — the
+same `ok`-reports-success-vs-genuine-zero convention
+`getSessionLimits()` already uses, since a torrent-free daemon
+genuinely reports all zeros here and that's not itself a failure to
+distinguish from a broken connection.
+
+The dialog itself (`SessionStatsDialog.h/.cpp`, a new file pair) is
+simpler than Server Configuration in one specific way: every field here
+is read-only — nothing round-trips into a setting, so there's no
+`...Result()` function or `Fields` struct to read back once closed,
+just "Refresh" (re-fetches and updates every label in place) and
+"Close." Reused Server Configuration's own `TResultLabel` idea (a
+`TStaticText` with a `setText()` the base class doesn't have) rather
+than sharing the literal class — both are a few lines, file-local, and
+this project doesn't otherwise have a home for a view helper used by
+exactly two unrelated dialogs.
+
+Verified against a mock returning specific, checkable values (200MB/
+100MB for the current session, 10GB/5GB all-time, matching seconds-
+active figures, and a session count of 42) on a live running instance:
+every single field matched exactly, not just that the dialog opened
+without crashing.
+
+**New: per-torrent bandwidth priority is now editable, not just
+shown.** Genuinely new functionality, not a bug fix — worth documenting
+since it follows an established pattern (queue position's own
+double-click cycling) closely enough that it's worth noting exactly
+where it diverges from it and why.
+
+`TransmissionClient::setPriority(torrentId, priority)`: the same
+`torrent-set` RPC method `setFilesPriority()` already used, but setting
+`bandwidthPriority` directly (a single value for the whole torrent)
+rather than one of the per-FILE `priority-low`/`priority-normal`/
+`priority-high` index arrays that method uses — a torrent's own
+priority and a file's own priority are two different fields entirely,
+not the same concept at two different scopes.
+
+The double-click cycle diverges from queue position's own
+`cycleQueueActionForRow()` in one deliberate way: queue position's four
+actions (top/up/down/bottom) are RELATIVE moves with no "current state"
+of their own to read, so that method cycles through a single shared
+counter (`queueActionCycle_`) regardless of which row was actually
+clicked. Priority is different — `Torrent::bandwidthPriority` already
+says exactly where in the Low/Normal/High cycle a given row currently
+is — so `cyclePriorityForRow()` reads that row's own current value
+directly and computes the next step from it, with no shared counter to
+keep in sync with anything.
+
+The explicit "Priority" submenu (Low/Normal/High) went in both places
+"Queue" already was — the main menu bar's own Torrent menu, and the
+list's own right-click context menu — reusing the exact same nested-
+TSubMenu construction (and the same `(TMenuItem&)` cast) queueMenu
+already needed in both those places, rather than inventing a different
+pattern for what's structurally the same kind of addition.
+`setPriorityForSelected()` follows `queueMoveTopForSelected()`'s own
+shape exactly: every currently selected torrent via `targetTorrents()`,
+or just the focused one outside selection mode.
+
+Verified on a live running instance against a mock that actually
+remembers `bandwidthPriority` between calls (a mock that always
+reports the same fixed value regardless of what was just set wouldn't
+have caught anything — the cycle would look identical whether it
+worked or not): three double-clicks on the Priority column moved
+Normal → High → Low → Normal, matching the cycle exactly, and the
+right-click context menu showed "Priority ►" appearing right next to
+"Queue ►", as intended.
+
+**New: "Test port" and "Update blocklist" in the Server Configuration
+dialog.** Genuinely new functionality, not a bug fix — worth documenting
+the design since it's the first place in this app that needs a dialog
+to act on a live `TransmissionClient` WHILE still open, rather than
+only reading its fields back once it closes.
+
+`TransmissionClient::testPort()`/`updateBlocklist()`: the same
+synchronous `call()` every other action in this class already uses
+(`port-test`/`blocklist-update`, both session-level RPC methods with no
+arguments), bounded by the same 15s timeout. Neither takes a URL or a
+port to check — Transmission always tests/updates against whatever
+it's already configured with; this app has no UI for setting the
+blocklist's own URL, only for triggering the daemon's already-configured
+update.
+
+Every other field on this dialog only round-trips through
+`ServerSettingsDialogFields`/`serverSettingsDialogResult()` once the
+dialog closes with OK — these two needed to call straight into the
+client and show a result WHILE the dialog stays open, so
+`ServerSettingsDialogImpl` (a small `TDialog` subclass, previously this
+was built directly from a plain `TDialog` with no subclass at all) now
+holds a `TransmissionClient&` and handles its own two buttons' commands
+directly. A popup for the result was deliberately not used — a
+messageBox for something the user can just look at again a moment
+later, right there in the same dialog, would be one more thing to
+dismiss for no benefit — instead each button has its own small label
+right next to it (`TResultLabel`, a `TStaticText` subclass with a
+`setText()` the base class doesn't otherwise have, replacing the same
+way this project already replaces a `TView`'s own title elsewhere).
+
+One thing that needed getting right rather than skipped: both calls
+block the whole app for however long the round trip takes (same as
+every other action), so "Testing..."/"Updating..." was set on the label
+right before the call starts — but `drawView()` alone only updates
+tvision's own in-memory screen buffer, which doesn't reach the real
+terminal until control returns to the event loop, by which point the
+blocking call would already be finished and there'd be nothing left to
+show that text for. `TScreen::flushScreen()` forces an immediate real
+repaint right after setting it, so the intermediate text is actually
+visible for however long the call takes, not silently skipped over.
+
+Verified on a live running instance against a mock returning
+`port-is-open: true` and `blocklist-size: 123456`: clicking "Test port"
+showed "Port: open", clicking "Update blocklist" showed "Blocklist:
+123456 rules" — the exact values the mock sent, not just that the
+buttons did something.
 
 **Rapid switching between the Trackers and Peers tabs could eventually
 leave the list stuck showing nothing — two unrelated code paths were

@@ -38,6 +38,27 @@ struct SessionLimits {
     int altSpeedUp = 0;      // KB/s
 };
 
+// From session-stats' own "current-stats"/"cumulative-stats" objects —
+// "current" resets to zero each time the daemon (re)starts, "cumulative"
+// never resets and is what a person usually means by "all-time" totals.
+// Transmission's own daemon.stats file is what actually persists the
+// cumulative side across restarts — this app has no local counterpart
+// of its own to keep in sync, it only ever reads what the daemon
+// already tracks.
+struct SessionStats {
+    int64_t currentUploadedBytes = 0;
+    int64_t currentDownloadedBytes = 0;
+    int64_t currentSecondsActive = 0;
+    int64_t cumulativeUploadedBytes = 0;
+    int64_t cumulativeDownloadedBytes = 0;
+    int64_t cumulativeSecondsActive = 0;
+    // How many times the daemon has been started, ever — Transmission's
+    // own "sessionCount" field name for this, kept as-is rather than
+    // renamed, despite how easy it'd be to misread as some OTHER count
+    // (torrents, transfers) at a glance.
+    int cumulativeSessionCount = 0;
+};
+
 // Minimal client for Transmission's JSON RPC (transmission-daemon).
 // Handles the session handshake (X-Transmission-Session-Id header) and
 // the base methods: torrent-get, torrent-add, torrent-start, torrent-stop.
@@ -124,8 +145,18 @@ public:
     std::vector<Torrent> finishRefresh(CURLM* multi, bool* ok = nullptr);
 
     // Adds a torrent from a URL (magnet or .torrent link) or local path.
-    // See AddTorrentResult above for what the result distinguishes.
-    AddTorrentResult addTorrent(const std::string& urlOrPath);
+    // `downloadDir`, if non-empty, overrides where THIS torrent is
+    // saved (torrent-add's own "download-dir" argument) — a path on
+    // the DAEMON's own filesystem, which may not be the same machine
+    // this app itself is running on (see AddTorrentDialog's own
+    // "Change..." button, whose folder browser only ever looks at the
+    // LOCAL filesystem — see its own doc comment for why that's a
+    // known, accepted gap rather than a bug: RPC has no "list a
+    // directory on the daemon" method to browse the real one instead).
+    // Left empty, the daemon's own default download directory applies,
+    // same as before this parameter existed. See AddTorrentResult above
+    // for what the result distinguishes.
+    AddTorrentResult addTorrent(const std::string& urlOrPath, const std::string& downloadDir = "");
 
     bool startTorrent(int id);
     bool stopTorrent(int id);
@@ -197,6 +228,17 @@ public:
     // torrent-set's "priority-low"/"priority-normal"/"priority-high".
     bool setFilesPriority(int torrentId, const std::vector<int>& fileIndices, int priority);
 
+    // Sets the torrent's OWN bandwidth priority (-1 low, 0 normal, 1
+    // high — same convention as Torrent::bandwidthPriority and the
+    // `priority` parameter above) — torrent-set's own "bandwidthPriority"
+    // field directly, a single value for the whole torrent rather than
+    // the per-file "priority-low"/"priority-normal"/"priority-high"
+    // index arrays setFilesPriority() above uses. Distinct from a speed
+    // limit (see setTorrentSpeedLimits()): this only affects how
+    // Transmission divides available bandwidth among torrents that are
+    // all otherwise unrestricted, not an absolute KB/s cap of its own.
+    bool setPriority(int torrentId, int priority);
+
     // Renames a file or folder within a torrent — a separate RPC method
     // of its own ("torrent-rename-path", not "torrent-set" despite the
     // similar name), because Transmission only ever renames the LAST
@@ -235,6 +277,53 @@ public:
 
     // Sets the session's global speed limits (session-set).
     bool setSessionLimits(const SessionLimits& limits);
+
+    // Asks the daemon to check whether its own configured incoming peer
+    // port is reachable from outside (session-level RPC "port-test" —
+    // there's no torrent or port argument to pass; it always tests
+    // whatever port-get would currently report). `portOpen`, if given,
+    // is set to the result; the return value is whether the check
+    // itself completed at all (a network failure to the daemon means
+    // `portOpen` was never actually determined, same "ok vs. genuine
+    // false" distinction as getSessionLimits() above).
+    // Fetches the daemon's own current-session and all-time (cumulative)
+    // transfer totals, active-time, and start count (session-stats RPC
+    // — see SessionStats' own comment on the current/cumulative
+    // distinction). `ok`, if given, reports whether the call actually
+    // succeeded, the same "empty result vs. genuine zero" distinction
+    // getSessionLimits() already makes — a torrent-free daemon
+    // genuinely reports all zeros here, which isn't itself a failure.
+    SessionStats getSessionStats(bool* ok = nullptr);
+
+    bool testPort(bool* portOpen = nullptr);
+
+    // The daemon's own configured default download directory
+    // (session-get's own "download-dir" field) — a separate round trip
+    // from getSessionLimits() above rather than folding it into that
+    // struct, since it isn't a limit and that struct's own callers
+    // (Server Settings) have no use for it; this is only ever needed
+    // when opening "Add torrent" (see AddTorrentDialog), where a single
+    // extra call on a manually-opened dialog is no real cost.
+    std::string getDefaultDownloadDir(bool* ok = nullptr);
+
+    // Bytes free at `path`, on whatever filesystem the DAEMON sees it
+    // on (RPC "free-space") — the same free space a torrent would
+    // actually be competing for if saved there, not this app's own
+    // local disk (which may well be a different machine entirely).
+    // `ok`, if given, reports whether the call succeeded — `path` not
+    // existing/being readable on the daemon's own side counts as
+    // failure here too, same as a network error, since there's no
+    // meaningful byte count to report either way.
+    int64_t getFreeSpace(const std::string& path, bool* ok = nullptr);
+
+    // Asks the daemon to re-download and reload its own IP blocklist
+    // from whatever URL it's configured with (session-level RPC
+    // "blocklist-update") — this app has no UI for setting that URL
+    // itself, only for triggering the daemon's own already-configured
+    // update. `ruleCount`, if given, is set to how many rules the
+    // blocklist ended up with; the return value is whether the update
+    // itself completed.
+    bool updateBlocklist(int* ruleCount = nullptr);
 
     // Reconfigures endpoint/credentials (e.g. from the settings window).
     // Invalidates the current session: it will be renegotiated on the

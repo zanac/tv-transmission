@@ -421,6 +421,14 @@ bool TransmissionClient::setFilesPriority(int torrentId, const std::vector<int>&
     return !call("torrent-set", args.dump()).empty();
 }
 
+bool TransmissionClient::setPriority(int torrentId, int priority) {
+    json args = {
+        {"ids", json::array({torrentId})},
+        {"bandwidthPriority", priority},
+    };
+    return !call("torrent-set", args.dump()).empty();
+}
+
 bool TransmissionClient::renamePath(int torrentId, const std::string& path, const std::string& newName) {
     json args = {
         {"ids", json::array({torrentId})},
@@ -430,8 +438,10 @@ bool TransmissionClient::renamePath(int torrentId, const std::string& path, cons
     return !call("torrent-rename-path", args.dump()).empty();
 }
 
-TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath) {
+TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath,
+                                                                     const std::string& downloadDir) {
     json args = {{"filename", urlOrPath}};
+    if (!downloadDir.empty()) args["download-dir"] = downloadDir;
     std::string body = call("torrent-add", args.dump());
     // If body is empty, call() has already set lastError_ (curl/network
     // failure, or a bad session handshake) — nothing more to add here.
@@ -617,6 +627,30 @@ SessionLimits TransmissionClient::getSessionLimits(bool* ok) {
     return limits;
 }
 
+SessionStats TransmissionClient::getSessionStats(bool* ok) {
+    SessionStats stats;
+    if (ok) *ok = false;
+    std::string body = call("session-stats", "{}");
+    if (body.empty()) return stats;
+    try {
+        json j = json::parse(body);
+        auto& a = j["arguments"];
+        auto& cur = a["current-stats"];
+        auto& cum = a["cumulative-stats"];
+        stats.currentUploadedBytes = cur.value("uploadedBytes", (int64_t)0);
+        stats.currentDownloadedBytes = cur.value("downloadedBytes", (int64_t)0);
+        stats.currentSecondsActive = cur.value("secondsActive", (int64_t)0);
+        stats.cumulativeUploadedBytes = cum.value("uploadedBytes", (int64_t)0);
+        stats.cumulativeDownloadedBytes = cum.value("downloadedBytes", (int64_t)0);
+        stats.cumulativeSecondsActive = cum.value("secondsActive", (int64_t)0);
+        stats.cumulativeSessionCount = cum.value("sessionCount", 0);
+        if (ok) *ok = true;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+    }
+    return stats;
+}
+
 bool TransmissionClient::setSessionLimits(const SessionLimits& limits) {
     json args = {
         {"speed-limit-down-enabled", limits.downloadLimited},
@@ -628,4 +662,68 @@ bool TransmissionClient::setSessionLimits(const SessionLimits& limits) {
         {"alt-speed-enabled", limits.altSpeedEnabled},
     };
     return !call("session-set", args.dump()).empty();
+}
+
+bool TransmissionClient::testPort(bool* portOpen) {
+    if (portOpen) *portOpen = false;
+    std::string body = call("port-test", "{}");
+    if (body.empty()) return false;
+    try {
+        json j = json::parse(body);
+        if (portOpen) *portOpen = j["arguments"].value("port-is-open", false);
+        return true;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+        return false;
+    }
+}
+
+std::string TransmissionClient::getDefaultDownloadDir(bool* ok) {
+    if (ok) *ok = false;
+    std::string body = call("session-get", "{}");
+    if (body.empty()) return "";
+    try {
+        json j = json::parse(body);
+        std::string dir = j["arguments"].value("download-dir", "");
+        if (ok) *ok = true;
+        return dir;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+        return "";
+    }
+}
+
+int64_t TransmissionClient::getFreeSpace(const std::string& path, bool* ok) {
+    if (ok) *ok = false;
+    json args = {{"path", path}};
+    std::string body = call("free-space", args.dump());
+    if (body.empty()) return 0;
+    try {
+        json j = json::parse(body);
+        auto& a = j["arguments"];
+        // Transmission returns success with size-bytes < 0 for a path
+        // it couldn't actually check (per the RPC spec) — treated as a
+        // failure here too, not a genuine "negative free space".
+        int64_t bytes = a.value("size-bytes", (int64_t)-1);
+        if (bytes < 0) return 0;
+        if (ok) *ok = true;
+        return bytes;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+        return 0;
+    }
+}
+
+bool TransmissionClient::updateBlocklist(int* ruleCount) {
+    if (ruleCount) *ruleCount = 0;
+    std::string body = call("blocklist-update", "{}");
+    if (body.empty()) return false;
+    try {
+        json j = json::parse(body);
+        if (ruleCount) *ruleCount = j["arguments"].value("blocklist-size", 0);
+        return true;
+    } catch (const std::exception& e) {
+        lastError_ = std::string("JSON parse error: ") + e.what();
+        return false;
+    }
 }

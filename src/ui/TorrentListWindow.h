@@ -113,6 +113,19 @@ public:
     // cycleQueueActionForRow()'s own comment for why this is a single
     // shared counter rather than per-row state.
     void cycleQueueActionForRow(int row);
+    // Sets the bandwidth priority (-1/0/1, see TransmissionClient::
+    // setPriority()) for every currently selected torrent, or just the
+    // focused one outside selection mode — same targetTorrents()-based
+    // pattern as queueMoveTopForSelected() and the rest above.
+    void setPriorityForSelected(int priority);
+    // Cycles Low -> Normal -> High -> Low, one step per double-click on
+    // the Priority column — unlike cycleQueueActionForRow()'s own
+    // shared counter, this reads the ROW'S OWN current priority
+    // directly (Torrent::bandwidthPriority already tells you where in
+    // the cycle it is, which queue position's own four relative-move
+    // actions have no equivalent of), so there's no separate counter
+    // to keep in sync with anything.
+    void cyclePriorityForRow(int row);
     void showDetailsForSelected();
     void showFilesForSelected();
     void retranslate();   // re-applies the title + column headers in the current language

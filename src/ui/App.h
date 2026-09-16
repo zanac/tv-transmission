@@ -46,9 +46,10 @@ private:
     // isn't already showing gets its own window the same way, rather
     // than needing a restart to see it).
     TorrentListWindow* openServerWindow(const std::string& name);
-    void showAddTorrentDialog(const std::string& initialValue = "");
+    void showAddTorrentDialog(const std::string& initialValue = "", const std::string& initialDestination = "");
     void showConnectionDialog();
     void showServerSettingsDialog();
+    void showSessionStatsDialog();
     void showFilterDialog();
     void showColumnManagerDialog();
     void showWindowListDialog();
@@ -155,6 +156,10 @@ const ushort cmQueueMoveUp      = 118;
 const ushort cmQueueMoveDown    = 119;
 const ushort cmQueueMoveBottom  = 120;
 const ushort cmServerSettings   = 121;
+const ushort cmSetPriorityLow    = 122;
+const ushort cmSetPriorityNormal = 123;
+const ushort cmSetPriorityHigh   = 124;
+const ushort cmSessionStats     = 125;
 // Base for the "Connections" menu's own dynamic per-server commands
 // (see App::rebuildConnectionsMenu()) — one entry per configured
 // server, however many there are, so this needs real headroom rather
