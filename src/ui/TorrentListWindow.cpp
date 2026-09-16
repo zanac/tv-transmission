@@ -27,8 +27,18 @@ namespace {
 // constructor), that's the part actually telling them apart; the
 // translated "Torrents" after it is just there for anyone glancing at
 // the title bar without already knowing what this app's windows are.
-std::string buildWindowTitle(const std::string& serverName) {
-    return serverName + " \xE2\x80\x94 " + tr(Str::WindowTitleTorrentList);
+// `connectionLost` appends a translated "(offline)" marker — set
+// whenever the most recent refresh attempt (sync or async — see
+// TorrentListWindow::updateTitleForConnectionState()) failed, cleared
+// the moment one succeeds again. A persistent marker in the title bar
+// rather than a messageBox popping up every refresh cycle: a server
+// that's actually down would otherwise mean a fresh popup every
+// refreshIntervalSeconds until it's back, which is far more disruptive
+// than something glanceable that's just... there until it isn't.
+std::string buildWindowTitle(const std::string& serverName, bool connectionLost) {
+    std::string title = serverName + " \xE2\x80\x94 " + tr(Str::WindowTitleTorrentList);
+    if (connectionLost) title += " " + std::string(tr(Str::WindowTitleOffline));
+    return title;
 }
 
 // Builds "[███████░░░░░░░░░]  42%" — the block characters (U+2588 full
@@ -157,24 +167,39 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
                                       SortChangedCallback onSortChanged,
                                       const std::vector<int>& initialTrackerColumnWidths,
                                       const std::vector<int>& initialTrackerColumnOrder,
-                                      const std::vector<bool>& initialTrackerColumnVisible)
+                                      const std::vector<bool>& initialTrackerColumnVisible,
+                                      const std::vector<int>& initialPeerColumnWidths,
+                                      const std::vector<int>& initialPeerColumnOrder,
+                                      const std::vector<bool>& initialPeerColumnVisible)
     : TWindowInit(&TWindow::initFrame), // virtual base: must be initialized here,
                                          // by the most-derived class — TGridWindow's
                                          // own initialization of it doesn't propagate
                                          // through another level of inheritance
-      // closable=false: this window only ever closes when the
-      // Connection dialog's own "[-]" removes the server (see App::
-      // showConnectionDialog()) — not from the window itself, since
-      // every configured server is meant to always have one open (see
-      // App's own constructor).
-      TGridWindow(bounds, buildWindowTitle(serverName), /*fullScreen=*/false,
-                  gvResizableColumns | gvReorderableColumns | gvMultiSelect,
-                  /*closable=*/false),
+      // fullScreen=true: always exactly fills the desktop, tracking its
+      // own size as the terminal itself is resized (TWindow's own
+      // default growMode — gfGrowAll|gfGrowRel, set unconditionally in
+      // its own constructor — already does that automatically; nothing
+      // extra needed here for it). More than one of these can be open
+      // at once now (one per configured server, stacked — see App's own
+      // constructor and the "Connections" menu for how one is brought
+      // to the front over the others), unlike the single always-
+      // maximized window TGridWindow's own fullScreen mode was
+      // originally built for — but the same flags=0 (no move/resize/
+      // zoom/close) applies to each one independently either way, and
+      // is exactly what's wanted here: never smaller than the whole
+      // desktop, and only ever closed by the Connection dialog's own
+      // "[-]" removing that server (see App::showConnectionDialog()),
+      // never from the window itself.
+      TGridWindow(bounds, buildWindowTitle(serverName, /*connectionLost=*/false), /*fullScreen=*/true,
+                  gvResizableColumns | gvReorderableColumns | gvMultiSelect),
       client_(client),
       serverName_(serverName),
       initialTrackerColumnWidths_(initialTrackerColumnWidths),
       initialTrackerColumnOrder_(initialTrackerColumnOrder),
       initialTrackerColumnVisible_(initialTrackerColumnVisible),
+      initialPeerColumnWidths_(initialPeerColumnWidths),
+      initialPeerColumnOrder_(initialPeerColumnOrder),
+      initialPeerColumnVisible_(initialPeerColumnVisible),
       filter_(std::move(initialFilter)),
       sortColumn_(initialSort), sortAscending_(initialAscending),
       onSortChanged_(std::move(onSortChanged)) {
@@ -260,6 +285,10 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
     grid()->setCellActivateCallback([this](int row, int col) -> bool {
         if (col == static_cast<int>(SortColumn::QueuePosition)) {
             cycleQueueActionForRow(row);
+            return true;
+        }
+        if (col == static_cast<int>(SortColumn::Priority)) {
+            cyclePriorityForRow(row);
             return true;
         }
         return false;
@@ -423,7 +452,7 @@ void TorrentListWindow::retranslate() {
     // twindow.cpp) and freed with delete[] in its destructor — the same
     // pattern used for TStatusItem::text in BandwidthStatusLine.
     delete[] (char*)title;
-    title = newStr(buildWindowTitle(serverName_));
+    title = newStr(buildWindowTitle(serverName_, connectionLost_));
     applyColumnLabels(); // the sort "^"/"v" indicator is drawn by TGridView
                          // itself at draw time (see grid()->refresh() below),
                          // independent of the header label text — nothing
@@ -435,6 +464,37 @@ void TorrentListWindow::retranslate() {
 void TorrentListWindow::refresh() {
     allTorrents_ = client_.listTorrents();
     applyFilterAndSort();
+    // lastError().empty() means the attempt that just ran succeeded —
+    // see TransmissionClient::call()'s own comment on why every
+    // attempt clears it first, not just failures setting it, which is
+    // what makes this check meaningful right after the call above
+    // rather than possibly stale from some earlier one.
+    updateTitleForConnectionState(!client_.lastError().empty());
+}
+
+void TorrentListWindow::finishAsyncRefresh(CURLM* multi) {
+    bool ok = false;
+    std::vector<Torrent> result = client_.finishRefresh(multi, &ok);
+    if (ok) {
+        allTorrents_ = std::move(result);
+        applyFilterAndSort();
+    }
+    // On failure, deliberately leaves allTorrents_ (and so the
+    // displayed list) exactly as it was — a momentary network hiccup
+    // shouldn't blank out the last known state, only mark the title
+    // (see updateTitleForConnectionState() below) so it's visible
+    // without being disruptive.
+    updateTitleForConnectionState(!ok);
+}
+
+void TorrentListWindow::updateTitleForConnectionState(bool lost) {
+    if (lost == connectionLost_) return; // no change — most ticks, most of the time
+    connectionLost_ = lost;
+    // Same alloc/free convention as retranslate() itself uses for this
+    // same field — see its own comment.
+    delete[] (char*)title;
+    title = newStr(buildWindowTitle(serverName_, connectionLost_));
+    drawView();
 }
 
 void TorrentListWindow::setFilter(TorrentFilter filter) {
@@ -608,6 +668,11 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuQueueMoveUp), cmQueueMoveUp, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
+    TSubMenu* priorityMenu = new TSubMenu(tr(Str::MenuPriority), kbNoKey);
+    *priorityMenu +
+        *new TMenuItem(tr(Str::MenuPriorityLow), cmSetPriorityLow, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityNormal), cmSetPriorityNormal, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuPriorityHigh), cmSetPriorityHigh, kbNoKey);
     // operator+(TMenuItem&, TMenuItem&) walks to the end of the first
     // item's existing chain and appends the second one there (see
     // menu.cpp), mutating that chain in place — so `items` (bound to
@@ -623,7 +688,8 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
-        static_cast<TMenuItem&>(*queueMenu);
+        static_cast<TMenuItem&>(*queueMenu) +
+        static_cast<TMenuItem&>(*priorityMenu);
     // Only meaningful — and only shown — while there's a selection to
     // cancel. Reuses cmSelectMultiple itself rather than a separate
     // command: its own handler (see App.cpp) already does exactly
@@ -697,7 +763,10 @@ void TorrentListWindow::showDetailsForSelected() {
         if (auto* win = createTorrentDetailsWindow(details, client_,
                                                     initialTrackerColumnWidths_,
                                                     initialTrackerColumnOrder_,
-                                                    initialTrackerColumnVisible_))
+                                                    initialTrackerColumnVisible_,
+                                                    initialPeerColumnWidths_,
+                                                    initialPeerColumnOrder_,
+                                                    initialPeerColumnVisible_))
             TProgram::application->insertWindow(win);
     }
     grid()->exitSelectionMode();
@@ -826,6 +895,13 @@ void TorrentListWindow::queueMoveBottomForSelected() {
     refresh();
 }
 
+void TorrentListWindow::setPriorityForSelected(int priority) {
+    auto targets = targetTorrents();
+    for (const Torrent* t : targets) client_.setPriority(t->id, priority);
+    grid()->exitSelectionMode();
+    refresh();
+}
+
 void TorrentListWindow::cycleQueueActionForRow(int row) {
     if (row < 0 || row >= (int)visible_.size()) return;
     int id = visible_[row].id;
@@ -836,6 +912,14 @@ void TorrentListWindow::cycleQueueActionForRow(int row) {
         case 3: client_.queueMoveBottom(id); break;
     }
     queueActionCycle_ = (queueActionCycle_ + 1) % 4;
+    refresh();
+}
+
+void TorrentListWindow::cyclePriorityForRow(int row) {
+    if (row < 0 || row >= (int)visible_.size()) return;
+    const Torrent& t = visible_[row];
+    int next = (t.bandwidthPriority <= -1) ? 0 : (t.bandwidthPriority == 0) ? 1 : -1;
+    client_.setPriority(t.id, next);
     refresh();
 }
 

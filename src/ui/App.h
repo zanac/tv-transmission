@@ -23,6 +23,12 @@ public:
     // base classes are being constructed, i.e. before any code in this
     // constructor's body can run. See main.cpp.
     explicit App(const AppSettings& initialSettings);
+    // Declared explicitly (not left to the implicit default) only to
+    // clean up multiHandle_ itself — see the destructor's own comment
+    // in App.cpp for why nothing else needs doing here, and for the
+    // crash an earlier, more "defensive" version of this actually
+    // caused by assuming otherwise.
+    ~App() override;
 
     static TMenuBar* initMenuBar(TRect r);
     static TStatusLine* initStatusLine(TRect r);
@@ -39,15 +45,28 @@ private:
     // showConnectionDialog() (a server just added/edited there that
     // isn't already showing gets its own window the same way, rather
     // than needing a restart to see it).
-    TorrentListWindow* openServerWindow(const std::string& name, const TRect& bounds);
-    void showAddTorrentDialog(const std::string& initialValue = "");
+    TorrentListWindow* openServerWindow(const std::string& name);
+    void showAddTorrentDialog(const std::string& initialValue = "", const std::string& initialDestination = "");
     void showConnectionDialog();
     void showServerSettingsDialog();
+    void showSessionStatsDialog();
     void showFilterDialog();
     void showColumnManagerDialog();
     void showWindowListDialog();
     void showAboutDialog();
     void updateBandwidthStatus(); // updates the D:/U: text in the status bar, from the FOCUSED window's own server
+    // Rebuilds the "Connections" menu's own item list from
+    // settings_.servers, marking whichever one's window currently has
+    // focus (a bullet and the item's whole text in the menu's own
+    // highlight color — see its own comment for why that's the closest
+    // a text-mode menu gets to "bold" without custom drawing) — or a
+    // single disabled "Empty" item if there are none configured at all.
+    // Called both when the server LIST itself changes (added via Save,
+    // removed via "[-]" — see showConnectionDialog()) and, from idle(),
+    // whenever which one has FOCUS changes, however that happened
+    // (clicking a different window directly, Window → Next, the Window
+    // List dialog, or this very menu).
+    void rebuildConnectionsMenu();
 
     // The TGridView belonging to whichever window currently has focus
     // (any TGridView-based window — a torrent list, the tracker list, a
@@ -97,6 +116,21 @@ private:
     // never invalidates existing elements' addresses.
     std::map<std::string, std::unique_ptr<TransmissionClient>> clients_;
     std::chrono::steady_clock::time_point lastRefresh_;
+    // Shared by every window's own async refresh (see TorrentListWindow::
+    // startAsyncRefresh()) rather than one CURLM per client — driving
+    // one multi handle's own curl_multi_perform()/curl_multi_info_read()
+    // once per idle() tick (see idle() itself) naturally covers however
+    // many refreshes happen to be in flight at once, without needing to
+    // loop over every client's own separate multi handle to ask each
+    // one individually.
+    CURLM* multiHandle_ = nullptr;
+    // Whichever server's own window rebuildConnectionsMenu() last saw
+    // focused, checked on every idle() tick — a plain string compare
+    // against focusedListWindow()'s own current serverName() is enough
+    // to tell whether focus actually moved since the last tick, so the
+    // menu is only rebuilt when it needs to be, not on every single
+    // tick regardless.
+    std::string lastConnectionsFocusedServer_;
 };
 
 // Custom application commands (> tvision's cmUserBase)
@@ -122,3 +156,15 @@ const ushort cmQueueMoveUp      = 118;
 const ushort cmQueueMoveDown    = 119;
 const ushort cmQueueMoveBottom  = 120;
 const ushort cmServerSettings   = 121;
+const ushort cmSetPriorityLow    = 122;
+const ushort cmSetPriorityNormal = 123;
+const ushort cmSetPriorityHigh   = 124;
+const ushort cmSessionStats     = 125;
+// Base for the "Connections" menu's own dynamic per-server commands
+// (see App::rebuildConnectionsMenu()) — one entry per configured
+// server, however many there are, so this needs real headroom rather
+// than the next single free value the way every other command above
+// gets one. 150 leaves a comfortable gap above cmServerSettings for
+// any future *fixed* command to still fit without bumping into this
+// range.
+const ushort cmConnectionBase   = 150;

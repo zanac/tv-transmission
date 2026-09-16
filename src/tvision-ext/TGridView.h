@@ -5,12 +5,15 @@
 // Self-contained on purpose: this file and TGridView.cpp depend on
 // nothing outside tvision itself and the C++ standard library — no
 // project-specific types, no other headers from this app. That's so
-// the whole tgridview/ folder can be copied into a different project
-// wholesale and just work.
+// TGridView.h/.cpp (and TGridWindow.h/.cpp, TGridColumnManagerDialog.h/
+// .cpp, all sitting alongside it in tvision-ext/ for the same reason —
+// see TComboBox.h's own header comment) can be copied into a different
+// project wholesale and just work, or eventually proposed as a PR to
+// tvision itself.
 //
-// See tgridview/README.md for the full design writeup (why a
-// callback-based data source instead of the grid owning row data,
-// exactly how column resizing behaves, etc.).
+// See TGridView-README.md (in this same folder) for the full design
+// writeup (why a callback-based data source instead of the grid owning
+// row data, exactly how column resizing behaves, etc.).
 
 #define Uses_TGroup
 #define Uses_TRect
@@ -43,7 +46,7 @@ struct TGridColumn {
 enum TGridOptions : ushort {
     gvNone = 0x0000,
     // Lets the user drag the separator between two column headers with
-    // the mouse to resize the column on its left — see README.md for
+    // the mouse to resize the column on its left — see TGridView-README.md for
     // exactly how the drag hotspot and live feedback work. Off by
     // default: a grid that's just displaying fixed data has no reason
     // to pay for hit-testing every header click.
@@ -54,7 +57,7 @@ enum TGridOptions : ushort {
     // Left/Right arrow keys, or startKeyboardReorder(), move it one
     // position at a time; any other click, or Enter, confirms; Esc
     // restores the order the grid had when the mode was entered. See
-    // README.md for why this needed a real visual-position/logical-
+    // TGridView-README.md for why this needed a real visual-position/logical-
     // index split throughout the widget.
     gvReorderableColumns = 0x0002,
     // Lets the user select more than one row at once — a leftmost
@@ -131,6 +134,16 @@ public:
     // manage — whatever the callback returns right now is what's shown.
     using CellTextFn    = std::function<std::string(int row, int col)>;
     using RowColorFn     = std::function<TColorAttr(int row, bool focused)>; // optional
+    // Overrides the column header's own background/text color entirely
+    // when set — by default it resolves through the owner's own
+    // palette chain like any other TView (see TGridHeaderView::
+    // getPalette()), matching whatever plain label color the embedding
+    // app already uses elsewhere; this is for a caller that wants the
+    // header to instead match some other fixed color it's using for
+    // its own rows (e.g. via RowColorFn above), which a palette-chain
+    // color can't reliably do on its own since the two aren't
+    // necessarily resolved through the same mechanism.
+    using HeaderColorFn = std::function<TColorAttr()>; // optional
     using CellBoldFn      = std::function<bool(int row, int col)>;             // optional
     using RowActivateFn  = std::function<void(int row)>;               // double-click / Enter
     using RowContextFn   = std::function<void(int row, TPoint screenPos)>; // right-click
@@ -181,6 +194,7 @@ public:
     void setRowCount(int count);
     void setCellTextCallback(CellTextFn fn);
     void setRowColorCallback(RowColorFn fn);
+    void setHeaderColorCallback(HeaderColorFn fn);
     void setCellBoldCallback(CellBoldFn fn);
     void setRowActivateCallback(RowActivateFn fn);
     void setRowContextCallback(RowContextFn fn);
@@ -206,7 +220,7 @@ public:
     // cancels and restores the width the column had when this was
     // called. Blocks until confirmed or cancelled — same "pump events in
     // a loop until some condition" shape as the mouse-drag resize (see
-    // README.md), just keyboard-driven instead of mouse-driven. No-op if
+    // TGridView-README.md), just keyboard-driven instead of mouse-driven. No-op if
     // `col` is out of range or that column isn't resizable (see
     // TGridColumn::resizable) — a menu item invoking this on a
     // fixed-width column would otherwise silently "work" without doing
@@ -379,6 +393,7 @@ private:
 
     CellTextFn cellText_;
     RowColorFn rowColor_;
+    HeaderColorFn headerColor_;
     CellBoldFn cellBold_;
     RowActivateFn onRowActivate_;
     RowContextFn onRowContext_;

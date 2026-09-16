@@ -1,6 +1,6 @@
 # TV Transmission
 
-**Version 1.5** — stable release.
+**Version 1.5.2** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -9,27 +9,39 @@ written in C++17.
 It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
-<img width="1407" height="863" alt="image" src="https://github.com/user-attachments/assets/161529ad-160d-40e9-8bd5-58f6b02e1dd9" />
-
 
 ## Features
 
 **Torrent list — one window per configured server**
 - Every server named in the Connection dialog (see below) gets its own
-  torrent-list window, all open at once — an ordinary MDI window now
-  (movable, resizable, zoomable — see "Fixed bugs" below for why it
-  used to be locked to always filling the whole desktop instead, and
-  what changed), titled with that server's own logical name
-  ("home — Torrents", say) so more than one is easy to tell apart at a
-  glance. Deliberately NOT closable from the window itself (no close
-  box, Alt+F3 does nothing) — every configured server is meant to
-  always have its own window open; the only way to actually remove one
-  is the Connection dialog's own "[-]" on that server's name (see
-  below), which closes its window along with removing it
-- **Window → Tile/Cascade** arranges every open one (this app's own
-  windows *and* torrent-list windows together) the normal MDI way;
-  **Window → Window list...** (Alt+0) jumps straight to any one of them
-  by name
+  torrent-list window, all open at once, each always exactly filling
+  the whole desktop (adjusting automatically if the terminal itself is
+  resized) and stacked on top of each other rather than side by side —
+  titled with that server's own logical name ("home — Torrents", say)
+  so whichever one is on top is easy to identify. Deliberately NOT
+  closable, movable, or resizable from the window itself (no close box,
+  Alt+F3 does nothing, dragging or Ctrl+F5-zooming doesn't either) —
+  every configured server is meant to always have its own window open,
+  always at that one size; the only way to actually remove one is the
+  Connection dialog's own "[-]" on that server's name (see below),
+  which closes its window along with removing it (see "Fixed bugs"
+  below for the two back-and-forth changes this went through — an
+  ordinary resizable/tileable MDI window in between, briefly — before
+  settling back on always-maximized for good reason)
+- **Connections** (its own menu) lists every configured server by
+  name, a bullet and the whole name highlighted for whichever one is
+  currently on top — pick a different one to bring its own window
+  forward instead, or check the menu at a glance to see which one
+  that already is without needing to bring anything forward first. No
+  servers configured yet shows a single, disabled "Empty" entry instead
+- **Window → Tile/Cascade** only ever affects this app's own other
+  window types (Torrent details, Files, Tracker) — every torrent-list
+  window being always exactly the same size (the whole desktop) makes
+  tiling or cascading them against each other meaningless; **Connections**
+  above is what actually switches between them. **Window → Window
+  list...** (Alt+0) still lists every open window of every kind
+  together, including torrent-list ones, and still jumps straight to
+  whichever is picked
 - Every Torrent-menu action (Start, Stop, Queue, Select Multiple, Add,
   ...) acts on whichever torrent-list window currently has focus — the
   same "act on the focused one" rule "Manage columns..." already
@@ -157,35 +169,60 @@ HTTP and nlohmann/json for parsing.
   to reach for whichever's needed without opening the submenu each
   time, for that one torrent
 
-**Tracker details**
+**Trackers and peers**
 - A "Trackers..." button in the torrent details window opens a
-  separate, non-modal table listing every tracker for that torrent:
-  host, tier, seeders, leechers, downloaded count, and a short status
-  (OK/Error) — built on `TGridView`, the same generic widget the main
-  list and the files window use. Turbo Vision has no tab control, so
-  this is a dedicated window rather than a second tab on the details
-  dialog (see `TrackerListWindow`)
-- Columns can be resized, reordered, and shown/hidden — through the
-  same single, focus-aware "Manage columns..." menu entry the main
-  list uses (see "Fixed bugs" below), automatically once this window
-  has focus; there's no button of its own for it here. Rows themselves
-  aren't sortable by a column click here, deliberately: Transmission
-  already returns trackers in tier order, which is the order that
-  matters, so letting a click reorder rows would work against that
-  rather than help — that's independent of the columns' own
-  width/position/visibility, which "Manage columns..." still offers
-- That column layout is saved and restored across launches, the same
-  as the main list's own — see "Configuration file" below. There's one
-  shared tracker column layout, not one per torrent: opening the
-  tracker window for a different torrent later still starts from
-  whatever was last saved or changed
-- This data (`trackerStats`, part of `torrent-get`) isn't fetched as
-  part of the regular list refresh; it's requested only when this
-  window is opened, and again only when you press its own "Refresh"
-  button (no auto-refresh)
-- Double-click a tracker row for a small window with that tracker's
-  full status: last/next announce time and the complete error or
-  success message, which don't fit in a table row
+  separate, non-modal window with **two tabs — Trackers and Peers —
+  switched via a two-item radio-button cluster at the top** (Turbo
+  Vision has no tab control of its own; a native radio-button cluster,
+  with its own marker glyph and keyboard navigation already built in,
+  reads clearly enough as "choose one of these two" without needing one
+  — see "Fixed bugs" below for an earlier, hand-built button-based
+  attempt at this that didn't hold up). Both tabs are built on
+  `TGridView`, the same generic widget the main list and the files
+  window use
+- The radio cluster's own background, and each tab's own column
+  headers, both use the same blue as the rows beneath them, rather than
+  the plain palette-resolved color every other `TGridView`-based
+  window's own headers still use by default — see "Fixed bugs" below
+- **Trackers**: host, tier, seeders, leechers, downloaded count, and a
+  short status (OK/Error) for every tracker on this torrent
+- **Peers**: address (`ip:port`), client name, download progress,
+  current down/up speed, and Transmission's own compact status flags
+  for every peer currently connected
+- Columns, on either tab, can be resized, reordered, and shown/hidden —
+  through the same single, focus-aware "Manage columns..." menu entry
+  the main list uses, automatically once this
+  window has focus; there's no button of its own for it here. Rows
+  aren't sortable by a column click on either tab, for related but
+  different reasons: Transmission already returns trackers in tier
+  order, which is the order that matters, so a click-to-sort there
+  would work against that; peers have no stable order to begin with —
+  the list can reorder itself on every single refresh regardless of
+  anything sorting would do — so a click-to-sort there would just as
+  easily undo itself moments later. Either way, that's independent of
+  the columns' own width/position/visibility, which "Manage
+  columns..." still offers on both tabs
+- Each tab's own column layout is saved and restored across launches
+  separately — see "Configuration file" below. Both are shared, the
+  same as the main list's own: not one set of tracker columns (or peer
+  columns) per torrent, opening either tab for a different torrent
+  later still starts from whatever was last saved or changed there.
+  Switching between the two tabs within one already-open window
+  remembers each one's own layout too, even before anything's been
+  explicitly saved via "Manage columns..." — resizing Peers, checking
+  Trackers, then coming back to Peers doesn't lose what changed
+- Neither tab's own data (`trackerStats`/`peers`, both part of
+  `torrent-get`) is fetched as part of the regular list refresh; each
+  is requested only for whichever tab is actually showing — switching
+  tabs fetches the newly-shown one fresh, the other stays as it last
+  was until switched back to — and again only when this window's own
+  "Refresh" button is pressed (no auto-refresh on either tab)
+- Double-click a tracker row (Trackers tab only) for a small window
+  with that tracker's full status: last/next announce time and the
+  complete error or success message, which don't fit in a table row.
+  A double-click on a Peers row does nothing — there's no equivalent
+  extra detail to show for a peer that wouldn't already fit in its own
+  row
 
 **Per-file selection ("Files" — Torrent menu, or the right-click context menu)**
 - A separate, non-modal window listing every file within a torrent —
@@ -360,6 +397,28 @@ HTTP and nlohmann/json for parsing.
   daemon's actual state is at the moment the dialog opens, including
   changes made some other way (another client, a script) since this
   app last checked
+- A "Network" section with two on-demand daemon-side checks — "Test
+  port" (is the daemon's own configured incoming peer port reachable
+  from outside) and "Update blocklist" (re-download and reload the IP
+  blocklist from whatever URL the daemon's already configured with —
+  this app has no UI for setting that URL itself, only for triggering
+  the update). Each shows its own result inline, next to its own
+  button, the moment that one call finishes — not a popup, so it stays
+  visible without needing to be dismissed, and doesn't interrupt
+  anything else on the same dialog
+
+**Session Statistics ("Session Statistics..." — "Settings" menu)**
+- Current-session and all-time (cumulative) totals for the connected
+  daemon: bytes downloaded/uploaded and time active, plus how many
+  times the daemon itself has been started, ever — Transmission's own
+  `session-stats` RPC, the same live-fetch-each-time approach as Server
+  Configuration just above rather than anything stored in this app's
+  own settings file
+- Read-only: nothing here round-trips into a setting, so unlike Server
+  Configuration there's no OK to confirm — just "Refresh" (re-fetches
+  and updates every value in place) and "Close"
+- Acts on whichever server's window currently has focus, same as
+  Server Configuration and "Manage columns..."
 
 **Filters ("Columns" menu)**
 - Narrows the main list to torrents matching ALL active filters (AND,
@@ -388,7 +447,7 @@ HTTP and nlohmann/json for parsing.
   enabled while a compatible window is focused; greyed out otherwise
   (a dialog like Settings or Filters, or a window with no grid in it at
   all, like the torrent details window)
-- The dialog itself lives in `src/tgridview/` — it's not specific to
+- The dialog itself lives in `src/tvision-ext/` — it's not specific to
   the torrent list, or to this app at all: it operates on any
   `TGridView`, with this app just passing in its own translated text
   (see "Fixed bugs" below)
@@ -427,7 +486,14 @@ where Transmission has no ratio to report yet; ETA is "—" when it
 can't be estimated (not downloading, or not yet enough data to guess);
 completion date is "—" for a torrent that hasn't finished yet; queue
 position is shown 1-based (matching how you'd count it, not
-Transmission's own 0-based internal numbering).
+Transmission's own 0-based internal numbering). Bandwidth priority is
+editable, not just shown: double-clicking that column cycles Low →
+Normal → High → Low for the focused row (same mechanism as queue
+position's own double-click cycling just below), and the same three
+choices are also on a "Priority" submenu — both the main menu bar and
+the list's own right-click context menu, right next to "Queue" —
+applying to every currently selected torrent at once, or just the
+focused one outside selection mode.
 
 **Input validation**
 - Every numeric field (refresh interval, RPC port, global and
@@ -485,17 +551,34 @@ the interactive TUI) for the full command reference.
 
 ## How the connection works
 
-There's no persistent connection: every action (refreshing the list,
-adding/starting/stopping/removing a torrent) opens a fresh HTTP request
-to `host:port` with the current credentials. Changing settings from the
+Each configured server's own client keeps one persistent connection
+(a single libcurl handle, reused for every request to that server —
+see "Fixed bugs" below) rather than opening a fresh one per action;
+every request still carries the current credentials and a 5s connect /
+15s total timeout, so a request to an unreachable server fails
+predictably instead of hanging indefinitely. Changing settings from the
 TUI applies them immediately and triggers a refresh right away, so a
 mistake shows up at once (an empty list); the CLI's `list` command
 distinguishes a genuinely empty torrent list from a failed connection
 via the RPC client's last-error state, and exits non-zero on failure.
 
-The main list's periodic refresh (`listTorrents()`) only requests a
-lightweight set of fields — the extra detail shown in a torrent's
-details window or tracker list (location, magnet link, piece info,
+The main list's own periodic refresh runs without blocking the rest of
+the app (libcurl's own "multi" interface, one shared handle driven once
+per event-loop tick — see "Fixed bugs" below) — a slow or unreachable
+server no longer freezes every other open window, or the app as a
+whole, for however long that one request takes. Every other action
+(start, stop, remove, add a torrent, ...) is still an ordinary
+synchronous call, each one short and a direct response to something
+just clicked, now bounded by the same timeout either way. A server
+whose most recent refresh attempt failed shows "(offline)" in its own
+window's title bar until the next one succeeds — a persistent, glanceable
+marker rather than a popup that would otherwise reappear every single
+refresh interval for as long as that server stays down.
+
+The main list's periodic refresh (`listTorrents()`/its own non-blocking
+equivalent) only requests a lightweight set of fields — the extra detail
+shown in a torrent's details window or tracker list (location, magnet link,
+piece info,
 all-time totals, per-tracker stats, ...) is fetched with its own
 separate request, made only when that window is opened (or its
 "Refresh" button pressed, for trackers), so the fields most torrents'
@@ -505,11 +588,11 @@ rows don't need aren't carried on every refresh tick for every torrent.
 
 Settings (every saved server's own host/port/user/password — see
 "Connection" above — plus which one is active, each server's own
-torrent-list window position/size, column widths/order/visibility, and
-which one had focus when the app last closed — see "Torrent list"
-above — refresh interval, language, the torrent list's last sort
-column/direction (still one shared setting, not per server), the
-tracker list's own column widths/order/visibility (shared the same
+column widths/order/visibility, and which one had focus when the app
+last closed — see "Torrent list" above — refresh interval, language,
+the torrent list's last sort column/direction (still one shared
+setting, not per server), the tracker list's own column widths/order/
+visibility (shared the same
 way), and the active filter) are stored in:
 
 ```
@@ -561,20 +644,18 @@ used from.
 
 1. Add tvision as a submodule:
    ```
-   git submodule add https://github.com/zanac/tvision external/tvision
+   git submodule add https://github.com/magiblot/tvision external/tvision
    git submodule update --init --recursive
    ```
-   This points at [zanac/tvision](https://github.com/zanac/tvision), a
-   fork of the real upstream ([magiblot/tvision](https://github.com/magiblot/tvision)).
-   It originally added `TComboBox` (tvision has no drop-down combo box
+   This is the real upstream tvision — no fork needed. It used to point
+   at [zanac/tvision](https://github.com/zanac/tvision) instead, a fork
+   that originally added `TComboBox` (tvision has no drop-down combo box
    built in; see [issue #173](https://github.com/magiblot/tvision/issues/173),
-   open since 2025 with no resolution) — that class is now vendored
-   directly into this project instead (`src/tvision-ext/TComboBox.h`,
-   see "Fixed bugs" below for why), so building against this fork isn't
-   about `TComboBox` anymore specifically. Whether anything else in this
-   fork still differs from upstream in a way this project depends on
-   hasn't been re-audited since — this note is only about the one thing
-   that changed.
+   open since 2025 with no resolution). That class has been fully
+   vendored into this project since (`src/tvision-ext/TComboBox.h/.cpp`),
+   including the one thing that still silently depended on the fork
+   after that — see "Fixed bugs" below — so there's nothing left here
+   that needs anything beyond stock upstream tvision.
 2. Install dependencies (Debian/Ubuntu):
    ```
    sudo apt install cmake libcurl4-openssl-dev libncursesw5-dev libgpm-dev
@@ -651,7 +732,7 @@ src/
     TorrentListWindow.h/.cpp    Main window: list, header, sorting, colors, context menu
     TorrentDetailsWindow.h/.cpp Per-torrent details window
     TorrentFilesWindow.h/.cpp   Per-file selection/priority window (built on TGridView)
-    TrackerListWindow.h/.cpp    Per-torrent tracker table (opened from the details window)
+    TrackerPeerWindow.h/.cpp    Per-torrent tracker/peer window, two tabs (opened from the details window)
     TrackerDetailWindow.h/.cpp  Full status for a single tracker (double-click a row)
     AddTorrentDialog.h/.cpp     "Add torrent" dialog
     ConnectionDialog.h/.cpp     "Connection" dialog
@@ -666,11 +747,13 @@ packaging/
     build-appimage.sh          Builds build/TvTransmission-x86_64.AppImage
     tv-transmission.desktop     Desktop entry (Terminal=true)
     tv-transmission.png         Placeholder icon
-  tgridview/
-    TGridView.h/.cpp           Generic dynamic-column list view — see its own
-                                README.md; self-contained, no dependency on
-                                the rest of this project, meant to be copied
-                                into other Turbo Vision projects wholesale.
+  tvision-ext/
+    TGridView.h/.cpp           Generic dynamic-column list view — see
+                                TGridView-README.md; self-contained, no
+                                dependency on the rest of this project, meant
+                                to be copied into other Turbo Vision projects
+                                wholesale (or eventually proposed as a PR to
+                                tvision itself — see "Fixed bugs" below).
                                 Used by TorrentListWindow (ui/) for the main
                                 list's rendering.
     TGridWindow.h/.cpp          Optional TWindow wrapper (fullscreen-locked or
@@ -682,8 +765,7 @@ packaging/
                                 dependency on any app's own translation system);
                                 used by App.cpp (ui/) with this app's own
                                 translated strings passed in
-    README.md                   Full design writeup for this standalone module
-  tvision-ext/
+    TGridView-README.md         Full design writeup for TGridView specifically
     TComboBox.h/.cpp             Vendored TComboBox + TComboItem/TComboViewer/
                                 TComboWindow, plus an editable mode (typed text,
                                 "[+]"/"[-]" list buttons) added on top — see the
@@ -730,16 +812,915 @@ actions above:
   (`torrent-set-location`)
 - **Per-torrent seed ratio limit**, distinct from a speed limit
   (`seedRatioLimit`/`seedRatioMode` in `torrent-set`)
-- **Per-torrent bandwidth priority** (high/normal/low), distinct from
-  the absolute KB/s limit already implemented (`bandwidthPriority`)
-- **Incoming port test** (`port-test`) and **blocklist update**
-  (`blocklist-update`) — session-level, would fit in the Settings dialog
-- **Free disk space** for a given path (`free-space`) — useful before
-  adding a large torrent
 
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**"Session Statistics" resized — far too much empty space on the right
+of its own button row.** Marked directly on a screenshot: roughly 20
+columns of empty space to the right of "Close" against only 2 to the
+left of "Refresh", left over from when the dialog's own width (50) was
+never actually tied to what its buttons needed. Measured precisely
+before changing anything (a live running instance's own cell contents,
+not eyeballed): confirmed exactly that 20-vs-2 asymmetry, and — while
+checking — that the height already left exactly one blank row between
+the buttons' own shadow and the bottom border, matching what was
+separately asked for there; no change needed on that axis, confirmed
+rather than assumed.
+
+Narrowed to 32 (`"Close"`'s own right edge at 30, plus a matching
+2-column margin), with every label/value field's own width narrowed to
+match (was 46, unused space that would have gone stale once the dialog
+itself got narrower). Verified against the same large, multi-digit
+values as the original screenshot (55551h+ of active time, 40+TB
+transferred, a session count of 421) to make sure nothing got clipped
+by the narrower fields — confirmed on a live running instance, not
+assumed from the arithmetic alone.
+
+**`TGridView`'s own default HEADER color, unified too — the entry right
+below this one fixed the wrong thing.** Clarified with a screenshot,
+the two column-header rows circled directly: what actually looked
+inconsistent across windows was never the DATA rows (already fixed,
+correctly, in the entry below) — it was each grid's own header row.
+The main torrent list's own header showed yellow-on-blue; every other
+`TGridView`-based window's own header showed white-on-blue instead.
+
+The cause was almost identical to the row-color case, just one level
+up: `TGridView`'s own header fallback (when no `HeaderColorFn` is set)
+resolved through the owning window's own palette chain
+(`getColor(1)`), and a `TWindow` (what the main torrent list is built
+on) and a `TDialog` (every other `TGridView` user in this app) resolve
+that same index differently — the main list's own yellow was never a
+deliberate choice, just an incidental side effect of which base class
+it happens to use. `TrackerPeerWindow` was the one window that had
+already noticed the mismatch and worked around it with an explicit
+`setHeaderColorCallback()` — but to white, matching its OWN row color,
+not yellow, matching the main list's.
+
+Fixed the same way as the row-color entry below: moved yellow-on-blue
+(`TColorAttr(0x1E)`) into `TGridView` itself as what happens when no
+`HeaderColorFn` is set, removed `TrackerPeerWindow`'s own now-redundant
+explicit override entirely.
+
+Verified directly this time, not assumed from getting the row-color fix
+right: read both header rows' own actual cell colors on a live running
+instance — main list's own header and `TrackerPeerWindow`'s own header
+both `fg=brightbrown bg=blue` (tvision/pyte's own name for this
+palette's "yellow"), not just similar-looking text.
+
+**`TGridView`'s own default row color, unified — one shared fallback
+instead of the same callback copy-pasted into four separate files.**
+Asked for directly: the main torrent list's own rows (colored by
+status — yellow for checking/queued, cyan for downloading, ...) looked
+visually inconsistent with every other `TGridView`-based window in this
+app, which all showed a fixed white-on-blue instead.
+
+Not actually a difference in INTENT — every one of those four windows
+(`TrackerPeerWindow`, `TorrentFilesWindow`, `TFolderBrowserDialog`,
+`TGridColumnManagerDialog`'s own meta-grid) already set the exact same
+`setRowColorCallback` explicitly: white-on-blue normally
+(`TColorAttr(0x1F)`), black-on-white when focused (`TColorAttr(0xF0)`),
+because `TGridView`'s own fallback (when no callback is set at all)
+resolved colors through the owning dialog's own palette chain
+(`getColor(1)`/`getColor(2)`), which doesn't contrast enough inside a
+`TDialog` to actually see which row is focused. Four identical copies
+of the same four-line callback, purely because the generic widget's own
+built-in fallback wasn't already doing this.
+
+Fixed by moving that exact pair of colors into `TGridView` itself, as
+what happens when NO callback is set, rather than something every
+caller needs to remember to set — `setRowColorCallback()` still fully
+overrides it when a caller genuinely needs something else (the main
+list's own per-status coloring being the one case that actually does),
+now purely additive rather than a workaround every other caller had to
+duplicate. Removed the four now-redundant explicit callbacks entirely.
+
+Verified two things separately, not just that removing four blocks of
+duplicate code still compiled: that the main list's own per-status
+colors are UNCHANGED (this couldn't have been reachable regardless —
+`TGridView`'s new fallback only ever applies when `rowColor_` isn't
+set, and the main list always sets its own, so the changed code path is
+provably unreachable there, not just observed to still work); and that
+a window that used to set the callback explicitly (`TrackerPeerWindow`)
+shows the exact same color now that it relies on the new default
+instead — read directly from a live running instance's own cell
+attributes (`fg=brightwhite bg=blue`, i.e. exactly `TColorAttr(0x1F)`),
+not just "looks about right."
+
+**The destination folder chosen in "Add torrent" was never actually
+sent anywhere — the whole feature had no effect on where a torrent
+actually got saved.** Found while checking something else entirely
+(how a wrong/nonexistent destination gets handled), not from a report
+against the feature itself — worth documenting since it's the kind of
+gap that's easy to miss: everything ELSE about the feature worked
+(the label showed the chosen folder, "Verify" showed its free space,
+switching folders refreshed both correctly), so there was nothing
+visibly broken to notice.
+
+`TransmissionClient::addTorrent()` only ever sent `{"filename":
+urlOrPath}` to `torrent-add` — no `download-dir` argument at all, so
+Transmission always used its own default regardless of what "Add
+torrent" showed as the destination. `App::showAddTorrentDialog()`'s own
+`cmOK` handling had `destination` sitting right there, already captured
+for the Browse/Change reopen cycle, and simply never passed it to
+`addTorrent()`. Fixed by giving `addTorrent()` an optional
+`downloadDir` parameter (empty by default, so the CLI's own call site
+— which has no destination concept — needed no change at all) that
+becomes `torrent-add`'s own `download-dir` argument when non-empty, and
+passing `destination` through from the one call site that has one.
+
+This also surfaced a real, worth-naming limitation rather than a bug to
+fix: `TFolderBrowserDialog`'s own folder list only ever looks at the
+LOCAL filesystem (this app's own machine), while `download-dir` is a
+path on the DAEMON's own filesystem — the same machine only when
+managing a local `transmission-daemon`, not necessarily so for a remote
+one. RPC has no "list a directory on the daemon" method to browse the
+real one instead, so this is accepted as a known gap rather than
+something to work around — picking a folder that exists locally but not
+on a remote daemon is possible, and would fail the same way any other
+invalid `download-dir` does (see the verification below).
+
+Verified two things together, not just that the fix compiled: first,
+that `download-dir` actually reaches the RPC request with the exact
+value shown in the dialog — confirmed by having a mock log every
+`torrent-add` call's own arguments and checking both a default-folder
+add and a changed-folder add each logged the right one. Second, that a
+destination the DAEMON itself rejects (simulated: locally readable, so
+the folder browser accepts it, but the mock's own `torrent-add` handler
+treats that specific path as invalid) surfaces Transmission's own error
+text in a normal error messageBox — "Failed to add the torrent: No such
+directory: ..." — rather than failing silently or crashing, reusing the
+exact same error-reporting path duplicate/invalid-torrent failures
+already went through.
+
+**A real use-after-free, found while building the folder browser below —
+`close()` used on a MODAL dialog instead of the correct `endModal()`.**
+Two dialogs (`SessionStatsDialog`'s own "Close" button, and this same
+new `TFolderBrowserDialog`'s own first version of its "Cancel" button)
+both used a custom command handled with `close()` — the same idiom this
+app's own NON-modal windows (`TorrentDetailsWindow`, `TrackerPeerWindow`,
+and others, all opened via `insertWindow()`) already use correctly for
+their own Close buttons. The difference that matters: `TWindow::close()`
+(`twindow.cpp`) calls `destroy(this)` directly — deleting the object
+immediately. For a non-modal window that's fine; nothing else is
+waiting on it. For a MODAL dialog (opened via `execView()`), it's a
+genuine use-after-free: `TGroup::execute()`'s own event loop (`do {
+getEvent(e); handleEvent(e); } while (!valid(endState))`) is still
+running further up the very same call stack when `handleEvent()`
+returns, and it goes on to call `valid()` on `this` — now a dangling
+pointer, since `close()` already freed it moments earlier from inside
+that same `handleEvent()` call.
+
+Confirms `close()` genuinely deletes the object (not just calling this
+class's own hoped-for behavior for it), by reading `TWindow::close()`
+directly rather than assuming: `if (valid(cmClose)) { frame = 0;
+destroy(this); }`. `TDialog`'s own base `handleEvent()` already turns
+the STANDARD commands (`cmOK`/`cmCancel`/`cmYes`/`cmNo`) into
+`endModal()` on its own — correctly, safely — which is why every OTHER
+dialog in this app (`ServerSettingsDialog`, `ConnectionDialog`, ...)
+never needed a custom Close/Cancel handler of its own at all. Fixed
+both by removing the custom command and its handler entirely, using
+plain `cmCancel` on the button instead — letting the exact same
+built-in mechanism every other dialog already relies on handle it,
+rather than reinventing (and this time, breaking) it.
+
+Not caught by reading the code alone: found from a live run where
+Cancel-ing the new folder browser silently failed to return control to
+"Add torrent" afterward — the dialog visually disappeared (matching
+what `close()`'s own `destroy(this)` does), but the app never resumed
+as expected, which is the outward symptom a `valid()` call on freed
+memory tends to produce rather than an immediate, obvious crash.
+Verified fixed the same way: the identical Cancel action, followed by
+confirming "Add torrent" reopens correctly showing its own previous
+destination and free-space values unchanged, i.e. that the whole
+close→reopen round trip actually completes end to end now.
+
+**New: destination folder and free disk space in "Add torrent," and
+a new reusable folder-picker dialog to go with it.** Genuinely new
+functionality, not a bug fix — the folder-browser dialog itself, and
+the design reasoning behind it (why not tvision's own `TChDirDialog`),
+is documented on its own further down; this entry is specifically
+about wiring it into "Add torrent."
+
+"Add torrent" gained a destination label (the server's own default
+download directory at first, changeable via a new "Change..." button)
+and a free-space label next to it (fetched automatically the moment
+the dialog opens, plus its own "Verify" button to re-check later) —
+`TransmissionClient::getDefaultDownloadDir()`/`getFreeSpace()`, both new,
+both the same synchronous `call()`/15s-timeout pattern every other
+action in this class already uses. "Change..." follows the exact same
+"close this dialog first, then open the next one, then reopen this one
+again" pattern already established for "Browse..." (see the entry
+further down on why nesting a second modal dialog directly inside this
+one isn't safe) — opening the new folder-browser dialog below rather
+than nesting it, then reopening "Add torrent" with whatever was chosen,
+alongside whatever URL/file value was already typed, so neither field
+loses what was there before the other one changed.
+
+Verified end to end on a live running instance, not just that each
+piece compiled: opened "Add torrent" and confirmed the destination and
+free space both populated correctly without any click needed first;
+clicked "Change...", navigated into a subfolder, confirmed with
+"Select" — back in "Add torrent," both the destination AND the free
+space had updated to that subfolder's own specific value (a mock
+returning a genuinely different number per exact path, not the same
+value regardless — otherwise a stale number would have looked
+identical to a correctly refreshed one).
+
+**New: `TFolderBrowserDialog`, a from-scratch folder-picker added to
+`tvision-ext/`.** Built specifically to back "Change..." above, after
+concluding tvision's own `TChDirDialog` was a dead end for this exact
+purpose — Windows-path assumptions baked into its own public API, a
+still-open memory-safety report against it, and even the one person
+who'd tried adapting it for "choose a folder" specifically had given up
+and written a new one instead (all found by actually reading that
+project's own GitHub history — issue #137, PR #141 — rather than
+assuming `TChDirDialog` would just work). Reaches the same conclusion,
+independently, for the same reason.
+
+Deliberately minimal, matching what was actually asked for rather than
+building in extra scope: no tree view, no "New Folder" button — a
+single-level navigator (list the current directory, double-click or
+Enter to descend, ".." to go back up), the same model tvision's own
+`TFileDialog` already uses for picking a FILE, applied here to picking
+a DIRECTORY instead. Built on this project's own `TGridView` rather
+than tvision's `TOutline`, for the same reason `TorrentFilesWindow`'s
+own file tree already is — one consistent look across every list in
+an app that embeds this, not a second, differently-styled list widget
+appearing only here. The path field at the top is directly editable —
+typing a path and pressing Enter navigates there, intercepted before
+`TDialog`'s own base `handleEvent()` gets a chance to treat Enter as
+"press whatever button has `bfDefault`" instead (a plain `TInputLine`
+doesn't consume Enter on its own, so without this, typing a path and
+pressing Enter would have instead tried to confirm the dialog with
+whatever was ALREADY in `currentPath_`, ignoring what was just typed).
+No dependency on this app's own translation system, matching
+`TGridColumnManagerDialog`'s own established pattern for this same
+codebase: every label passed in via a `TFolderBrowserLabels` struct
+with plain-English defaults, built from this app's own `tr()`-based
+strings right before opening it.
+
+**New: a "Session Statistics" dialog.** Genuinely new functionality, not
+a bug fix — an idea floated much earlier in this project's own history
+and only now actually built.
+
+`TransmissionClient::getSessionStats()`: a new `SessionStats` struct
+(current-session and cumulative/all-time byte counts, active-time, and
+daemon start count) fetched via the `session-stats` RPC method — the
+same `ok`-reports-success-vs-genuine-zero convention
+`getSessionLimits()` already uses, since a torrent-free daemon
+genuinely reports all zeros here and that's not itself a failure to
+distinguish from a broken connection.
+
+The dialog itself (`SessionStatsDialog.h/.cpp`, a new file pair) is
+simpler than Server Configuration in one specific way: every field here
+is read-only — nothing round-trips into a setting, so there's no
+`...Result()` function or `Fields` struct to read back once closed,
+just "Refresh" (re-fetches and updates every label in place) and
+"Close." Reused Server Configuration's own `TResultLabel` idea (a
+`TStaticText` with a `setText()` the base class doesn't have) rather
+than sharing the literal class — both are a few lines, file-local, and
+this project doesn't otherwise have a home for a view helper used by
+exactly two unrelated dialogs.
+
+Verified against a mock returning specific, checkable values (200MB/
+100MB for the current session, 10GB/5GB all-time, matching seconds-
+active figures, and a session count of 42) on a live running instance:
+every single field matched exactly, not just that the dialog opened
+without crashing.
+
+**New: per-torrent bandwidth priority is now editable, not just
+shown.** Genuinely new functionality, not a bug fix — worth documenting
+since it follows an established pattern (queue position's own
+double-click cycling) closely enough that it's worth noting exactly
+where it diverges from it and why.
+
+`TransmissionClient::setPriority(torrentId, priority)`: the same
+`torrent-set` RPC method `setFilesPriority()` already used, but setting
+`bandwidthPriority` directly (a single value for the whole torrent)
+rather than one of the per-FILE `priority-low`/`priority-normal`/
+`priority-high` index arrays that method uses — a torrent's own
+priority and a file's own priority are two different fields entirely,
+not the same concept at two different scopes.
+
+The double-click cycle diverges from queue position's own
+`cycleQueueActionForRow()` in one deliberate way: queue position's four
+actions (top/up/down/bottom) are RELATIVE moves with no "current state"
+of their own to read, so that method cycles through a single shared
+counter (`queueActionCycle_`) regardless of which row was actually
+clicked. Priority is different — `Torrent::bandwidthPriority` already
+says exactly where in the Low/Normal/High cycle a given row currently
+is — so `cyclePriorityForRow()` reads that row's own current value
+directly and computes the next step from it, with no shared counter to
+keep in sync with anything.
+
+The explicit "Priority" submenu (Low/Normal/High) went in both places
+"Queue" already was — the main menu bar's own Torrent menu, and the
+list's own right-click context menu — reusing the exact same nested-
+TSubMenu construction (and the same `(TMenuItem&)` cast) queueMenu
+already needed in both those places, rather than inventing a different
+pattern for what's structurally the same kind of addition.
+`setPriorityForSelected()` follows `queueMoveTopForSelected()`'s own
+shape exactly: every currently selected torrent via `targetTorrents()`,
+or just the focused one outside selection mode.
+
+Verified on a live running instance against a mock that actually
+remembers `bandwidthPriority` between calls (a mock that always
+reports the same fixed value regardless of what was just set wouldn't
+have caught anything — the cycle would look identical whether it
+worked or not): three double-clicks on the Priority column moved
+Normal → High → Low → Normal, matching the cycle exactly, and the
+right-click context menu showed "Priority ►" appearing right next to
+"Queue ►", as intended.
+
+**New: "Test port" and "Update blocklist" in the Server Configuration
+dialog.** Genuinely new functionality, not a bug fix — worth documenting
+the design since it's the first place in this app that needs a dialog
+to act on a live `TransmissionClient` WHILE still open, rather than
+only reading its fields back once it closes.
+
+`TransmissionClient::testPort()`/`updateBlocklist()`: the same
+synchronous `call()` every other action in this class already uses
+(`port-test`/`blocklist-update`, both session-level RPC methods with no
+arguments), bounded by the same 15s timeout. Neither takes a URL or a
+port to check — Transmission always tests/updates against whatever
+it's already configured with; this app has no UI for setting the
+blocklist's own URL, only for triggering the daemon's already-configured
+update.
+
+Every other field on this dialog only round-trips through
+`ServerSettingsDialogFields`/`serverSettingsDialogResult()` once the
+dialog closes with OK — these two needed to call straight into the
+client and show a result WHILE the dialog stays open, so
+`ServerSettingsDialogImpl` (a small `TDialog` subclass, previously this
+was built directly from a plain `TDialog` with no subclass at all) now
+holds a `TransmissionClient&` and handles its own two buttons' commands
+directly. A popup for the result was deliberately not used — a
+messageBox for something the user can just look at again a moment
+later, right there in the same dialog, would be one more thing to
+dismiss for no benefit — instead each button has its own small label
+right next to it (`TResultLabel`, a `TStaticText` subclass with a
+`setText()` the base class doesn't otherwise have, replacing the same
+way this project already replaces a `TView`'s own title elsewhere).
+
+One thing that needed getting right rather than skipped: both calls
+block the whole app for however long the round trip takes (same as
+every other action), so "Testing..."/"Updating..." was set on the label
+right before the call starts — but `drawView()` alone only updates
+tvision's own in-memory screen buffer, which doesn't reach the real
+terminal until control returns to the event loop, by which point the
+blocking call would already be finished and there'd be nothing left to
+show that text for. `TScreen::flushScreen()` forces an immediate real
+repaint right after setting it, so the intermediate text is actually
+visible for however long the call takes, not silently skipped over.
+
+Verified on a live running instance against a mock returning
+`port-is-open: true` and `blocklist-size: 123456`: clicking "Test port"
+showed "Port: open", clicking "Update blocklist" showed "Blocklist:
+123456 rules" — the exact values the mock sent, not just that the
+buttons did something.
+
+**Rapid switching between the Trackers and Peers tabs could eventually
+leave the list stuck showing nothing — two unrelated code paths were
+silently sharing one curl handle they should never have shared.**
+Reported directly ("switching quickly back and forth enough times, it
+eventually gets stuck").
+
+The cause: `TransmissionClient` kept exactly one persistent easy handle
+(`curl_`), reused by every synchronous call (`call()` — including
+`getTrackerStats()`/`getPeers()`, which is what each tab switch
+triggers) AND by the periodic async refresh (`startRefresh()`/
+`finishRefresh()`, which adds that same handle to a `CURLM*` via
+`curl_multi_add_handle()` and doesn't remove it again until the
+transfer completes). libcurl's own documentation is explicit that an
+easy handle currently attached to a multi handle must not be reused for
+a separate, direct `curl_easy_perform()` until it's been removed —
+which is exactly what happened whenever a tab switch's own synchronous
+call landed while the SAME window's periodic refresh had that handle
+mid-transfer: `call()` calls `curl_easy_reset()` and reuses it anyway,
+resetting state curl's own multi-handle bookkeeping was still relying
+on. This is undefined behavior, not a clean, loud failure — matching
+the reported symptom exactly: a stuck, empty list rather than a crash.
+
+Fixed by giving `TransmissionClient` a SECOND, entirely separate easy
+handle (`refreshCurl_`), used only by `startRefresh()`/`finishRefresh()`
+— `call()` keeps using `curl_` exclusively, and the two code paths can
+no longer collide no matter how the timing lines up. The one cost:
+a call from `getTrackerStats()`/`getPeers()`/etc. no longer reuses the
+exact same underlying TCP connection the periodic refresh's own handle
+already has open to the same host, opening a second connection
+instead — trivial next to correctness here.
+
+Verified as a real, reproducible bug, not a theoretical one, both
+before and after the fix: a threaded mock server (deliberately slow on
+the main list's own refresh, fast on tracker/peer requests, so the two
+could genuinely overlap rather than just queue behind each other) and a
+1-second refresh interval, then 20 rapid alternating clicks between the
+two tabs on a live running instance. Reverting the fix back to one
+shared handle reproduced real corruption within seconds — a details
+window opening with every field blank, not the crash originally
+expected, underscoring how this kind of bug tends to show up as
+"garbled" rather than "loud." The same 20-click sequence against the
+actual fix: correct data on every switch, main list still refreshing
+normally throughout, process alive and responsive at the end.
+
+**A real crash on every normal exit — `App`'s own destructor reading
+through a null `deskTop` pointer.** Reported directly, then reproduced
+and confirmed with a debug build under AddressSanitizer rather than
+guessed at from the code alone: `App::~App()` used to loop over
+`allListWindows()` first, canceling any in-flight async refresh before
+cleaning up the shared `multiHandle_` — reasoning that every easy
+handle needs detaching before `curl_multi_cleanup()` runs on it (still
+true), and that doing it explicitly here was safer than depending on
+exactly when each window's own destructor happened to run relative to
+this one.
+
+That reasoning had a wrong assumption baked in: it assumed this
+destructor's own body runs BEFORE the windows themselves are torn
+down. It doesn't. By the time control reaches `~App()`, `TApplication::
+run()` has already called `shutDown()` as part of its own normal exit
+path — and tvision's own `TProgram::shutDown()` (`tprogram.cpp`) sets
+`deskTop = 0` before `TGroup::shutDown()` actually destroys every child
+view, cascading into each `TorrentListWindow`'s own `TransmissionClient`
+destructor, which ALREADY detaches safely from `multiHandle_` if a
+refresh happened to be in flight — the exact same safety net this loop
+was trying to provide again, just redundantly, and via a `deskTop`
+pointer that was already null by the time it ran. `allListWindows()`
+dereferences `TProgram::deskTop` without a null check, which is exactly
+where AddressSanitizer caught the SEGV: `App::allListWindows() ←
+App::~App() ← main()`, on every single normal exit, not some rare edge
+case.
+
+Fixed by simply removing the loop — `~App()` now only cleans up
+`multiHandle_` itself, since every client has already safely detached
+from it on its own by the time this destructor's body runs. Also
+removed `TransmissionClient::cancelRefresh()`/`TorrentListWindow::
+cancelAsyncRefresh()`, the two methods that loop existed to call —
+dead code once nothing calls them anymore, not kept around "just in
+case."
+
+Verified thoroughly, not just "no crash on a quick exit": a debug
+build under AddressSanitizer, first confirming the exact crash from a
+plain Alt-X quit, then confirming it was gone after the fix — and, to
+make sure the fix didn't just get lucky by exiting too fast to matter,
+a second run with a deliberately slow mock server (3s per response)
+and a 2-second refresh interval, sending Alt-X while a periodic async
+refresh was confirmed still in flight. Clean exit, code 0, no
+AddressSanitizer error, in both cases.
+
+**A stray blank row above the Trackers/Peers grid.** Marked directly on
+a screenshot: one row of empty space between the radio cluster and the
+column headers below it, left over from when that space was originally
+sized for two `TButton`s two rows tall each — the radio cluster
+replacing them is only one row tall, but the layout code reserving
+space above the grid was never adjusted down to match. Fixed by
+reserving one row instead of two.
+
+**Column headers and the radio cluster's own background, both matching
+the rows' blue — two separate gaps, closed with one shared trick.**
+Asked for directly, marked on a screenshot: the cluster's own teal
+background stopped right after "Peers" instead of continuing to the
+window's own right edge, and the column headers below it used the
+default palette color instead of matching the rows.
+
+The radio cluster: `TCluster::drawMultiBox()` (in tvision's own
+`tcluster.cpp`) already fills its ENTIRE bounds with one color before
+drawing anything on top (`b.moveChar(0, ' ', cNorm, size.x)`) — nothing
+needed patching here at all, unlike the shading `TButton::drawState()`
+turned out to do piece by piece (see the entry further down this file
+on why button-based tabs were abandoned for this same cluster). The
+gap was simply that the cluster's own bounds were only wide enough for
+the two labels, not the full row — widened to the grid's own full width
+below it, and its background now fills the whole row on its own, no
+override needed.
+
+The column headers needed a genuinely new hook, since `TGridHeaderView`
+(part of the generic `TGridView` widget) always resolved its own color
+through the owning dialog's palette chain, with no way for an embedding
+window to override it directly — unlike each ROW's own color, which
+already had exactly this kind of hook (`RowColorFn`/
+`setRowColorCallback()`). Added the equivalent for the header:
+`HeaderColorFn`/`setHeaderColorCallback()`, optional (falls back to the
+existing palette-chain behavior when unset, so every other
+`TGridView`-based window in this app — the main list, the files window
+— keeps looking exactly as it already did, unaffected).
+`TrackerPeerWindow` sets it to the exact same hardcoded `TColorAttr`
+its own rows already use for the unfocused case, so the header visibly
+matches rather than coincidentally happening to look similar.
+
+Verified both directly on a live running instance: every cell's own
+background color read individually from right after "Peers" to near
+the window's own right edge — uniform the whole way, confirming the
+cluster's own fill genuinely reaches the edge rather than just looking
+close in a quick glance. The header: read the same way against a data
+row beneath it — identical background on both.
+
+**The Trackers/Peers switch, rebuilt on a native `TRadioButtons`
+cluster instead of two ordinary buttons pretending to be tabs.** The
+original version of this (two plain `TButton`s, whichever one active
+simply disabled) worked, but every attempt at making it actually LOOK
+like two attached tabs — a distinct color for the active one, no gap
+between them, no residual shading anywhere on either button — kept
+running into another edge `TButton::drawState()` shades that hadn't
+been patched yet: first the left/right edges of each button, then a
+whole extra shadow row underneath, each only found from a fresh
+screenshot after the previous fix seemed to check out. None of that
+was actually necessary: `TRadioButtons` is tvision's own control for
+exactly this "choose one of a small fixed set" case, complete with its
+own selection marker (a filled vs. empty circle, `(•)`/`( )`), keyboard
+navigation, and focus handling, none of which needs reimplementing or
+patching around piece by piece. Decided to stop refining the
+button-based version and replace it outright rather than continue
+finding and fixing one more edge case each time.
+
+`TTrackerPeerRadio` (a small `TRadioButtons` subclass, local to this
+window) overrides `press()`/`movedTo()` — both change which item is
+selected in the base class, `movedTo()` on arrow-key navigation without
+a separate confirm step, `press()` on an actual click — to also invoke
+an `onChanged` callback, the same callback-based pattern already used
+throughout this app for other custom controls. `TCluster`'s own layout
+switches between a vertical list and side-by-side columns based purely
+on the bounds it's given: a height of exactly one row is what makes
+"Trackers"/"Peers" lay out horizontally like tabs, rather than stacked
+on top of each other the way a taller cluster would default to.
+
+Verified on a live running instance, not just compiled: the marker
+correctly starts on "Trackers", clicking "Peers" moves it there and
+switches the grid to show peer data (address, client, progress, speeds)
+matching the mock's own — confirming both the visual selection and the
+underlying tab-switching logic survived the rewrite intact, not just
+that a `TRadioButtons` cluster renders without crashing.
+
+**`TrackerListWindow` renamed to `TrackerPeerWindow`.** Pointed out
+directly, right after the Peers tab landed (see the entry just below
+this one): the file and class name still said "tracker list" even
+though the window itself now shows trackers *or* peers, switched via
+its own two tabs — accurate right up until that entry, misleading
+afterward. Renamed the files (`TrackerListWindow.h/.cpp` →
+`TrackerPeerWindow.h/.cpp`) and the class/factory function
+(`TrackerListWindow`/`createTrackerListWindow` → `TrackerPeerWindow`/
+`createTrackerPeerWindow`) together, updated every reference across the
+app (`App.cpp`, `TorrentDetailsWindow.h/.cpp`, `TorrentFilesWindow.h/
+.cpp`'s own comments, `TrackerDetailWindow.h`'s own comment,
+`TransmissionClient.h`'s own comment, `AppSettings.h`'s own comments,
+`CMakeLists.txt`) — confirmed nothing missed by grepping the whole
+`src/` tree for the old name afterward and finding nothing left,
+rather than trusting the rename was complete just because it compiled.
+
+**New: a Peers tab alongside the tracker window's own Trackers one,
+switched via two buttons acting as tabs.** Genuinely new functionality,
+not a bug fix — worth documenting the design since it's a pattern this
+project hadn't used before (Turbo Vision has no tab control of its own).
+
+`TransmissionClient` gained `getPeers()` alongside the existing
+`getTrackerStats()` — same shape, a new `Peer` struct (`address`, `port`,
+`clientName`, `progress`, `rateToClient`/`rateToPeer`, and
+Transmission's own compact `flagStr` rather than decoding each flag
+letter individually, matching how most other clients show it too),
+fetched from `torrent-get`'s own `"peers"` field the same on-demand way
+`trackerStats` already was — neither is part of the regular periodic
+refresh; each is only requested when its own tab is the one actually
+showing.
+
+The tabs themselves: two `TButton`s at the top of the same window,
+whichever one is the CURRENTLY active tab simply disabled — no separate
+"selected" visual of its own was needed, since a button you can't click
+because you're already looking at it reads as its own state indicator,
+and this avoids inventing a highlight color that would have to somehow
+not clash with the theme already established for “disabled” elsewhere.
+One `TGridView` is reconfigured on every switch (`clearColumns()`, then
+whichever tab's own columns) rather than keeping two separate grids,
+which keeps “Manage columns…” working exactly as it already did for
+every other grid in this app: it always acts on the ONE grid that
+currently has focus, without needing to know or care that this window
+happens to show two different things at different times. The trickiest
+part of that: each tab needed its OWN remembered column layout, so
+switching to Peers and back to Trackers within the same running window
+doesn't lose whatever was resized on Trackers in the meantime, even
+before "Manage columns..." ever explicitly saved anything — handled by
+capturing the OUTGOING tab's current grid state into its own member
+vectors right before rebuilding the grid out from under it on every
+`switchToTab()` call, not just once at construction.
+
+Persisting each tab's own layout across restarts needed threading two
+new `AppSettings` fields (`peerColumnWidths`/`Order`/`Visible`,
+alongside the existing tracker ones) through the same four-file chain
+those already went through — `App` → `TorrentListWindow` →
+`TorrentDetailsWindow` → `TrackerPeerWindow` (renamed from
+`TrackerListWindow` right after this same feature landed — see the
+entry right below this one for why) — doubling every constructor
+parameter, stored member, and forwarded call along the way.
+`App::showColumnManagerDialog()` and its own `shutDown()` backstop both
+needed to know WHICH pair to save into, not just that a tracker window
+had focus — `TrackerPeerWindow::isPeersTabActive()` is what tells them,
+reusing the same `columnWidths()`/`columnOrder()`/`columnVisibility()`
+getters either way, since those already just reflect whichever tab is
+currently live in `grid_`. Fixed a small pre-existing gap while in that
+same code either way: the `shutDown()` backstop was only ever capturing
+`trackerColumnWidths`/`Order`, never `trackerColumnVisible` — a
+direct show/hide via "Manage columns..." was already caught by its own
+save-on-close, so this only mattered for column visibility changed some
+other way, but it's now captured consistently with the width/order
+fields right next to it.
+
+Verified on a real running instance against a mock providing both
+`trackerStats` and `peers` data together: opening the Trackers tab
+showed the expected tracker row correctly; clicking over to Peers
+showed both mock peers with their address:port, client name, progress
+percentage, and down/up speeds all matching what the mock actually
+sent — not just that the window opened without crashing, but that the
+right data landed in the right columns on both tabs.
+
+**The last silent dependency on the `zanac/tvision` fork, removed —
+this project now builds against stock upstream tvision.** Found the
+hard way: building against `magiblot/tvision` (the real upstream, per
+the setup guide someone was actually following) failed with
+`cmComboBoxSelectionChanged` undeclared in three different files.
+`TComboBox` itself had already been fully vendored into this project's
+own `src/tvision-ext/` (see the entry above this one for that work) —
+but the vendoring missed one thing: `cmComboBoxSelectionChanged`'s own
+comment explicitly said it "isn't declared here" because the fork it
+was copied from had already added it directly to its own copy of
+`views.h`, unconditionally. That was true right up until someone
+actually tried building against a `tvision` checkout that ISN'T that
+fork — at which point relying on a header this project doesn't control
+to already declare a constant this project's own code depends on
+turned from a true statement into a silent, unverified assumption.
+
+Checked properly rather than guessed at before fixing it: neither
+`TComboBox` nor any of its own command constants exist anywhere in
+`magiblot/tvision` at all (a combo box was never part of classic Turbo
+Vision; confirmed by grepping a fresh clone of upstream directly,
+matching this project's own README note on
+[issue #173](https://github.com/magiblot/tvision/issues/173) still
+being open with no resolution) — so this was never actually about
+`TComboBox`'s own class definition needing anything fork-specific, only
+this one constant's declaration living in the wrong place. Fixed by
+declaring all three of this widget's own broadcast commands
+(`cmComboBoxSelectionChanged` alongside the two — `cmComboBoxItemAdded`/
+`cmComboBoxItemRemoved` — that were already declared locally, added in
+an earlier turn without the same oversight) directly in this project's
+own `TComboBox.h`, at 59/60/61 — the same values as before, chosen as
+the next three free slots above upstream's own highest built-in command
+(`cmTimerExpired = 58`, confirmed directly in upstream's own `views.h`,
+not assumed), so nothing about the actual protocol between this file
+and its own three consumers (`ConnectionDialog.cpp`, and `TComboBox.cpp`
+itself) needed to change at all — only where the numbers came from.
+
+Verified as thoroughly as the original report deserved: a full build
+from a clean checkout of `magiblot/tvision` itself (not the fork, not
+this project's own `external/tvision` as it happened to be checked out)
+— zero errors, and the resulting binary's own TUI and CLI both
+confirmed working, the same way every change in this file gets
+verified. The setup instructions above, and the submodule this project
+itself is built against, both switched to upstream accordingly — this
+was the one thing standing between "vendored, but only really if you
+happen to build against the right fork" and actually not depending on
+`zanac/tvision` at all anymore.
+
+**Four related networking changes at once: a persistent connection per
+server, a request timeout, non-blocking periodic refresh, and network
+errors surfaced in the UI.** Discussed as a deliberate architectural
+question rather than found as a bug — worth documenting the reasoning
+in full, since the four build on each other and the riskiest one needed
+real verification, not just review.
+
+**Persistent connection.** `TransmissionClient` used to
+`curl_easy_init()`/`curl_easy_cleanup()` a fresh handle on every single
+call — no connection reuse at all, a new TCP handshake every time even
+for a refresh hitting the same host every few seconds. Confirmed nothing
+in this codebase ever copies a `TransmissionClient` (always by
+reference, or held in a `std::unique_ptr` — see `App`'s own `clients_`
+map) before adding a raw owned handle to it; copy and move are now
+explicitly deleted too; a class member is only clearly safe to add once
+nothing could end up owning two of it. One handle (`curl_`) now lives
+for the object's whole lifetime, with `curl_easy_reset()` at the start
+of every `call()` clearing whatever the previous one left set — reusing
+the connection is the only thing that persists on purpose; every option
+still gets set fresh, same as a brand new handle would need.
+
+**Timeout.** `CURLOPT_CONNECTTIMEOUT`/`CURLOPT_TIMEOUT` (5s/15s) — there
+was none before, so an unreachable server could block for however long
+the OS's own TCP-level timeout happens to be, often minutes, and every
+RPC call runs synchronously on the same thread as the UI. A five-minute
+freeze and a fifteen-second one are both bad, but bounding it at all
+was the smallest, lowest-risk piece of this whole set of changes.
+
+**Non-blocking periodic refresh.** The real structural fix for the
+freeze: with more than one server's window potentially open at once
+(see the MDI work further up this file), one slow or unreachable server
+freezing literally everything — every other window, all keyboard/mouse
+input — on a periodic TIMER, not even in response to something just
+clicked, was the sharpest edge of the whole synchronous-call design.
+Rather than full OS threads (real complexity: tvision itself assumes
+single-threaded access to every `TView`, so a background thread would
+need its own result queue with its own synchronization, and touching
+this codebase's already-careful "what happens if a client is destroyed
+mid-request" handling — see the multi-server work's own entries above —
+gets meaningfully harder once a second thread is involved), this uses
+libcurl's own "multi" interface, still on the one UI thread: start a
+request, then poll for completion on later ticks, never blocking. `App`
+owns one shared `CURLM*` — one handle's own `curl_multi_perform()`/
+`curl_multi_info_read()`, driven once per `idle()` tick, naturally
+covers however many refreshes happen to be in flight at once, rather
+than needing to ask every client's own separate multi handle
+individually. `TransmissionClient` gained `startRefresh()`/
+`finishRefresh()` alongside the existing synchronous `listTorrents()`
+(kept for the initial fetch when a window first opens, and every other
+action — each short, and a direct response to something just clicked,
+unlike a periodic background refresh) — `CURLOPT_PRIVATE` set to the
+requesting `TorrentListWindow*` when a request starts is how `App::idle()`
+identifies which window's own `finishAsyncRefresh()` to call once
+`curl_multi_info_read()` reports it done, without maintaining a separate
+lookup of its own. A 409 (session renewal) during an async refresh
+doesn't retry within the same request the way the synchronous path
+does — it just stores the renewed session id and reports failure for
+this cycle, relying on the next periodic tick to retry with it, which
+avoids needing retry logic duplicated into the async state machine for
+what's already a self-correcting, frequently-recurring call.
+
+The one genuinely delicate part: a server can be removed (the
+Connection dialog's own "[-]", now immediate — see its own entry
+further up this file) while its own refresh is still in flight, and the
+easy handle it's using MUST be detached from the shared `CURLM*` before
+`TransmissionClient`'s destructor cleans it up — curl's own multi-handle
+docs require every easy handle removed before the multi handle itself
+is (or, in this app's case specifically, before the *client* owning
+that easy handle is destroyed while the handle is still attached to
+anything). Handled at two levels: the destructor itself detaches if
+still in flight (covers a client destroyed for any reason, not just
+this specific removal path), and `App`'s own destructor additionally
+walks every window explicitly, canceling any in-flight refresh, before
+cleaning up the shared multi handle itself — not left to whatever order
+C++ happens to destroy `deskTop`'s own child windows in relative to
+`App`'s own destructor body, which isn't something worth depending on
+implicitly for something this easy to get subtly wrong.
+
+**Network errors surfaced in the UI.** `TransmissionClient::lastError()`
+existed already but was never actually shown anywhere — a known gap,
+noted here once it became a much more frequent occurrence once
+`call()` gained a real timeout (a request that used to hang
+indefinitely now visibly fails within 15s instead). Also fixed
+`lastError_` never being cleared on success, only ever set on failure —
+meaning it could keep showing a stale error from an earlier failed
+call even after a later one succeeded; every attempt now clears it
+first, so `lastError().empty()` reliably means "the most recent attempt
+succeeded". A messageBox popping up every single `refreshIntervalSeconds`
+for as long as a server stays down would be far more disruptive than
+the problem it's reporting, so instead: a small "(offline)" marker
+appended to that server's own window title, the moment a refresh
+attempt fails, cleared the moment one succeeds again — glanceable, and
+gone entirely once the problem is.
+
+Verified in layers, spending real effort on the one part that actually
+carried risk rather than treating all four as equally safe. Persistent
+connection: confirmed on a running instance across three different
+call types on the same handle in a row (list refresh, start, a details
+fetch) — all correct, nothing corrupted by option state carrying over
+between them. But the real test was the removal race: a mock server
+deliberately delaying its own `torrent-get` response by 5 seconds, a
+2-second refresh interval, and timing the Connection dialog's own "[-]"
+to land while a refresh was confirmed still in flight — removing the
+server, then watching the process stay alive and fully responsive
+through and past the exact moment the mock's delayed, now-orphaned
+response would otherwise have arrived. As a side effect, the same test
+also confirmed the non-blocking claim itself: the app kept responding
+normally to keyboard/mouse input (opening the Connection dialog,
+clicking "[-]") while that same slow request was still pending in the
+background — the freeze this whole set of changes was meant to fix
+simply didn't happen.
+
+**Three changes at once: `TGridView`/`TGridWindow`/`TGridColumnManagerDialog`
+moved into `tvision-ext/` alongside `TComboBox`, torrent-list windows
+reverted from ordinary resizable MDI windows back to always filling the
+whole desktop, and a new "Connections" menu for switching between
+them.**
+
+The file move itself was mechanical — every include across the app
+updated from `../tgridview/...` to `../tvision-ext/...`, and (since the
+three moved files all reference each other through same-directory,
+relative includes already — `"TGridView.h"`, not a path — nothing
+inside them needed to change at all). The one non-mechanical part: the
+folder's own design-notes file, previously `tgridview/README.md`,
+became `tvision-ext/TGridView-README.md` rather than a second plain
+`README.md` sitting next to `TComboBox.h`'s own header-comment
+documentation — a bare "README.md" would be ambiguous once the folder
+holds more than one component's own writeup. Every in-code reference to
+it updated to match, and `TGridView.h`'s own top-of-file comment (the
+one explaining why this file has no project dependencies) now mentions
+`TComboBox.h` alongside it, since it's making the same "reusable, could
+be proposed upstream to tvision" case both files now share explicitly.
+
+The window-sizing change is a genuine back-and-forth worth being
+explicit about, not a straight line: originally one single window,
+always locked to the whole desktop (`TGridWindow`'s own `fullScreen`
+mode, built for exactly one such window ever existing). The MDI
+multi-server work (see its own entry above) moved every server's window
+to `fullScreen=false` instead — ordinary, resizable, tileable,
+individually positioned — specifically so `Window → Tile/Cascade` could
+usefully arrange more than one of them side by side, and gained its own
+`closable=false` parameter on `TGridWindow` (see the entry after that
+one) so they'd stay non-closable despite no longer being locked.
+Asked for directly now: back to always exactly filling the desktop,
+immovable, unresizable — one *per server*, stacked instead of tiled,
+which `fullScreen=true` already supports without any change of its own
+(it just wasn't exercised with more than one instance open at once
+before). `TWindow`'s own default `growMode` (`gfGrowAll|gfGrowRel`, set
+unconditionally in its own constructor) already keeps a window matching
+its owner's bounds as they change — confirmed by reading tvision's own
+`twindow.cpp` rather than assumed, since it's exactly what "adjusts
+automatically when the terminal resizes" needs and nothing extra had to
+be added for it. `closable=false` (added for the previous, `fullScreen=
+false` phase) simply stops mattering with `fullScreen=true` — that mode
+already excludes `wfClose` (along with `wfMove`/`wfGrow`/`wfZoom`) via
+its own `flags=0` — so `TorrentListWindow`'s own constructor call
+dropped that argument rather than passing a value that would go unused;
+`TGridWindow`'s own `closable` parameter stays as-is for whichever
+future ordinary MDI window wants it, on its own resizable path. Every
+server's own saved window position/size (`AppSettings::windowLayouts`,
+added specifically for the resizable phase) is genuinely dead weight
+now that opening one always means the same one size regardless of
+what's saved — removed entirely (`AppSettings`, `Config.cpp`, `App.cpp`
+all together) rather than left in place unused, along with
+`openServerWindow()`'s own now-pointless `bounds` parameter (always
+`deskTop->getExtent()` at every call site once nothing else could ever
+override it).
+
+The "Connections" menu needed two things tvision doesn't obviously
+support out of the box, and both got checked directly in its own
+source before writing anything: rebuilding a menu's contents at
+runtime, and making one specific item visually stand out from its
+siblings. For the first: `TMenuItem`'s own fields (`name`, `command`,
+`next`, and a submenu's own `subMenu`) are all public, and its
+constructor copies the name string it's given rather than just storing
+the pointer (confirmed in tvision's own `tmnuview.cpp`) — so a fresh
+per-server item list can be built from ordinary local `std::string`s
+and threaded onto the "Connections" `TSubMenu`'s own `TMenu::items`
+safely, after manually freeing the old chain the same way `TMenu`'s own
+destructor would (walking `next`, `delete`-ing each node) rather than
+destroying and replacing the `TMenu` object itself. Getting a handle to
+that one `TMenu` back later needed its own small trick: `initMenuBar()`
+has to stay `static` (`TProgInit`'s own requirement), so there's no
+`this` yet at the point it runs to hand the pointer to directly — a
+single file-scope `TMenu*`, set once when the submenu is first built
+and read from everywhere else that needs it, covers this safely since
+exactly one `App` instance ever exists in this process. For the second:
+`TMenuBox::draw()` computes one color for ALL items sharing a given
+state (normal, selected, disabled — see its own source) — there's no
+per-item font-weight or independent color in a text-mode menu without
+writing a custom drawing override, so genuine "bold" wasn't literally
+available. Repurposing the `~x~` markup a menu item's own name already
+supports (normally wrapped around just one accelerator letter, to
+underline it) around the *entire* label instead gives that whole item a
+distinctly different, already-themed color for free — paired with a
+bullet character, this is the closest a stock tvision menu gets to
+"make this one item visually stand out" without a custom `TMenuBox`
+subclass, and was a deliberate choice over building one just for this.
+Bringing whichever server is picked to the front reuses
+`openServerWindow()`'s own existing "already open → just `select()` it"
+path unchanged (see the MDI work's own entry above) — nothing new
+needed there, since every configured server's window already always
+exists. Rebuilt from two different triggers, not one: from `idle()`
+(catching a focus change from *any* cause at all — clicking a different
+window, `Window → Next`, the Window List dialog, or this very menu —
+the same "check what's true right now, every tick" shape
+`updateBandwidthStatus()`/`cmManageColumns`'s own enable state already
+use, since threading a callback through every single path that can
+move focus individually would both miss something eventually and be
+far more code) and directly from `showConnectionDialog()`'s own
+`onServerSaved`/`onServerRemoved` callbacks (since the server *list*
+itself changing isn't something a focus-change check would ever
+notice on its own).
+
+One real bug along the way, caught immediately by testing on a running
+instance rather than trusting the code by inspection: the "Connections"
+menu didn't show up in the bar at all at first. The top-level chain
+built every other menu as siblings via bare `*new TSubMenu(...) +
+*new TSubMenu(...) + ...` (resolving to `operator+(TSubMenu&,
+TSubMenu&)`, confirmed by reading tvision's own `menu.cpp`), but this
+one was written with the same `static_cast<TMenuItem&>(...)` idiom the
+*Queue* submenu earlier in this same file genuinely needs — there,
+deliberately forcing `operator+(TSubMenu&, TMenuItem&)` instead, so
+Queue nests as an item *inside* the Torrent menu rather than becoming
+another top-level sibling. Applying the same cast here forced the exact
+opposite of what was wanted: Connections got silently nested inside the
+*previous* top-level menu's own item chain instead of becoming a
+sibling of its own. Removing the cast (letting the natural
+`TSubMenu&`+`TSubMenu&` overload fire, matching every other top-level
+entry already in the chain) fixed it immediately — confirmed visually,
+the menu bar showing "Connections" between "Window" and "Columns" as
+intended, `Alt+N` opening it. Also confirmed on a real running instance
+with two configured servers: opening it showed a bullet on whichever
+one had focus, picking the other one brought its own window to the
+front (title bar and content both switching to match), and reopening
+the menu afterward — with no explicit rebuild call anywhere in the
+selection's own command handler, deliberately relying entirely on
+`idle()`'s own generic check — showed the bullet correctly moved to
+match, confirming that path (not just the explicit one from
+`showConnectionDialog()`) genuinely works on its own. A fresh install
+with no servers configured showed a single, disabled "Empty" entry as
+intended.
 
 **Four changes at once: renaming a file/folder, multi-selection
 switched from press-and-hold to double-click, a middle-click shortcut

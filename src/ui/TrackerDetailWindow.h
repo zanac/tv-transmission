@@ -6,7 +6,7 @@
 #include "../rpc/Tracker.h"
 
 // Small window with a tracker's full status (error message, last/next
-// announce times) — the parts that don't fit in TrackerListWindow's
+// announce times) — the parts that don't fit in TrackerPeerWindow's
 // table rows. A snapshot at the moment it's opened, like
 // TorrentDetailsWindow's informational fields; only has a Close button,
 // nothing to apply.

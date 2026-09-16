@@ -34,17 +34,22 @@
 class TorrentDetailsWindow : public TDialog {
 public:
     // `initialTrackerColumnWidths`/`Order`/`Visible`: forwarded to
-    // showTrackers()'s own createTrackerListWindow() call — from
+    // showTrackers()'s own createTrackerPeerWindow() call — from
     // AppSettings::trackerColumnWidths/Order/Visible, so the tracker
     // window this opens (if the user clicks "Trackers...") starts with
     // whatever tracker column layout was last saved, the same as any
-    // other tracker window would.
+    // other tracker window would. initialPeerColumnWidths/Order/Visible:
+    // same idea, forwarded the same way, for that window's own Peers
+    // tab (see TrackerPeerWindow) instead of its Trackers one.
     TorrentDetailsWindow(const TRect& bounds, TStringView title,
                           int torrentId, const std::string& torrentName,
                           TransmissionClient& client,
                           const std::vector<int>& initialTrackerColumnWidths = {},
                           const std::vector<int>& initialTrackerColumnOrder = {},
-                          const std::vector<bool>& initialTrackerColumnVisible = {});
+                          const std::vector<bool>& initialTrackerColumnVisible = {},
+                          const std::vector<int>& initialPeerColumnWidths = {},
+                          const std::vector<int>& initialPeerColumnOrder = {},
+                          const std::vector<bool>& initialPeerColumnVisible = {});
 
     void handleEvent(TEvent& event) override;
 
@@ -75,15 +80,22 @@ private:
     std::vector<int> initialTrackerColumnWidths_;
     std::vector<int> initialTrackerColumnOrder_;
     std::vector<bool> initialTrackerColumnVisible_;
+    std::vector<int> initialPeerColumnWidths_;
+    std::vector<int> initialPeerColumnOrder_;
+    std::vector<bool> initialPeerColumnVisible_;
 };
 
 // Creates a window with the main information about a torrent (a
 // snapshot taken when opened, it doesn't refresh itself) plus controls
 // to set or clear a per-torrent download/upload speed limit override
 // (applied immediately via `client` when confirmed).
-// `initialTrackerColumnWidths`/`Order`/`Visible`: forwarded to the
+// `initialTrackerColumnWidths`/`Order`/`Visible` and
+// `initialPeerColumnWidths`/`Order`/`Visible`: forwarded to the
 // constructor — see its own doc comment.
 TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client,
                                      const std::vector<int>& initialTrackerColumnWidths = {},
                                      const std::vector<int>& initialTrackerColumnOrder = {},
-                                     const std::vector<bool>& initialTrackerColumnVisible = {});
+                                     const std::vector<bool>& initialTrackerColumnVisible = {},
+                                     const std::vector<int>& initialPeerColumnWidths = {},
+                                     const std::vector<int>& initialPeerColumnOrder = {},
+                                     const std::vector<bool>& initialPeerColumnVisible = {});

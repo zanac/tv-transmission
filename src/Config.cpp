@@ -63,16 +63,6 @@ AppSettings loadSettings() {
             }
         }
         settings.activeServer = j.value("activeServer", settings.activeServer);
-        if (j.contains("windowLayouts") && j["windowLayouts"].is_object()) {
-            for (auto& [name, wj] : j["windowLayouts"].items()) {
-                WindowLayout w;
-                w.x = wj.value("x", w.x);
-                w.y = wj.value("y", w.y);
-                w.w = wj.value("w", w.w);
-                w.h = wj.value("h", w.h);
-                settings.windowLayouts[name] = w;
-            }
-        }
         settings.focusedServerAtClose = j.value("focusedServerAtClose", settings.focusedServerAtClose);
 
         int lang = j.value("language", static_cast<int>(settings.language));
@@ -116,6 +106,15 @@ AppSettings loadSettings() {
         if (j.contains("trackerColumnVisible") && j["trackerColumnVisible"].is_array()) {
             settings.trackerColumnVisible = j["trackerColumnVisible"].get<std::vector<bool>>();
         }
+        if (j.contains("peerColumnWidths") && j["peerColumnWidths"].is_array()) {
+            settings.peerColumnWidths = j["peerColumnWidths"].get<std::vector<int>>();
+        }
+        if (j.contains("peerColumnOrder") && j["peerColumnOrder"].is_array()) {
+            settings.peerColumnOrder = j["peerColumnOrder"].get<std::vector<int>>();
+        }
+        if (j.contains("peerColumnVisible") && j["peerColumnVisible"].is_array()) {
+            settings.peerColumnVisible = j["peerColumnVisible"].get<std::vector<bool>>();
+        }
     } catch (const std::exception&) {
         // Corrupted/malformed file: better to fall back to defaults than
         // to block the app from starting.
@@ -141,11 +140,6 @@ bool saveSettings(const AppSettings& settings) {
     }
     j["servers"] = serversJson;
     j["activeServer"] = settings.activeServer;
-    json layoutsJson = json::object();
-    for (const auto& [name, w] : settings.windowLayouts) {
-        layoutsJson[name] = {{"x", w.x}, {"y", w.y}, {"w", w.w}, {"h", w.h}};
-    }
-    j["windowLayouts"] = layoutsJson;
     j["focusedServerAtClose"] = settings.focusedServerAtClose;
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
@@ -172,6 +166,9 @@ bool saveSettings(const AppSettings& settings) {
     j["trackerColumnWidths"] = settings.trackerColumnWidths;
     j["trackerColumnOrder"] = settings.trackerColumnOrder;
     j["trackerColumnVisible"] = settings.trackerColumnVisible;
+    j["peerColumnWidths"] = settings.peerColumnWidths;
+    j["peerColumnOrder"] = settings.peerColumnOrder;
+    j["peerColumnVisible"] = settings.peerColumnVisible;
 
     std::string path = configFilePath();
     std::ofstream out(path, std::ios::trunc);

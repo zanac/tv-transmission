@@ -6,7 +6,7 @@
 #include <vector>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
-#include "../tgridview/TGridView.h"
+#include "../tvision-ext/TGridView.h"
 
 // Non-modal window listing every file within one torrent, grouped into
 // the same folder structure the torrent's own file paths describe —
@@ -17,7 +17,7 @@
 // the same generic widget the main torrent list uses.
 //
 // TDialog rather than TWindow for the same reason as
-// TorrentDetailsWindow/TrackerListWindow: matches the rest of the app's
+// TorrentDetailsWindow/TrackerPeerWindow: matches the rest of the app's
 // default color palette.
 
 // One row as actually displayed — a real file, or a synthetic folder
@@ -50,7 +50,7 @@ public:
     // So the caller (TorrentListWindow) can find an already-open files
     // window for this torrent instead of opening a duplicate — same
     // pattern as TorrentDetailsWindow::torrentId()/
-    // TrackerListWindow::torrentId().
+    // TrackerPeerWindow::torrentId().
     int torrentId() const { return torrentId_; }
 
     // Identifies which server's TransmissionClient this window is

@@ -103,23 +103,32 @@ protected:
 // the last remaining one, leaving nothing shown at all), or, also in
 // editable mode, directly typing/editing the text. Not fired for every
 // open/close of the popup, or for cursor movement alone (Left/Right/
-// Home/End) with no actual content change. cmComboBoxSelectionChanged
-// itself isn't declared here: the fork this was copied from added it
-// directly to views.h's own command enum (unconditionally, not gated
-// behind any Uses_TComboBox guard — see cmdcodes.h/views.h), so it's
-// already available from <tvision/tv.h> without needing anything
-// specific to this file included first.
+// Home/End) with no actual content change.
+//
+// All three of this widget's own broadcast commands (this one, plus
+// cmComboBoxItemAdded/cmComboBoxItemRemoved just below) are declared
+// here, in this project's own code, rather than assumed to already
+// exist somewhere in tvision itself — confirmed against both the
+// official upstream (magiblot/tvision) and the fork this class was
+// originally developed against: neither TComboBox nor any of its own
+// command constants exist in stock tvision at all (a combo box was
+// never part of classic Turbo Vision), and relying on a fork-specific
+// patch to a core header (views.h) for even one constant would have
+// meant this file — despite being self-contained code-wise — still
+// silently required building against that exact fork rather than
+// plain upstream tvision. 59/60/61 are simply the next three free
+// values above upstream's own highest built-in command
+// (cmTimerExpired = 58, in upstream's views.h) — picked from
+// cmCommandBase's own numbering space, not from cmUserBase upward,
+// which is reserved for application-level commands, not widget-level
+// ones like these.
+constexpr ushort cmComboBoxSelectionChanged = 59;
 
 // Broadcast when "[+]"/"[-]" (editable mode — see below) actually add
 // or remove a list entry — not fired for the no-op cases (adding text
 // that already matches an entry, or "[-]" with nothing matching the
 // current text; see addCurrentValue()/removeCurrentValue()'s own
-// comments). Unlike cmComboBoxSelectionChanged, these two are this
-// project's own addition, not something the tvision fork already
-// provides — picked the next two free values after 59 in the same
-// enum's own numbering (see views.h), rather than reusing anything
-// from cmUserBase upward, which is reserved for application-level
-// commands, not widget-level ones like this.
+// comments).
 constexpr ushort cmComboBoxItemAdded = 60;
 constexpr ushort cmComboBoxItemRemoved = 61;
 

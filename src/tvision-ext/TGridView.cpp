@@ -109,7 +109,7 @@ void drawScrolled(TDrawBuffer& b, int contentX, int width, const std::string& te
 // ===========================================================================
 // TGridHeaderView — draws column headers; when gvResizableColumns is set,
 // dragging the single-character separator between two headers resizes the
-// column to its left (see README.md for why "left column only", not a
+// column to its left (see TGridView-README.md for why "left column only", not a
 // proportional split, was chosen). When gvReorderableColumns is set,
 // double-clicking a column's name enters TGridView::runReorderLoop().
 //
@@ -155,7 +155,20 @@ public:
         owner_->updateHScrollBarVisibility();
 
         TDrawBuffer b;
-        TColorAttr color = getColor(1);
+        // Falls back to yellow-on-blue directly (TColorAttr(0x1E)) when
+        // no callback is set, rather than resolving through the owner's
+        // own palette chain (getColor(1)) the way this used to — the
+        // SAME kind of unification already applied to row colors just
+        // below (see TGridRowsView::draw()'s own comment on why): the
+        // main torrent list's own header already showed yellow-on-blue,
+        // but only incidentally, from TWindow's own default palette
+        // resolving index 1 that way — a TDialog-based window (every
+        // OTHER TGridView user in this app) resolves the very same
+        // index differently, which is what made headers look
+        // inconsistent across windows despite nobody having asked for
+        // that difference. Every caller that used to set this
+        // explicitly to match — TrackerPeerWindow — no longer needs to.
+        TColorAttr color = owner_->headerColor_ ? owner_->headerColor_() : TColorAttr(0x1E);
         b.moveChar(0, ' ', color, size.x);
         int offset = owner_->horizontalScrollOffset();
         // Fixed, never-scrolled — see drawScrolled()'s own doc comment.
@@ -384,10 +397,24 @@ public:
             // non-focused rows: a caller may want a specific focused-row
             // look (e.g. this project's black-on-white, distinct from
             // tvision's own default "selected" palette color) just as
-            // much as a per-status color for the rest.
+            // much as a per-status color for the rest. When NO callback
+            // is set, falls back to that exact same white-on-blue/
+            // black-on-white pair directly (TColorAttr(0x1F)/(0xF0))
+            // rather than resolving through the owner's own palette
+            // chain (getColor(1)/getColor(2)) the way this used to —
+            // every caller of this generic widget across this project
+            // needed to set an IDENTICAL callback just to get readable
+            // contrast inside a TDialog (the palette chain's own default
+            // doesn't contrast enough there), duplicated across four
+            // separate files for no reason other than this fallback
+            // not already doing it. Still fully overridable — the main
+            // torrent list's own per-status coloring (yellow for
+            // checking/queued, cyan for downloading, ...) sets its own
+            // callback same as always, this only changes what happens
+            // when nothing does.
             TColorAttr rowColor = owner_->rowColor_
                 ? owner_->rowColor_(item, isFocused)
-                : TColorAttr(isFocused ? getColor(2) : getColor(1));
+                : TColorAttr(isFocused ? 0xF0 : 0x1F);
             b.moveChar(0, ' ', rowColor, size.x);
             if (item >= 0 && item < owner_->rowCount_) {
                 if (prefixWidth > 0) {
@@ -714,6 +741,7 @@ void TGridView::setRowCount(int count) {
 
 void TGridView::setCellTextCallback(CellTextFn fn) { cellText_ = std::move(fn); }
 void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); }
+void TGridView::setHeaderColorCallback(HeaderColorFn fn) { headerColor_ = std::move(fn); }
 void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
 void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }

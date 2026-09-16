@@ -8,7 +8,7 @@
 #include "../AppSettings.h"
 #include "../rpc/TransmissionClient.h"
 #include "../rpc/Torrent.h"
-#include "../tgridview/TGridWindow.h"
+#include "../tvision-ext/TGridWindow.h"
 
 // Called whenever the user changes the sort column/direction (header
 // click — the toggle-direction and indicator-drawing logic itself now
@@ -17,7 +17,7 @@
 using SortChangedCallback = std::function<void(SortColumn, bool)>;
 
 // The main torrent list — a thin app-specific layer on top of the
-// generic TGridView (src/tgridview/), which supplies the actual
+// generic TGridView (src/tvision-ext/), which supplies the actual
 // column/row rendering, sorting-on-click UI, resizing, the scrollbar,
 // and mouse handling. What lives here is everything genuinely
 // torrent-specific: which columns exist and how wide, how a Torrent
@@ -64,11 +64,30 @@ public:
                        SortChangedCallback onSortChanged,
                        const std::vector<int>& initialTrackerColumnWidths = {},
                        const std::vector<int>& initialTrackerColumnOrder = {},
-                       const std::vector<bool>& initialTrackerColumnVisible = {});
+                       const std::vector<bool>& initialTrackerColumnVisible = {},
+                       const std::vector<int>& initialPeerColumnWidths = {},
+                       const std::vector<int>& initialPeerColumnOrder = {},
+                       const std::vector<bool>& initialPeerColumnVisible = {});
 
     const std::string& serverName() const { return serverName_; }
 
     void refresh();       // calls listTorrents() and updates the view
+
+    // Non-blocking equivalent of refresh(), for App::idle()'s own
+    // periodic refresh loop specifically — see TransmissionClient::
+    // startRefresh()'s own comment for why. Starts the request on
+    // `multi` (App's own shared CURLM* — see its own comment on why
+    // there's exactly one); finishAsyncRefresh() applies the result
+    // once App's own curl_multi_info_read() loop reports it done,
+    // identified via this window's own `this` pointer (passed here as
+    // curl's own CURLOPT_PRIVATE, read back via CURLINFO_PRIVATE).
+    void startAsyncRefresh(CURLM* multi) { client_.startRefresh(multi, this); }
+    bool isAsyncRefreshInFlight() const { return client_.isRefreshInFlight(); }
+    // Never called except right after App's own curl_multi_info_read()
+    // loop reports this window's own request as one of the ones that
+    // just finished — never speculatively, and never twice for the
+    // same startAsyncRefresh() call.
+    void finishAsyncRefresh(CURLM* multi);
     // Re-syncs the shared Torrent-menu command enable/disable state
     // (see updateCommandStates()) to THIS window's own current
     // selection whenever it becomes the active one — enableCommand()/
@@ -94,6 +113,19 @@ public:
     // cycleQueueActionForRow()'s own comment for why this is a single
     // shared counter rather than per-row state.
     void cycleQueueActionForRow(int row);
+    // Sets the bandwidth priority (-1/0/1, see TransmissionClient::
+    // setPriority()) for every currently selected torrent, or just the
+    // focused one outside selection mode — same targetTorrents()-based
+    // pattern as queueMoveTopForSelected() and the rest above.
+    void setPriorityForSelected(int priority);
+    // Cycles Low -> Normal -> High -> Low, one step per double-click on
+    // the Priority column — unlike cycleQueueActionForRow()'s own
+    // shared counter, this reads the ROW'S OWN current priority
+    // directly (Torrent::bandwidthPriority already tells you where in
+    // the cycle it is, which queue position's own four relative-move
+    // actions have no equivalent of), so there's no separate counter
+    // to keep in sync with anything.
+    void cyclePriorityForRow(int row);
     void showDetailsForSelected();
     void showFilesForSelected();
     void retranslate();   // re-applies the title + column headers in the current language
@@ -140,6 +172,19 @@ private:
 
     TransmissionClient& client_;
     std::string serverName_;
+    // True from the moment a refresh attempt (sync or async alike)
+    // fails until the next one succeeds — reflected in the title bar
+    // itself (see buildWindowTitle()'s own comment on why there, not a
+    // popup) via updateTitleForConnectionState() below, called from
+    // both refresh() and finishAsyncRefresh() after every attempt,
+    // whether it succeeded or not.
+    bool connectionLost_ = false;
+    // Rebuilds the title only when connectionLost_ actually CHANGES —
+    // called after every refresh attempt regardless, but a no-op most
+    // of the time (most refreshes succeed, and most failures aren't
+    // the first one in a row), so this doesn't mean reallocating the
+    // title on every single tick.
+    void updateTitleForConnectionState(bool lost);
     std::vector<int> initialTrackerColumnWidths_;
     // Which queue-move action a double-click on the queue column does
     // next — 0=top, 1=up, 2=down, 3=bottom, advancing (wrapping) after
@@ -150,6 +195,9 @@ private:
     int queueActionCycle_ = 0;
     std::vector<int> initialTrackerColumnOrder_;
     std::vector<bool> initialTrackerColumnVisible_;
+    std::vector<int> initialPeerColumnWidths_;
+    std::vector<int> initialPeerColumnOrder_;
+    std::vector<bool> initialPeerColumnVisible_;
 
     // allTorrents_ is every torrent listTorrents() last returned, in
     // server order; visible_ is the filtered-then-sorted subset actually

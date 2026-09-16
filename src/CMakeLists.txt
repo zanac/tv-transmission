@@ -10,19 +10,21 @@ add_executable(tv-transmission
     ui/AddTorrentDialog.cpp
     ui/ConnectionDialog.cpp
     ui/ServerSettingsDialog.cpp
+    ui/SessionStatsDialog.cpp
     ui/FilterDialog.cpp
-    tgridview/TGridColumnManagerDialog.cpp
+    tvision-ext/TGridColumnManagerDialog.cpp
+    tvision-ext/TFolderBrowserDialog.cpp
     ui/LanguageComboBox.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
     ui/BandwidthStatusLine.cpp
     ui/TorrentDetailsWindow.cpp
     ui/TorrentFilesWindow.cpp
-    ui/TrackerListWindow.cpp
+    ui/TrackerPeerWindow.cpp
     ui/TrackerDetailWindow.cpp
     ui/Strings.cpp
-    tgridview/TGridView.cpp
-    tgridview/TGridWindow.cpp
+    tvision-ext/TGridView.cpp
+    tvision-ext/TGridWindow.cpp
     tvision-ext/TComboBox.cpp
 )
 

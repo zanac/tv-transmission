@@ -150,16 +150,11 @@ TDialog* createColumnManagerDialog(TGridView* target, const TGridColumnManagerLa
         }
         return "";
     });
-    // Without this, the focused-row/other-rows distinction relies
-    // entirely on TListViewer's own default palette colors (see
-    // TGridRowsView::draw()'s fallback in TGridView.cpp) — which,
-    // inside a TDialog, don't contrast enough to actually notice which
-    // row is focused. Fixed black-on-white-when-focused instead, so
-    // this is guaranteed visible regardless of whatever palette the
-    // host dialog resolves colors 1/2 to.
-    dlg->metaGrid->setRowColorCallback([](int, bool focused) -> TColorAttr {
-        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
-    });
+    // No setRowColorCallback() here anymore — TGridView's own default
+    // (white-on-blue/black-on-white-when-focused) already matches what
+    // this used to set explicitly, since that became the generic
+    // widget's own fallback instead of something every caller needed to
+    // repeat.
     // Double-click a row: same action as the "Toggle visible" button —
     // TListViewer's own double-click/Enter broadcast (see TGridView's
     // setRowActivateCallback() doc comment), so there's no need to

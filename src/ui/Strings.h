@@ -16,10 +16,11 @@ Language currentLanguage();
 // Identifier for every translatable piece of UI text.
 enum class Str {
     MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuQuit,
-    MenuConnection, MenuServerSettings,
+    MenuConnection, MenuServerSettings, MenuSessionStats,
     MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
     MenuSelectMultiple, MenuCancelSelection,
     MenuQueue, MenuQueueMoveTop, MenuQueueMoveUp, MenuQueueMoveDown, MenuQueueMoveBottom,
+    MenuPriority, MenuPriorityLow, MenuPriorityNormal, MenuPriorityHigh,
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     ConfirmRemoveTorrentsMulti, ConfirmDeleteTorrentsWithDataMulti,
@@ -27,6 +28,7 @@ enum class Str {
     MenuWindowTile, MenuWindowCascade, MenuWindowList,
     MenuHelp, MenuAbout, DialogTitleAbout, LabelAboutVersion, LabelAboutCopyright,
     MenuSettingsMenu, MenuColumnsMenu, MenuFilters,
+    MenuConnectionsMenu, MenuConnectionsEmpty,
     DialogTitleFilters, LabelFilterName, LabelFilterStatusSection, ButtonReset,
     MsgLanguageChangeRestart,
     MsgServerAdded, MsgServerRemoved, MsgConnectionTestFailed,
@@ -36,13 +38,14 @@ enum class Str {
     DialogTitleWindowList,
     StatusAdd, StatusStart, StatusStop, StatusSettings, StatusQuit,
 
-    WindowTitleTorrentList,
+    WindowTitleTorrentList, WindowTitleOffline,
 
     DialogTitleAddTorrent, LabelAddTorrentUrl, MsgTorrentDuplicate, MsgTorrentAddFailed,
+    LabelFolderPath, MsgFolderUnreadable,
     ButtonRename, DialogTitleRename, LabelRenameNewName, MsgRenameFailed,
-    ButtonOK, ButtonCancel, ButtonSave,
+    ButtonOK, ButtonCancel, ButtonSave, ButtonSelect,
 
-    DialogTitleConnection, DialogTitleServerSettings,
+    DialogTitleConnection, DialogTitleServerSettings, DialogTitleSessionStats, DialogTitleSelectFolder,
     LabelRefreshSeconds, LabelHost, LabelPort, LabelUser, LabelPassword, LabelLanguage,
     LabelServerName, DefaultServerName,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
@@ -58,12 +61,15 @@ enum class Str {
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
     CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
-    ButtonTrackers, ButtonRefresh, ButtonBrowse,
+    ButtonTrackers, ButtonRefresh, ButtonBrowse, ButtonChangeFolder, ButtonVerify,
+    TabTrackers, TabPeers,
     DialogTitleBrowseTorrent,
 
     WindowTitleTrackerList, WindowTitleTrackerDetail,
     HeaderTrackerHost, HeaderTier, HeaderSeeders, HeaderLeechers,
     HeaderDownloaded, HeaderTrackerStatus,
+    HeaderPeerAddress, HeaderPeerClient, HeaderPeerProgress,
+    HeaderPeerDown, HeaderPeerUp, HeaderPeerFlags,
     TrackerStatusOk, TrackerStatusError, ValueNotAvailable,
     LabelTrackerHost, LabelTrackerTier, LabelTrackerSeeders,
     LabelTrackerLeechers, LabelTrackerDownloaded,
@@ -71,6 +77,11 @@ enum class Str {
 
     LabelGlobalSpeedSection, CheckGlobalLimitDownload, CheckGlobalLimitUpload,
     LabelAltSpeedSection, LabelAltSpeedDescription, LabelAltSpeedDownload, LabelAltSpeedUpload,
+    LabelNetworkSection, ButtonTestPort, ButtonUpdateBlocklist,
+    LabelCurrentSession, LabelAllTime, LabelStatsDownloaded, LabelStatsUploaded,
+    LabelStatsActive, LabelStatsStarted,
+    ResultPortOpen, ResultPortClosed, ResultPortTestFailed,
+    ResultBlocklistUpdated, ResultBlocklistFailed, ResultTesting, ResultUpdating,
     CheckAltSpeedEnabled,
 
     TorrentStatusStopped, TorrentStatusCheckWait, TorrentStatusChecking,

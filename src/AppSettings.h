@@ -76,19 +76,9 @@ struct ServerProfile {
     std::string password;
 };
 
-// A saved torrent-list window's own position and size — in character
-// cells (tvision's own coordinate unit), not pixels. Not clamped to
-// the current desktop here (that only makes sense against a live
-// terminal size, known only once the app is actually running — see
-// App's own constructor for where restoring one of these against
-// deskTop->getExtent() actually happens).
-struct WindowLayout {
-    int x = 0, y = 0, w = 100, h = 30;
-};
-
 // Settings the user can configure from the Connection/Server windows.
 struct AppSettings {
-    int refreshIntervalSeconds = 5; // first option in the Connection window
+    int refreshIntervalSeconds = 1; // first option in the Connection window
 
     // Every server the user has ever named via the Connection dialog's
     // server combo, keyed by that logical name — added/removed there
@@ -116,13 +106,6 @@ struct AppSettings {
     // default than an exclusive choice.
     std::string activeServer;
 
-    // Every configured server's own torrent-list window opens on
-    // startup at whatever position/size it last had, keyed by the same
-    // logical server name as `servers` above — saved on exit (see
-    // App::shutDown()). A server with no entry here yet (never opened
-    // before, or an older settings.json predating this) falls back to
-    // an automatically arranged position instead.
-    std::map<std::string, WindowLayout> windowLayouts;
     // Which server's window had focus at the moment the app was last
     // closed — that's the one brought to the front on the next launch,
     // ahead of every other configured server's own window (all of them
@@ -143,11 +126,11 @@ struct AppSettings {
     // dragging a column's separator, double-clicking its header to
     // reorder, or the "Manage columns..." dialog), and belong to a
     // specific server's own window rather than being shared globally —
-    // each is independently resizable now that every configured server
-    // has its own MDI window (see AppSettings::windowLayouts' own
-    // comment for the parallel per-server treatment of position/size),
-    // so there's no single "the" torrent list anymore whose column
-    // layout would even mean one shared thing.
+    // each window still manages its own columns independently even
+    // though every one of them is always exactly the same size now
+    // (the whole desktop — see TorrentListWindow's own fullScreen
+    // comment), so there's no single "the" torrent list anymore whose
+    // column layout would even mean one shared thing.
     struct ColumnLayout {
         // Current width of each column, same order as SortColumn
         // (Name, Done, Size, Down, Up, Added, Status). Empty (or a
@@ -182,9 +165,9 @@ struct AppSettings {
     std::map<std::string, ColumnLayout> columnLayouts;
 
     // Same three fields as ColumnLayout above, but for
-    // TrackerListWindow's own 6 columns (Host, Tier, Seeders, Leechers,
-    // Downloaded, Status) instead of the main torrent list's. Shared
-    // across every open tracker window — there's one tracker column
+    // TrackerPeerWindow's own Trackers tab and its 6 columns (Host,
+    // Tier, Seeders, Leechers, Downloaded, Status) instead of the main
+    // torrent list's. Shared across every open tracker window — there's one tracker column
     // layout, not one per torrent (and not one per server either) —
     // saved whenever "Manage columns..." (see App::focusedGrid()) is
     // used while a tracker window has focus, and applied to every
@@ -193,6 +176,16 @@ struct AppSettings {
     std::vector<int> trackerColumnWidths;
     std::vector<int> trackerColumnOrder;
     std::vector<bool> trackerColumnVisible;
+
+    // Same shape again, but for the Peers tab of that same window (see
+    // TrackerPeerWindow) instead of its Trackers tab — its own 6
+    // columns (Address, Client, Progress, Down, Up, Flags). Shared the
+    // same way trackerColumnWidths/Order/Visible above are, saved and
+    // applied under the same conditions, just tracked separately since
+    // the two tabs show entirely different columns.
+    std::vector<int> peerColumnWidths;
+    std::vector<int> peerColumnOrder;
+    std::vector<bool> peerColumnVisible;
 
     // `activeServer`'s own connection details, or a default-constructed
     // ServerProfile if it's empty or doesn't match anything in servers
