@@ -189,14 +189,11 @@ TDialog* createFolderBrowserDialog(const std::string& initialPath, const TFolder
     dlg->grid_->addColumn(nameCol);
     dlg->insert(dlg->grid_);
 
-    // Same fixed black-on-white-when-focused look already used
-    // throughout this app's own TGridView-based windows — see any of
-    // their own comments on why (in short: TListViewer's own default
-    // palette colors don't contrast enough inside a TDialog to actually
-    // notice which row is focused).
-    dlg->grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
-        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
-    });
+    // No setRowColorCallback() here anymore — TGridView's own default
+    // (white-on-blue/black-on-white-when-focused) already matches what
+    // this used to set explicitly, since that became the generic
+    // widget's own fallback instead of something every caller needed to
+    // repeat.
 
     TFolderBrowserDialogImpl* implPtr = dlg;
     dlg->grid_->setCellTextCallback([implPtr](int row, int) -> std::string {

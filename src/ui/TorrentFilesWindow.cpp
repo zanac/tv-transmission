@@ -234,14 +234,11 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
         return "";
     });
 
-    // Without this, the focused-row/other-rows distinction relies
-    // entirely on TListViewer's own default palette colors — which,
-    // inside a TDialog, don't contrast enough to actually notice which
-    // row is focused. Same fixed black-on-white-when-focused look
-    // already used for the main torrent list and elsewhere in this app.
-    grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
-        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
-    });
+    // No setRowColorCallback() here anymore — TGridView's own default
+    // (white-on-blue/black-on-white-when-focused) already matches what
+    // this used to set explicitly, since that became the generic
+    // widget's own fallback instead of something every caller needed to
+    // repeat.
     // Double-clicking a cell does something specific to WHICH column it
     // landed on, rather than the same thing regardless — the wanted
     // column toggles, the priority column cycles Low→Normal→High→Low

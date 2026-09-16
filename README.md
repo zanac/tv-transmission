@@ -817,6 +817,45 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**`TGridView`'s own default row color, unified — one shared fallback
+instead of the same callback copy-pasted into four separate files.**
+Asked for directly: the main torrent list's own rows (colored by
+status — yellow for checking/queued, cyan for downloading, ...) looked
+visually inconsistent with every other `TGridView`-based window in this
+app, which all showed a fixed white-on-blue instead.
+
+Not actually a difference in INTENT — every one of those four windows
+(`TrackerPeerWindow`, `TorrentFilesWindow`, `TFolderBrowserDialog`,
+`TGridColumnManagerDialog`'s own meta-grid) already set the exact same
+`setRowColorCallback` explicitly: white-on-blue normally
+(`TColorAttr(0x1F)`), black-on-white when focused (`TColorAttr(0xF0)`),
+because `TGridView`'s own fallback (when no callback is set at all)
+resolved colors through the owning dialog's own palette chain
+(`getColor(1)`/`getColor(2)`), which doesn't contrast enough inside a
+`TDialog` to actually see which row is focused. Four identical copies
+of the same four-line callback, purely because the generic widget's own
+built-in fallback wasn't already doing this.
+
+Fixed by moving that exact pair of colors into `TGridView` itself, as
+what happens when NO callback is set, rather than something every
+caller needs to remember to set — `setRowColorCallback()` still fully
+overrides it when a caller genuinely needs something else (the main
+list's own per-status coloring being the one case that actually does),
+now purely additive rather than a workaround every other caller had to
+duplicate. Removed the four now-redundant explicit callbacks entirely.
+
+Verified two things separately, not just that removing four blocks of
+duplicate code still compiled: that the main list's own per-status
+colors are UNCHANGED (this couldn't have been reachable regardless —
+`TGridView`'s new fallback only ever applies when `rowColor_` isn't
+set, and the main list always sets its own, so the changed code path is
+provably unreachable there, not just observed to still work); and that
+a window that used to set the callback explicitly (`TrackerPeerWindow`)
+shows the exact same color now that it relies on the new default
+instead — read directly from a live running instance's own cell
+attributes (`fg=brightwhite bg=blue`, i.e. exactly `TColorAttr(0x1F)`),
+not just "looks about right."
+
 **The destination folder chosen in "Add torrent" was never actually
 sent anywhere — the whole feature had no effect on where a torrent
 actually got saved.** Found while checking something else entirely

@@ -384,10 +384,24 @@ public:
             // non-focused rows: a caller may want a specific focused-row
             // look (e.g. this project's black-on-white, distinct from
             // tvision's own default "selected" palette color) just as
-            // much as a per-status color for the rest.
+            // much as a per-status color for the rest. When NO callback
+            // is set, falls back to that exact same white-on-blue/
+            // black-on-white pair directly (TColorAttr(0x1F)/(0xF0))
+            // rather than resolving through the owner's own palette
+            // chain (getColor(1)/getColor(2)) the way this used to —
+            // every caller of this generic widget across this project
+            // needed to set an IDENTICAL callback just to get readable
+            // contrast inside a TDialog (the palette chain's own default
+            // doesn't contrast enough there), duplicated across four
+            // separate files for no reason other than this fallback
+            // not already doing it. Still fully overridable — the main
+            // torrent list's own per-status coloring (yellow for
+            // checking/queued, cyan for downloading, ...) sets its own
+            // callback same as always, this only changes what happens
+            // when nothing does.
             TColorAttr rowColor = owner_->rowColor_
                 ? owner_->rowColor_(item, isFocused)
-                : TColorAttr(isFocused ? getColor(2) : getColor(1));
+                : TColorAttr(isFocused ? 0xF0 : 0x1F);
             b.moveChar(0, ' ', rowColor, size.x);
             if (item >= 0 && item < owner_->rowCount_) {
                 if (prefixWidth > 0) {

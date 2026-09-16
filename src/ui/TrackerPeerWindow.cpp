@@ -124,18 +124,14 @@ TrackerPeerWindow::TrackerPeerWindow(const TRect& bounds, TStringView title,
         // fields that wouldn't fit in a table row to begin with).
         if (activeTab_ == Tab::Trackers) showDetailForSelected();
     });
-    // Without this, the focused-row/other-rows distinction relies
-    // entirely on TListViewer's own default palette colors (see
-    // TGridRowsView::draw()'s fallback in TGridView.cpp) — which,
-    // inside a TDialog, don't contrast enough to actually notice which
-    // row is focused. Same fixed black-on-white-when-focused look
-    // already used for the main torrent list and the column manager's
-    // own meta-grid, for the same reason.
-    grid_->setRowColorCallback([](int, bool focused) -> TColorAttr {
-        return focused ? TColorAttr(0xF0) : TColorAttr(0x1F);
-    });
-    // Matches the rows' own unfocused color above (0x1F) exactly,
-    // rather than the header's own default (resolved through this
+    // No setRowColorCallback() here anymore — TGridView's own default
+    // (white-on-blue/black-on-white-when-focused) already matches what
+    // this used to set explicitly, since that became the generic
+    // widget's own fallback instead of something every caller needed to
+    // repeat.
+    //
+    // Matches the rows' own unfocused color (0x1F, TGridView's own
+    // default now, see above) exactly, rather than the header's own
     // dialog's palette chain — see TGridHeaderView::getPalette()),
     // which doesn't otherwise have any reason to end up looking the
     // same as a hardcoded row color chosen independently. Applies to
