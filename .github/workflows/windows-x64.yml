@@ -14,8 +14,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Fetch Turbo Vision
+        shell: pwsh
+        run: git clone --depth 1 https://github.com/magiblot/tvision external/tvision
 
       - name: Install vcpkg dependencies
         shell: pwsh
