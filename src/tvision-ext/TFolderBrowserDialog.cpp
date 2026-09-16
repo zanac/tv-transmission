@@ -9,56 +9,45 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
+#include <filesystem>
+#include <system_error>
 #include <vector>
 
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
+namespace fs = std::filesystem;
 
 namespace {
 
 constexpr ushort cmSelectFolder = 1;
 
 std::string joinPath(const std::string& base, const std::string& name) {
-    if (base.empty()) return name;
-    if (base.back() == '/') return base + name;
-    return base + "/" + name;
+    return (fs::path(base) / fs::path(name)).string();
 }
 
-// "/" for anything one level below the filesystem root, or already at
-// it — a single well-defined floor rather than needing a separate
-// "already at root" check at every call site.
 std::string parentPath(const std::string& path) {
-    if (path.empty() || path == "/") return "/";
-    auto pos = path.find_last_of('/');
-    if (pos == std::string::npos || pos == 0) return "/";
-    return path.substr(0, pos);
+    fs::path p(path);
+    if (p.empty()) return fs::current_path().string();
+    fs::path parent = p.parent_path();
+    if (parent.empty()) return p.root_path().empty() ? p.string() : p.root_path().string();
+    return parent.string();
 }
 
-// Every readable subdirectory of `path`, alphabetically, name only (not
-// full paths) — files are silently skipped, this only ever lists
-// directories. `*ok` is false only if `path` itself couldn't be opened
-// at all (doesn't exist, or no permission to list it); an individual
-// entry that can't be stat()'d (a broken symlink, a permission quirk on
-// just that one item) is skipped rather than failing the whole listing
-// — one bad entry shouldn't hide every other one in the same directory.
+bool isRootPath(const std::string& path) {
+    fs::path p(path);
+    return !p.root_path().empty() && p.lexically_normal() == p.root_path();
+}
+
 std::vector<std::string> listSubdirectories(const std::string& path, bool* ok) {
     std::vector<std::string> result;
     *ok = false;
-    DIR* dir = opendir(path.c_str());
-    if (!dir) return result;
+    std::error_code ec;
+    fs::directory_iterator it(fs::path(path), fs::directory_options::skip_permission_denied, ec);
+    if (ec) return result;
     *ok = true;
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        std::string name = entry->d_name;
-        if (name == "." || name == "..") continue;
-        struct stat st;
-        if (stat(joinPath(path, name).c_str(), &st) != 0) continue;
-        if (!S_ISDIR(st.st_mode)) continue;
-        result.push_back(name);
+    for (const auto& entry : it) {
+        std::error_code typeError;
+        if (!entry.is_directory(typeError) || typeError) continue;
+        result.push_back(entry.path().filename().string());
     }
-    closedir(dir);
     std::sort(result.begin(), result.end());
     return result;
 }
@@ -70,15 +59,6 @@ public:
     TFolderBrowserDialogImpl(const TRect& bounds, TStringView title, const TFolderBrowserLabels& labels)
         : TWindowInit(&TDialog::initFrame), TDialog(bounds, title), labels_(labels) {}
 
-    // Re-lists `path` and, if that succeeds, adopts it as the current
-    // directory — the path field and grid both updated to match. On
-    // failure, deliberately leaves currentPath_ (the last successfully
-    // listed directory) untouched: reverting the path field's own
-    // display back to it, rather than leaving it showing whatever
-    // unreadable text was just typed/navigated to, and switching the
-    // grid to a single row explaining why (see TFolderBrowserLabels::
-    // unreadableDirectory's own comment) instead of just going blank
-    // with no explanation.
     void navigateTo(const std::string& path) {
         bool ok = false;
         std::vector<std::string> dirs = listSubdirectories(path, &ok);
@@ -91,10 +71,10 @@ public:
             }
             return;
         }
-        currentPath_ = path;
+        currentPath_ = fs::path(path).lexically_normal().string();
         subdirs_ = std::move(dirs);
         listOk_ = true;
-        atRoot_ = (currentPath_ == "/");
+        atRoot_ = isRootPath(currentPath_);
         setPathFieldText(currentPath_);
         if (grid_) {
             grid_->setRowCount((atRoot_ ? 0 : 1) + (int)subdirs_.size());
@@ -117,11 +97,6 @@ public:
         return buf;
     }
 
-    // Intercepted BEFORE TDialog::handleEvent() runs, not after —
-    // otherwise the base class's own "Enter presses whatever button has
-    // bfDefault" handling would already have fired (and cleared the
-    // event) by the time this got a chance to check whose focus it
-    // was, since a normal TInputLine doesn't consume Enter on its own.
     void handleEvent(TEvent& event) override {
         if (event.what == evKeyDown && event.keyDown.keyCode == kbEnter && current == pathField) {
             navigateTo(pathFieldText());
@@ -132,33 +107,10 @@ public:
         if (event.what != evCommand) return;
         switch (event.message.command) {
             case cmSelectFolder:
-                // Validates/adopts whatever's currently in the path
-                // field (which might not match currentPath_ yet — the
-                // user could have typed a new path and clicked Select
-                // directly, without pressing Enter to navigate there
-                // first) before confirming. Left open, with the grid's
-                // own "(cannot read this directory)" row as the only
-                // feedback, if that fails — no separate messageBox on
-                // top of it (see this class's own doc comment in the
-                // header on staying to one way of showing "that didn't
-                // work").
                 navigateTo(pathFieldText());
                 if (listOk_) endModal(cmOK);
                 clearEvent(event);
                 break;
-            // No case for Cancel: its button uses the STANDARD cmCancel
-            // (see createFolderBrowserDialog() below), which TDialog's
-            // own base handleEvent() — already called just above —
-            // turns into endModal(cmCancel) on its own. An earlier
-            // version of this used a custom command handled with
-            // close() instead, which doesn't actually end a MODAL
-            // dialog's own execView() loop the way endModal() does —
-            // Cancel appeared to work (the dialog visually went away)
-            // but execView() itself never returned, silently breaking
-            // whatever the caller was waiting to do next. Caught from a
-            // live run where the caller's own follow-up (reopening "Add
-            // torrent") never happened after Cancel — not from reading
-            // the code alone.
         }
     }
 
@@ -189,19 +141,13 @@ TDialog* createFolderBrowserDialog(const std::string& initialPath, const TFolder
     dlg->grid_->addColumn(nameCol);
     dlg->insert(dlg->grid_);
 
-    // No setRowColorCallback() here anymore — TGridView's own default
-    // (white-on-blue/black-on-white-when-focused) already matches what
-    // this used to set explicitly, since that became the generic
-    // widget's own fallback instead of something every caller needed to
-    // repeat.
-
     TFolderBrowserDialogImpl* implPtr = dlg;
     dlg->grid_->setCellTextCallback([implPtr](int row, int) -> std::string {
         if (!implPtr->listOk_) return implPtr->labels_.unreadableDirectory;
         if (!implPtr->atRoot_ && row == 0) return "..";
         int idx = row - (implPtr->atRoot_ ? 0 : 1);
         if (idx < 0 || idx >= (int)implPtr->subdirs_.size()) return "";
-        return implPtr->subdirs_[idx] + "/";
+        return implPtr->subdirs_[idx] + fs::path::preferred_separator;
     });
     dlg->grid_->setRowActivateCallback([implPtr](int row) {
         if (!implPtr->listOk_) return;
@@ -221,11 +167,16 @@ TDialog* createFolderBrowserDialog(const std::string& initialPath, const TFolder
 
     std::string start = initialPath;
     if (start.empty()) {
-        char buf[4096];
-        start = getcwd(buf, sizeof(buf)) ? buf : "/";
+        std::error_code ec;
+        fs::path cwd = fs::current_path(ec);
+        start = ec ? fs::path(".").string() : cwd.string();
     }
     dlg->navigateTo(start);
-    if (!dlg->listOk_) dlg->navigateTo("/"); // last-resort fallback: root is always readable
+    if (!dlg->listOk_) {
+        std::error_code ec;
+        fs::path cwd = fs::current_path(ec);
+        if (!ec) dlg->navigateTo(cwd.root_path().empty() ? cwd.string() : cwd.root_path().string());
+    }
 
     return dlg;
 }
