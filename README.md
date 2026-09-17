@@ -2,7 +2,7 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/zanac/tv-transmission?style=for-the-badge)
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
-![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 **Version 1.6.0** — stable release.
 <img width="1407" height="867" alt="image" src="https://github.com/user-attachments/assets/d33cad4d-918a-4aa4-9cad-202ec95f7af5" />
