@@ -3,7 +3,7 @@
 #include "../tvision-ext/TComboBox.h"
 #include "../AppSettings.h"
 
-// A combo box for picking one of the 7 supported languages, built on
+// A combo box for picking one of the 8 supported languages, built on
 // this project's own vendored TComboBox (see src/tvision-ext/
 // TComboBox.h for why it's no longer the tvision fork's own copy) —
 // tvision itself has no built-in combo/dropdown widget (see upstream

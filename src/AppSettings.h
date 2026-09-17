@@ -14,6 +14,13 @@ enum class Language {
     Spanish = 4,
     PortugueseBrazilian = 5,
     Russian = 6,
+    // Appended at the end (not inserted next to PortugueseBrazilian,
+    // its closer linguistic sibling) deliberately — the numeric value
+    // is what's actually persisted in settings.json's own "language"
+    // field, so inserting a new one in the middle would silently
+    // renumber every language after it, reinterpreting an
+    // already-saved file's own stored number as the wrong language.
+    Portuguese = 7,
 };
 
 // Column used to sort the torrent list; the numeric value matches the

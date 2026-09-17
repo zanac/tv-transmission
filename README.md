@@ -824,6 +824,42 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**New: European Portuguese, an eighth language, alongside the existing
+Brazilian Portuguese.** Same scale of change as adding Brazilian
+Portuguese and Russian earlier (every one of the 217 `pick()` call
+sites, translated individually, not copy-pasted from Brazilian
+Portuguese despite the two being closely related — the genuine
+differences in this domain's own vocabulary, "ficheiro" not "arquivo",
+"transferir" not "baixar", "ecrã"/"guardar" conventions, are real
+enough to matter, so `LabelSeedRatioSection` and everything else got
+its own European Portuguese wording rather than reusing the Brazilian
+string verbatim), plus its own block of the CLI's own multi-paragraph
+`--help` text (which doesn't go through `pick()`).
+
+One thing done differently from adding Russian: `Language::Portuguese`
+is appended as value 7 — the NEXT free number — rather than inserted
+next to `PortugueseBrazilian` (5) where it reads more naturally.
+`Language`'s own numeric value is what's actually persisted in
+`settings.json`'s own `"language"` field; inserting a new language in
+the middle of the enum would silently renumber every language after
+it, so an already-saved settings file's own stored number would end up
+naming a different language than the one the user had actually chosen
+last time. `pick()` itself gained the new argument at the very end for
+the same reason — `pick(en, it, fr, de, es, pt, ru, ptPt)`, not
+alongside its closer sibling — matching where `Language::Portuguese`'s
+own value actually sits.
+
+Verified end to end on a live running instance, not just re-read: the
+language combo showed all 8 entries in the right order; selected plain
+"Português" (not the Brazilian one, listed separately just above it)
+and confirmed on a rebuilt window afterward — the main list's own
+column headers switched to it immediately ("Nome", "Progr.", "Tam."),
+and the "restart to fully relabel the menu bar" notice itself displayed
+in the actual European Portuguese wording ("Reinicie a aplicação..."),
+distinctly different from the Brazilian Portuguese one ("Reinicie o
+aplicativo...") — confirming these are two genuinely separate
+translations, not the same string reused under two menu entries.
+
 **New: per-torrent seed ratio limit.** Brainstormed first: `torrent-set`'s
 own `seedRatioMode` (0 follow the global ratio limit, 1 use this
 torrent's own `seedRatioLimit`, 2 seed with no ratio limit at all) is
