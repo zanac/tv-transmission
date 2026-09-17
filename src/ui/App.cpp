@@ -26,22 +26,15 @@
 #define Uses_TStatusItem
 #define Uses_TKeys
 #define Uses_TEvent
-#define Uses_TCheckBoxes
-#define Uses_TInputLine
-#define Uses_TDialog
-#define Uses_TStaticText
-#define Uses_TSItem
 #define Uses_TFileDialog
 #define Uses_MsgBox
 #include <tvision/tv.h>
 
 #include <cstdio>
-#include <cstring>
 #include <cstdlib>
 #include <curl/curl.h>
 #include <iterator>
 #include <vector>
-#include <functional>
 
 namespace {
 // TProgInit requires initMenuBar() to be static, so there's no `this`
@@ -54,86 +47,7 @@ namespace {
 // mutable global specifically because exactly one App instance ever
 // exists in this process.
 TMenu* g_connectionsMenu = nullptr;
-TMenu* g_panelsMenu = nullptr;
-constexpr int kStatusPanelWidth = 28;
 }
-
-class StatusPanel : public TDialog {
-public:
-    StatusPanel(const TRect& bounds, const TorrentFilter& filter,
-                std::function<void(const std::string&, ushort)> onChanged)
-        : TWindowInit(&TDialog::initFrame), TDialog(bounds, "Filters"),
-          onChanged_(std::move(onChanged)) {
-        // A docked panel, not an MDI window: keep TDialog's palette and frame
-        // (so it looks exactly like the Filters dialog) but don't let it be
-        // moved, resized, zoomed, closed or selected as the desktop's current
-        // application window.
-        flags = 0;
-        options &= ~ofSelectable;
-        growMode = gfGrowHiY;
-
-        insert(new TStaticText(TRect(2, 2, kStatusPanelWidth - 2, 3), tr(Str::LabelFilterName)));
-        nameField_ = new TInputLine(TRect(2, 3, kStatusPanelWidth - 2, 4), 128);
-        std::vector<char> nameBuf(129, 0);
-        std::snprintf(nameBuf.data(), nameBuf.size(), "%s", filter.nameContains.c_str());
-        nameField_->setData(nameBuf.data());
-        insert(nameField_);
-
-        insert(new TStaticText(TRect(2, 5, kStatusPanelWidth - 2, 6), tr(Str::LabelFilterStatusSection)));
-        boxes_ = new TCheckBoxes(TRect(2, 6, kStatusPanelWidth - 2, 13),
-            new TSItem(tr(Str::TorrentStatusStopped),
-            new TSItem(tr(Str::TorrentStatusCheckWait),
-            new TSItem(tr(Str::TorrentStatusChecking),
-            new TSItem(tr(Str::TorrentStatusDownloadWait),
-            new TSItem(tr(Str::TorrentStatusDownloading),
-            new TSItem(tr(Str::TorrentStatusSeedWait),
-            new TSItem(tr(Str::TorrentStatusSeeding), nullptr))))))));
-        ushort checked = bitsFor(filter);
-        boxes_->setData(&checked);
-        insert(boxes_);
-    }
-
-    void handleEvent(TEvent& event) override {
-        ushort beforeBits = 0;
-        boxes_->getData(&beforeBits);
-        char beforeName[129] = {0};
-        nameField_->getData(beforeName);
-
-        TDialog::handleEvent(event);
-
-        ushort afterBits = 0;
-        boxes_->getData(&afterBits);
-        char afterName[129] = {0};
-        nameField_->getData(afterName);
-        if ((afterBits != beforeBits || std::strcmp(afterName, beforeName) != 0) && onChanged_)
-            onChanged_(afterName, afterBits);
-    }
-
-    void setFilter(const TorrentFilter& filter) {
-        std::vector<char> nameBuf(129, 0);
-        std::snprintf(nameBuf.data(), nameBuf.size(), "%s", filter.nameContains.c_str());
-        nameField_->setData(nameBuf.data());
-        nameField_->drawView();
-        ushort checked = bitsFor(filter);
-        boxes_->setData(&checked);
-        boxes_->drawView();
-    }
-
-private:
-    static ushort bitsFor(const TorrentFilter& filter) {
-        return (filter.showStopped ? 0x01 : 0) |
-               (filter.showCheckWait ? 0x02 : 0) |
-               (filter.showChecking ? 0x04 : 0) |
-               (filter.showDownloadWait ? 0x08 : 0) |
-               (filter.showDownloading ? 0x10 : 0) |
-               (filter.showSeedWait ? 0x20 : 0) |
-               (filter.showSeeding ? 0x40 : 0);
-    }
-
-    TInputLine* nameField_ = nullptr;
-    TCheckBoxes* boxes_ = nullptr;
-    std::function<void(const std::string&, ushort)> onChanged_;
-};
 
 App::App(const AppSettings& initialSettings)
     : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
@@ -168,9 +82,6 @@ App::App(const AppSettings& initialSettings)
         if (win && name == settings_.focusedServerAtClose) toFocus = win;
     }
     if (toFocus) toFocus->select();
-
-    if (settings_.statusPanelVisible) setStatusPanelVisible(true);
-    else rebuildPanelsMenu();
 
     // Only meaningful now that every configured server's own window
     // actually exists and the right one (if any) has focus — the
@@ -247,10 +158,6 @@ TMenuBar* App::initMenuBar(TRect r) {
     connectionsSubMenu->subMenu->items->disabled = True;
     g_connectionsMenu = connectionsSubMenu->subMenu;
 
-    TSubMenu* panelsSubMenu = new TSubMenu("~P~anels", kbNoKey);
-    *panelsSubMenu + *new TMenuItem("Status", cmToggleStatusPanel, kbNoKey);
-    g_panelsMenu = panelsSubMenu->subMenu;
-
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
@@ -283,8 +190,6 @@ TMenuBar* App::initMenuBar(TRect r) {
             // manager dialog — see ColumnManagerDialog.h.
             *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
-            static_cast<TMenuItem&>(*panelsSubMenu) +
-            newLine() +
             // Standard tvision commands. Every torrent-list window
             // always exactly fills the desktop now (see
             // TorrentListWindow's own fullScreen comment) and stacks
@@ -365,9 +270,7 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     auto layoutIt = settings_.columnLayouts.find(name);
     if (layoutIt != settings_.columnLayouts.end()) columnLayout = layoutIt->second;
 
-    TRect torrentBounds = deskTop->getExtent();
-    if (settings_.statusPanelVisible) torrentBounds.a.x += kStatusPanelWidth;
-    auto* win = new TorrentListWindow(torrentBounds, name, clientRef,
+    auto* win = new TorrentListWindow(deskTop->getExtent(), name, clientRef,
         settings_.sortColumn, settings_.sortAscending, settings_.filter,
         columnLayout.widths, columnLayout.order, columnLayout.visible,
         [this](SortColumn col, bool asc) {
@@ -682,8 +585,6 @@ void App::showFilterDialog() {
             for (TorrentListWindow* w : allListWindows()) {
                 w->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
             }
-            if (statusPanel_) statusPanel_->setFilter(settings_.filter);
-            if (statusPanel_) statusPanel_->setFilter(settings_.filter);
         }
         destroy(dlg);
     }
@@ -856,66 +757,6 @@ std::vector<TorrentListWindow*> App::allListWindows() const {
         } while (p != TProgram::deskTop->last);
     }
     return result;
-}
-
-void App::rebuildPanelsMenu() {
-    if (!g_panelsMenu) return;
-    TMenuItem* p = g_panelsMenu->items;
-    while (p) { TMenuItem* next = p->next; delete p; p = next; }
-    g_panelsMenu->items = nullptr;
-    g_panelsMenu->deflt = nullptr;
-    const char* label = settings_.statusPanelVisible ? "\xE2\x97\x8F Status" : "  Status";
-    auto* item = new TMenuItem(label, cmToggleStatusPanel, kbNoKey);
-    g_panelsMenu->items = item;
-    g_panelsMenu->deflt = item;
-}
-
-void App::layoutTorrentWindowsForPanel() {
-    if (!deskTop) return;
-    TRect r = deskTop->getExtent();
-    if (settings_.statusPanelVisible) r.a.x += kStatusPanelWidth;
-    for (TorrentListWindow* w : allListWindows()) w->changeBounds(r);
-}
-
-void App::setStatusPanelVisible(bool visible) {
-    if (visible == (statusPanel_ != nullptr)) {
-        settings_.statusPanelVisible = visible;
-        rebuildPanelsMenu();
-        return;
-    }
-    settings_.statusPanelVisible = visible;
-    if (visible) {
-        TRect r = deskTop->getExtent();
-        r.b.x = r.a.x + kStatusPanelWidth;
-        statusPanel_ = new StatusPanel(r, settings_.filter,
-            [this](const std::string& name, ushort checked) { applyStatusPanelFilter(name, checked); });
-        deskTop->insert(statusPanel_);
-    } else if (statusPanel_) {
-        TGroup* parent = statusPanel_->owner;
-        if (parent) parent->remove(statusPanel_);
-        destroy(statusPanel_);
-        statusPanel_ = nullptr;
-    }
-    layoutTorrentWindowsForPanel();
-    rebuildPanelsMenu();
-    saveSettings(settings_);
-}
-
-void App::toggleStatusPanel() {
-    setStatusPanelVisible(!settings_.statusPanelVisible);
-}
-
-void App::applyStatusPanelFilter(const std::string& name, ushort checked) {
-    settings_.filter.nameContains = name;
-    settings_.filter.showStopped = (checked & 0x01) != 0;
-    settings_.filter.showCheckWait = (checked & 0x02) != 0;
-    settings_.filter.showChecking = (checked & 0x04) != 0;
-    settings_.filter.showDownloadWait = (checked & 0x08) != 0;
-    settings_.filter.showDownloading = (checked & 0x10) != 0;
-    settings_.filter.showSeedWait = (checked & 0x20) != 0;
-    settings_.filter.showSeeding = (checked & 0x40) != 0;
-    for (TorrentListWindow* w : allListWindows()) w->setFilter(settings_.filter);
-    saveSettings(settings_);
 }
 
 void App::rebuildConnectionsMenu() {
@@ -1111,10 +952,6 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmFilters:
             showFilterDialog();
-            clearEvent(event);
-            break;
-        case cmToggleStatusPanel:
-            toggleStatusPanel();
             clearEvent(event);
             break;
         case cmManageColumns:

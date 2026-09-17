@@ -170,10 +170,6 @@ struct AppSettings {
     // Filters window is confirmed, reloaded on the next launch.
     TorrentFilter filter;
 
-    // Whether Window -> Panels -> Status was left open. The panel uses
-    // the same status bits as `filter` above; this only persists its visibility.
-    bool statusPanelVisible = false;
-
     // Every configured server's own torrent-list column layout, keyed
     // by the same logical server name as `servers` below — read from
     // the grid and saved on exit (widths/order — see App::shutDown())

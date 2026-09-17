@@ -14,7 +14,6 @@
 
 class TorrentListWindow;
 class TGridView;
-class StatusPanel;
 
 class App : public TApplication {
 public:
@@ -68,11 +67,6 @@ private:
     // (clicking a different window directly, Window → Next, the Window
     // List dialog, or this very menu).
     void rebuildConnectionsMenu();
-    void rebuildPanelsMenu();
-    void toggleStatusPanel();
-    void setStatusPanelVisible(bool visible);
-    void layoutTorrentWindowsForPanel();
-    void applyStatusPanelFilter(const std::string& name, ushort checked);
 
     // The TGridView belonging to whichever window currently has focus
     // (any TGridView-based window — a torrent list, the tracker list, a
@@ -137,7 +131,6 @@ private:
     // menu is only rebuilt when it needs to be, not on every single
     // tick regardless.
     std::string lastConnectionsFocusedServer_;
-    StatusPanel* statusPanel_ = nullptr;
 };
 
 // Custom application commands (> tvision's cmUserBase)
@@ -167,7 +160,6 @@ const ushort cmSetPriorityLow    = 122;
 const ushort cmSetPriorityNormal = 123;
 const ushort cmSetPriorityHigh   = 124;
 const ushort cmSessionStats     = 125;
-const ushort cmToggleStatusPanel = 126;
 // Base for the "Connections" menu's own dynamic per-server commands
 // (see App::rebuildConnectionsMenu()) — one entry per configured
 // server, however many there are, so this needs real headroom rather

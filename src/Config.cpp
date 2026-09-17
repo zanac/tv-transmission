@@ -74,7 +74,6 @@ AppSettings loadSettings() {
         int sortCol = j.value("sortColumn", static_cast<int>(settings.sortColumn));
         settings.sortColumn = static_cast<SortColumn>(sortCol);
         settings.sortAscending = j.value("sortAscending", settings.sortAscending);
-        settings.statusPanelVisible = j.value("statusPanelVisible", settings.statusPanelVisible);
 
         if (j.contains("filter") && j["filter"].is_object()) {
             auto& f = j["filter"];
@@ -150,7 +149,6 @@ bool saveSettings(const AppSettings& settings) {
     j["language"] = static_cast<int>(settings.language);
     j["sortColumn"] = static_cast<int>(settings.sortColumn);
     j["sortAscending"] = settings.sortAscending;
-    j["statusPanelVisible"] = settings.statusPanelVisible;
     j["filter"] = {
         {"nameContains", settings.filter.nameContains},
         {"showStopped", settings.filter.showStopped},
