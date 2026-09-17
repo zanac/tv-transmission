@@ -26,10 +26,13 @@ namespace {
 // EITHER save-and-stay-open OR close, depending on its own current
 // state — see ConnectionDialogImpl::setDirty()) before either of those
 // can happen. Handled entirely by ConnectionDialogImpl::handleEvent()
-// below. 62, grouped with TComboBox's own cmComboBoxItemAdded/
-// cmComboBoxItemRemoved (60/61, see TComboBox.h) rather than up near
-// 100 — App.h's own commands (cmAddTorrent and up) start exactly
-// there, so this stays clear of them.
+// below. 62 — clear of both tvision's own built-in commands (see
+// cmChangeFolder's own comment in AddTorrentDialog.h for the full
+// list) and App.h's own (cmAddTorrent and up, starting at 100) —
+// stays where it was; only TComboBox's own broadcast commands this
+// comment used to group it with (formerly 60/61) turned out to
+// collide with tvision's own cmRecordHistory and moved to 271/272 (see
+// TComboBox.h), a different number range than this one now.
 constexpr ushort cmTestConnectionAndOK = 62;
 
 // Same reasoning as TorrentListWindow.cpp's own formatMessage() (not

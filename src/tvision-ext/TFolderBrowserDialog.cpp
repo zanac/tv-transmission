@@ -17,7 +17,19 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr ushort cmSelectFolder = 1;
+// 260, not a low unused-looking number: tvision's own built-in
+// commands occupy most of 0-102, 301, and 500 upward — this one was
+// originally 1, which collides with tvision's own cmQuit. Found while
+// auditing every local command constant in the project after the same
+// class of bug (AddTorrentDialog's own cmChangeFolder, originally 4,
+// colliding with cmClose) turned out to make a button look enabled
+// but silently do nothing on click. Purely internal to this file (used
+// only to recognize the "Select" button's own click in handleEvent
+// below; the dialog still ends modally with the standard cmOK either
+// way, so nothing outside this file needed to change), but a
+// collision worth fixing regardless of whether it was visibly causing
+// a problem yet.
+constexpr ushort cmSelectFolder = 260;
 
 std::string joinPath(const std::string& base, const std::string& name) {
     return (fs::path(base) / fs::path(name)).string();

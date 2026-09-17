@@ -15,7 +15,21 @@ namespace {
 
 // Local to this dialog: scoped to its own handleEvent, same reasoning
 // as similar local command constants elsewhere in this project.
-constexpr ushort cmVerifyFreeSpace = 3;
+//
+// 204, not a low unused-looking number: tvision's own built-in
+// commands occupy most of 0-102, 301, and 500 upward (see cmClose's
+// own comment on cmChangeFolder below for the full story) — this one
+// was originally 3, which collides with tvision's own cmMenu. Not
+// otherwise visibly broken (nothing here happens to depend on
+// activating the menu bar), but not something to leave in place now
+// that the same class of bug was found and fixed once already in this
+// same file.
+constexpr ushort cmVerifyFreeSpace = 204;
+// cmChangeFolder itself is declared in AddTorrentDialog.h (its own
+// comment there explains why it needs to be its own dedicated command,
+// not shared with cmNo) — App.cpp's own result switch needs to see it
+// too, so it can't stay local to this file the way cmVerifyFreeSpace
+// above does.
 
 // "Change..." opens a folder browser that only ever looks at THIS
 // machine's own filesystem (see TFolderBrowserDialog's own doc comment
@@ -63,6 +77,21 @@ public:
             int64_t bytes = client_.getFreeSpace(destination_, &ok);
             if (spaceLabel) spaceLabel->setText(ok ? formatSize(bytes) : tr(Str::ValueNotAvailable));
             clearEvent(event);
+        } else if (event.message.command == cmChangeFolder) {
+            // Unlike cmOK/cmCancel/cmYes/cmNo, TDialog's own
+            // handleEvent() has no built-in knowledge of this command
+            // (it's this project's own, not tvision's) and won't end
+            // the modal loop for it by itself — found directly, right
+            // after fixing the command-id collision this button had
+            // instead (see cmChangeFolder's own comment in
+            // AddTorrentDialog.h): the button drew enabled, colored
+            // correctly, and a click reached here (this handler), but
+            // execView() itself never returned, so the caller's own
+            // "if (result == cmChangeFolder)" branch in App.cpp was
+            // simply never reached. endModal() here is what cmNo used
+            // to provide for free.
+            endModal(cmChangeFolder);
+            clearEvent(event);
         }
     }
 
@@ -92,8 +121,31 @@ TDialog* createAddTorrentDialog(TInputLine*& urlField, TransmissionClient& clien
     auto* dlg = new AddTorrentDialogImpl(r, tr(Str::DialogTitleAddTorrent), client);
     dlg->options |= ofCentered;
 
-    auto* changeFolderButton = new TButton(TRect(2, 2, 16, 4), tr(Str::ButtonChangeFolder), cmNo, bfNormal);
-    if (!isLocalHost(client.getHost())) changeFolderButton->setState(sfDisabled, True);
+    // Hidden outright for a remote daemon, not just disabled — a
+    // greyed-out button that's still clearly THERE invites clicking it
+    // anyway to see what happens (reported directly: it still opened
+    // the folder browser despite looking disabled, a separate bug now
+    // fixed — see cmChangeFolder's own comment in AddTorrentDialog.h —
+    // but even with that fixed, a visible-but-inert button is still a
+    // button someone will eventually click and wonder why nothing
+    // happened). Hiding it removes that question entirely. Set fresh
+    // every time this dialog is built, not just once, since the same
+    // dialog gets rebuilt for whichever server is currently focused —
+    // a previous open against a local server must not leave this
+    // visible for a later one against a remote one.
+    //
+    // enableCommand() here is unconditional, not tied to isLocalHost()
+    // — visibility alone decides whether the button can be seen or
+    // reached at all now, so the command itself just needs to not be
+    // globally disabled (TButton's own constructor checks
+    // commandEnabled() and starts sfDisabled otherwise — see
+    // tbutton.cpp — and nothing else in the app ever enables this
+    // command, so without this call the button stayed sfDisabled even
+    // while visible for a LOCAL server, a second bug this introduced
+    // on top of the first one it was meant to fix).
+    dlg->enableCommand(cmChangeFolder);
+    auto* changeFolderButton = new TButton(TRect(2, 2, 16, 4), tr(Str::ButtonChangeFolder), cmChangeFolder, bfNormal);
+    changeFolderButton->setState(sfVisible, isLocalHost(client.getHost()) ? True : False);
     dlg->insert(changeFolderButton);
     dlg->destinationLabel = new TResultLabel(TRect(18, 2, 57, 3), "");
     dlg->insert(dlg->destinationLabel);
