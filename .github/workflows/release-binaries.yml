@@ -106,11 +106,100 @@ jobs:
           path: dist/TvTransmission-linux-x86_64.AppImage
           if-no-files-found: error
 
+  raspberry-pi-arm64:
+    name: Raspberry Pi 64-bit (aarch64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Enable ARM emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build ARM64 binary and AppDir
+        run: |
+          docker run --rm \
+            --platform linux/arm64 \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            debian:bookworm \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                ca-certificates \
+                cmake \
+                curl \
+                file \
+                git \
+                libcurl4-openssl-dev \
+                libncursesw5-dev \
+                libgpm-dev \
+                libx11-dev \
+                libxmu-dev \
+                libxt-dev \
+                libxext-dev \
+                pkg-config
+              rm -rf external/tvision
+              git clone --depth 1 https://github.com/magiblot/tvision external/tvision
+              chmod +x packaging/appimage/build-appimage-arm.sh
+              ./packaging/appimage/build-appimage-arm.sh
+            '
+
+      - name: Fix AppDir permissions
+        run: sudo chown -R "$USER:$USER" build-aarch64
+
+      - name: Verify ARM64 binary
+        run: |
+          file build-aarch64/AppDir/usr/bin/tv-transmission
+          file build-aarch64/AppDir/usr/bin/tv-transmission | grep -q 'ARM aarch64'
+
+      - name: Prepare AppDir metadata
+        run: |
+          cp packaging/appimage/tv-transmission.png build-aarch64/AppDir/tv-transmission.png
+          rm -f build-aarch64/AppDir/.DirIcon
+          ln -s tv-transmission.png build-aarch64/AppDir/.DirIcon
+          ls -l build-aarch64/AppDir/.DirIcon
+
+      - name: Package ARM64 AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          curl -fL -o appimagetool-x86_64.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=aarch64 ./appimagetool-x86_64.AppImage \
+            build-aarch64/AppDir \
+            build-aarch64/TvTransmission-linux-aarch64.AppImage
+          chmod +x build-aarch64/TvTransmission-linux-aarch64.AppImage
+
+      - name: Collect ARM64 AppImage
+        run: |
+          test -f build-aarch64/TvTransmission-linux-aarch64.AppImage
+          mkdir -p dist
+          cp build-aarch64/TvTransmission-linux-aarch64.AppImage dist/TvTransmission-linux-aarch64.AppImage
+          ls -lh dist/TvTransmission-linux-aarch64.AppImage
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-aarch64
+          path: dist/TvTransmission-linux-aarch64.AppImage
+          if-no-files-found: error
+
   publish-release:
     name: Publish GitHub Release
     needs:
       - windows-x64
       - linux-appimage
+      - raspberry-pi-arm64
     runs-on: ubuntu-latest
 
     steps:
@@ -124,6 +213,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: release-linux-x86_64
+          path: release-assets
+
+      - name: Download Raspberry Pi ARM64 AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-aarch64
           path: release-assets
 
       - name: Create or update release assets
@@ -143,5 +238,6 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" \
             release-assets/tv-transmission-windows-x64.exe \
             release-assets/TvTransmission-linux-x86_64.AppImage \
+            release-assets/TvTransmission-linux-aarch64.AppImage \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
