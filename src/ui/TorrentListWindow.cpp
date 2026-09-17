@@ -46,14 +46,34 @@ std::string buildWindowTitle(const std::string& serverName, bool connectionLost)
 // filled/empty progress in any UTF-8 terminal; the count of each is
 // exactly proportional to percentDone, so the bar visibly fills up as
 // the torrent approaches 100%.
+//
+// On Windows specifically, these two showed up as a row of "?" instead
+// (reported directly, with a screenshot) — the Windows console isn't
+// reliably in UTF-8 mode the way a Linux/macOS terminal already is, so
+// a raw UTF-8 string handed to it (not going through tvision's own
+// internal frame-drawing, which apparently already accounts for this —
+// window borders drew correctly in the same screenshot) can't be
+// counted on to render. '#'/'.' are plain 7-bit ASCII, so they're safe
+// in any codepage regardless — a real visible fill/empty bar there
+// beats a technically-nicer one that shows as "?????????".
+#ifdef _WIN32
+constexpr char kBarFilledChar = '#';
+constexpr char kBarEmptyChar = '.';
+#endif
+
 constexpr int kBarInnerW = 16;
 std::string buildProgressBar(double percentDone) {
     int filled = static_cast<int>(std::lround(percentDone * kBarInnerW));
     if (filled < 0) filled = 0;
     if (filled > kBarInnerW) filled = kBarInnerW;
     std::string bar = "[";
+#ifdef _WIN32
+    for (int i = 0; i < filled; i++) bar += kBarFilledChar;
+    for (int i = 0; i < kBarInnerW - filled; i++) bar += kBarEmptyChar;
+#else
     for (int i = 0; i < filled; i++) bar += "\u2588";
     for (int i = 0; i < kBarInnerW - filled; i++) bar += "\u2591";
+#endif
     bar += "]";
     char pct[8];
     std::snprintf(pct, sizeof(pct), " %3.0f%%", percentDone * 100.0);

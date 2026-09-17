@@ -9,7 +9,7 @@ namespace {
 // TComboBox.h), so two combo boxes can never share one chain.
 //
 // Order here is what TComboBox::focused indexes into, so it has to
-// match Language's own numeric values (English=0 ... Spanish=4) — see
+// match Language's own numeric values (English=0 ... Russian=6) — see
 // the LanguageComboBox constructor below, which passes `initial` cast
 // straight to short as the focus index.
 TComboItem* buildLanguageItems() {
@@ -18,7 +18,9 @@ TComboItem* buildLanguageItems() {
         new TComboItem(tr(Str::LanguageItalian), (ulong)Language::Italian,
         new TComboItem(tr(Str::LanguageFrench),  (ulong)Language::French,
         new TComboItem(tr(Str::LanguageGerman),  (ulong)Language::German,
-        new TComboItem(tr(Str::LanguageSpanish), (ulong)Language::Spanish, nullptr)))));
+        new TComboItem(tr(Str::LanguageSpanish), (ulong)Language::Spanish,
+        new TComboItem(tr(Str::LanguagePortugueseBrazilian), (ulong)Language::PortugueseBrazilian,
+        new TComboItem(tr(Str::LanguageRussian), (ulong)Language::Russian, nullptr)))))));
 }
 
 } // namespace

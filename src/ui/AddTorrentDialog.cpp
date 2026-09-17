@@ -8,12 +8,32 @@
 #include <tvision/tv.h>
 #include <vector>
 #include <cstdio>
+#include <algorithm>
+#include <cctype>
 
 namespace {
 
 // Local to this dialog: scoped to its own handleEvent, same reasoning
 // as similar local command constants elsewhere in this project.
 constexpr ushort cmVerifyFreeSpace = 3;
+
+// "Change..." opens a folder browser that only ever looks at THIS
+// machine's own filesystem (see TFolderBrowserDialog's own doc comment
+// on why RPC has no way to browse the daemon's filesystem instead) —
+// meaningful only when the daemon being talked to is running on this
+// same machine. For a remote daemon, browsing a folder here wouldn't
+// correspond to anything on the machine that would actually use it, so
+// the button is disabled outright rather than left clickable and
+// misleading; "Verify" (and the destination shown) still work
+// regardless, since those go through the daemon's own RPC either way,
+// not this machine's filesystem.
+bool isLocalHost(const std::string& host) {
+    if (host == "127.0.0.1") return true;
+    std::string lower = host;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+        [](unsigned char c) { return std::tolower(c); });
+    return lower == "localhost";
+}
 
 // TStaticText with a settable body — see ServerSettingsDialog.cpp's own
 // TResultLabel for why the base class doesn't have one, and why this
@@ -72,7 +92,9 @@ TDialog* createAddTorrentDialog(TInputLine*& urlField, TransmissionClient& clien
     auto* dlg = new AddTorrentDialogImpl(r, tr(Str::DialogTitleAddTorrent), client);
     dlg->options |= ofCentered;
 
-    dlg->insert(new TButton(TRect(2, 2, 16, 4), tr(Str::ButtonChangeFolder), cmNo, bfNormal));
+    auto* changeFolderButton = new TButton(TRect(2, 2, 16, 4), tr(Str::ButtonChangeFolder), cmNo, bfNormal);
+    if (!isLocalHost(client.getHost())) changeFolderButton->setState(sfDisabled, True);
+    dlg->insert(changeFolderButton);
     dlg->destinationLabel = new TResultLabel(TRect(18, 2, 57, 3), "");
     dlg->insert(dlg->destinationLabel);
 

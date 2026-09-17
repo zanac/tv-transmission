@@ -822,6 +822,65 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**New: "Change..." (destination folder) disabled for a remote server;
+Brazilian Portuguese and Russian added; the progress bar uses plain
+ASCII on Windows.** Three separate, unrelated requests handled together
+in one pass.
+
+*Destination folder, local daemons only.* Realized after the fact
+(this app's own multi-server support means the daemon is very often on
+a DIFFERENT machine than this client): browsing a folder via
+`TFolderBrowserDialog` only ever looks at THIS machine's own
+filesystem (see its own doc comment on why RPC can't browse the
+daemon's instead), so offering it at all only makes sense when the
+daemon being talked to IS this same machine. `TransmissionClient::
+getHost()` (new) feeds a same-file `isLocalHost()` check
+(`127.0.0.1` or `localhost`, case-insensitive) in `AddTorrentDialog`,
+disabling the "Change..." button outright for anything else — "Verify"
+and the destination shown both keep working regardless, since those go
+through the daemon's own RPC either way, never this machine's
+filesystem.
+
+*Two more languages: Brazilian Portuguese and Russian, on top of the
+existing five.* The bulk of this was translating every one of the 213
+`pick(en, it, fr, de, es)` call sites in `Strings.cpp` into both — done
+with a small script that parses each call by counting parentheses and
+quoted strings (not a regex, which a `%s`/quote-heavy string would
+trip up) to find exactly where to insert the two new arguments,
+checked against a translation keyed by each call's own `Str::` id
+before writing anything — every one of the 213 accounted for, nothing
+inserted at the wrong call by mistake. `pick()` itself is 7-way now;
+`Language`'s own enum gained `PortugueseBrazilian`/`Russian`;
+`LanguageComboBox` lists both; the CLI's own multi-language `--help`
+text (which doesn't go through `pick()` — a separate per-language
+switch, since it's paragraphs, not single strings) gained matching
+Portuguese and Russian blocks too.
+
+*The Done column's own progress bar — plain ASCII on Windows.* Marked
+directly on a screenshot of the Windows port: `buildProgressBar()`'s
+own fill/empty characters (U+2588 full block, U+2591 light shade) showed
+as a row of "?" there, while window borders drawn by tvision's own
+internal frame-drawing rendered fine in the very same screenshot — the
+Windows console isn't reliably in UTF-8 mode the way a Linux/macOS
+terminal already is, and unlike tvision's own frame characters (which
+apparently already account for this), a raw UTF-8 string handed to it
+by the application can't be counted on to render. `#ifdef _WIN32`
+switches to `#`/`.` there — plain 7-bit ASCII, safe in any codepage —
+while Linux/macOS keep the original block characters unchanged.
+
+Verified live, not just re-read: opened "Add torrent" against a
+genuinely unreachable "remote" server and read the button's own actual
+cell colors — black-on-green (disabled) there, against white-on-green
+(enabled) for the exact same button moments earlier against a real,
+local server. Opened the language combo and confirmed both new entries
+listed correctly (with correctly-rendered native Cyrillic script for
+Russian) after all seven; picked Russian and confirmed the main list's
+own column headers switched to it immediately ("Имя", "Готово",
+"Разм."), not just that the combo's own selected value changed. The
+progress bar itself rendered exactly the same as before on this same
+Linux run (`#ifdef _WIN32` leaves the non-Windows path untouched by
+construction, but confirmed rather than assumed).
+
 **Windows/MinGW portability — the user's own three patches (`Config.cpp`,
 `TextUtil.cpp`, `TFolderBrowserDialog.cpp`, swapping POSIX headers for
 `std::filesystem`/`localtime_s`) were correct, verified with an actual

@@ -49,6 +49,7 @@ enum class Str {
     LabelRefreshSeconds, LabelHost, LabelPort, LabelRpcPath, LabelUser, LabelPassword, LabelLanguage,
     LabelServerName, DefaultServerName,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
+    LanguagePortugueseBrazilian, LanguageRussian,
 
     WindowTitleDetails,
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,

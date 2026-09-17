@@ -330,6 +330,11 @@ public:
     // Invalidates the current session: it will be renegotiated on the
     // next call().
     void setEndpoint(std::string host, int port);
+    // The host currently configured — e.g. for deciding whether a
+    // feature that only makes sense against a LOCAL daemon (browsing
+    // this machine's own filesystem to choose a download folder) should
+    // be offered at all; see AddTorrentDialog's own "Change..." button.
+    const std::string& getHost() const { return host_; }
     void setCredentials(std::string user, std::string password);
     // Same reasoning as setEndpoint()/setCredentials() above — updates
     // an already-constructed client's own RPC path in place (e.g. after

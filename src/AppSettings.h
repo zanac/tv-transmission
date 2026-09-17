@@ -12,6 +12,8 @@ enum class Language {
     French = 2,
     German = 3,
     Spanish = 4,
+    PortugueseBrazilian = 5,
+    Russian = 6,
 };
 
 // Column used to sort the torrent list; the numeric value matches the
