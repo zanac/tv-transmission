@@ -5,6 +5,7 @@
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
 **Version 1.6.0** — stable release.
+<img width="1407" height="867" alt="image" src="https://github.com/user-attachments/assets/d33cad4d-918a-4aa4-9cad-202ec95f7af5" />
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
