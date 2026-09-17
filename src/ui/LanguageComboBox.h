@@ -3,13 +3,13 @@
 #include "../tvision-ext/TComboBox.h"
 #include "../AppSettings.h"
 
-// A combo box for picking one of the 5 supported languages, built on
+// A combo box for picking one of the 8 supported languages, built on
 // this project's own vendored TComboBox (see src/tvision-ext/
 // TComboBox.h for why it's no longer the tvision fork's own copy) —
 // tvision itself has no built-in combo/dropdown widget (see upstream
 // issue #173), which is exactly what that vendored class adds. This
 // used to be a hand-built TView opening a TMenuPopup instead; now it's
-// a thin subclass that just supplies the 5-item TComboItem chain and a
+// a thin subclass that just supplies the 7-item TComboItem chain and a
 // typed language() accessor, since TComboBox already does the rest
 // (drawing, opening its own popup, keyboard/mouse handling).
 class LanguageComboBox : public TComboBox {

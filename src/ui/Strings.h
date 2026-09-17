@@ -49,6 +49,7 @@ enum class Str {
     LabelRefreshSeconds, LabelHost, LabelPort, LabelRpcPath, LabelUser, LabelPassword, LabelLanguage,
     LabelServerName, DefaultServerName,
     LanguageEnglish, LanguageItalian, LanguageFrench, LanguageGerman, LanguageSpanish,
+    LanguagePortugueseBrazilian, LanguageRussian, LanguagePortuguese,
 
     WindowTitleDetails,
     LabelName, LabelSize, LabelCompleted, LabelDownload, LabelUpload,
@@ -59,6 +60,7 @@ enum class Str {
     LabelLastActivity,
     LabelTimeDownloading, LabelTimeSeeding,
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
+    LabelSeedRatioSection, RadioSeedRatioGlobal, RadioSeedRatioCustom, RadioSeedRatioUnlimited,
     CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
     ButtonTrackers, ButtonRefresh, ButtonBrowse, ButtonChangeFolder, ButtonVerify,

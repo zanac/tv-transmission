@@ -1,5 +1,9 @@
 # TV Transmission
 
+![GitHub Release](https://img.shields.io/github/v/release/zanac/tv-transmission?style=for-the-badge)
+[![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
+![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
+
 **Version 1.5.2** — stable release.
 <img width="1407" height="863" alt="image" src="https://github.com/user-attachments/assets/74e9149a-fbe6-4153-8b02-4757f81db5b6" />
 
@@ -816,12 +820,148 @@ actions above:
 
 - **Change download location** for an already-added torrent
   (`torrent-set-location`)
-- **Per-torrent seed ratio limit**, distinct from a speed limit
-  (`seedRatioLimit`/`seedRatioMode` in `torrent-set`)
 
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**New: European Portuguese, an eighth language, alongside the existing
+Brazilian Portuguese.** Same scale of change as adding Brazilian
+Portuguese and Russian earlier (every one of the 217 `pick()` call
+sites, translated individually, not copy-pasted from Brazilian
+Portuguese despite the two being closely related — the genuine
+differences in this domain's own vocabulary, "ficheiro" not "arquivo",
+"transferir" not "baixar", "ecrã"/"guardar" conventions, are real
+enough to matter, so `LabelSeedRatioSection` and everything else got
+its own European Portuguese wording rather than reusing the Brazilian
+string verbatim), plus its own block of the CLI's own multi-paragraph
+`--help` text (which doesn't go through `pick()`).
+
+One thing done differently from adding Russian: `Language::Portuguese`
+is appended as value 7 — the NEXT free number — rather than inserted
+next to `PortugueseBrazilian` (5) where it reads more naturally.
+`Language`'s own numeric value is what's actually persisted in
+`settings.json`'s own `"language"` field; inserting a new language in
+the middle of the enum would silently renumber every language after
+it, so an already-saved settings file's own stored number would end up
+naming a different language than the one the user had actually chosen
+last time. `pick()` itself gained the new argument at the very end for
+the same reason — `pick(en, it, fr, de, es, pt, ru, ptPt)`, not
+alongside its closer sibling — matching where `Language::Portuguese`'s
+own value actually sits.
+
+Verified end to end on a live running instance, not just re-read: the
+language combo showed all 8 entries in the right order; selected plain
+"Português" (not the Brazilian one, listed separately just above it)
+and confirmed on a rebuilt window afterward — the main list's own
+column headers switched to it immediately ("Nome", "Progr.", "Tam."),
+and the "restart to fully relabel the menu bar" notice itself displayed
+in the actual European Portuguese wording ("Reinicie a aplicação..."),
+distinctly different from the Brazilian Portuguese one ("Reinicie o
+aplicativo...") — confirming these are two genuinely separate
+translations, not the same string reused under two menu entries.
+
+**New: per-torrent seed ratio limit.** Brainstormed first: `torrent-set`'s
+own `seedRatioMode` (0 follow the global ratio limit, 1 use this
+torrent's own `seedRatioLimit`, 2 seed with no ratio limit at all) is
+one three-way exclusive CHOICE, not two independent flags the way the
+speed limit above it is — Transmission itself has no fourth "none of
+these" state, so a `TRadioButtons` cluster matches its own data model
+directly rather than needing to fake a three-way choice out of
+checkboxes. `Torrent::seedRatioMode`/`seedRatioLimit` (new), added to
+all three of this app's own `torrent-get` field lists (the synchronous
+fetch, the async refresh, and `getTorrentDetails()` — matching the
+speed-limit fields' own precedent of staying in all three rather than
+just the details-specific one) and to `TransmissionClient::
+setTorrentSeedRatioLimit()` (new).
+
+The UI reuses `TrackerPeerWindow`'s own `TTrackerPeerRadio` pattern (a
+`TRadioButtons` subclass with an `onChanged` callback, since base
+`TRadioButtons` has no such hook of its own) as `TSeedRatioRadio` here
+— the ratio input field is only enabled while "Stop seeding at ratio"
+is the one actually selected, disabled (greyed, unfocusable) for the
+other two rather than left editable but silently ignored regardless of
+which is chosen. Applied from the SAME "Apply" button the speed limit
+controls already used — one button for everything this window shows,
+rather than a second one added just for this.
+
+One real mistake caught by the build itself, not by review: the public
+`seedRatioRadio` field is declared as plain `TRadioButtons*` (the
+window's own header has no visibility into `TSeedRatioRadio`, a class
+local to this .cpp file), so setting `onChanged` through it doesn't
+compile — the member only exists on the subclass. Fixed by keeping a
+locally-typed pointer around at construction time to wire the callback
+through, only handing the base-class pointer to the public field
+afterward.
+
+Verified end to end on a live running instance: opened details on a
+torrent whose mock-reported `seedRatioMode` was 0 — "Use global
+setting" already selected, matching it, field genuinely disabled
+(confirmed by reading its own cell color, not just eyeballing it).
+Selected "Stop seeding at ratio" and watched the same field's color
+change to enabled; typed 2.5 into it, clicked Apply, and confirmed via
+a mock that logs every `torrent-set` call it receives — arrived exactly
+as `{"seedRatioMode": 1, "seedRatioLimit": 2.5}`, not just that the UI
+looked right.
+
+**New: "Change..." (destination folder) disabled for a remote server;
+Brazilian Portuguese and Russian added; the progress bar uses plain
+ASCII on Windows.** Three separate, unrelated requests handled together
+in one pass.
+
+*Destination folder, local daemons only.* Realized after the fact
+(this app's own multi-server support means the daemon is very often on
+a DIFFERENT machine than this client): browsing a folder via
+`TFolderBrowserDialog` only ever looks at THIS machine's own
+filesystem (see its own doc comment on why RPC can't browse the
+daemon's instead), so offering it at all only makes sense when the
+daemon being talked to IS this same machine. `TransmissionClient::
+getHost()` (new) feeds a same-file `isLocalHost()` check
+(`127.0.0.1` or `localhost`, case-insensitive) in `AddTorrentDialog`,
+disabling the "Change..." button outright for anything else — "Verify"
+and the destination shown both keep working regardless, since those go
+through the daemon's own RPC either way, never this machine's
+filesystem.
+
+*Two more languages: Brazilian Portuguese and Russian, on top of the
+existing five.* The bulk of this was translating every one of the 213
+`pick(en, it, fr, de, es)` call sites in `Strings.cpp` into both — done
+with a small script that parses each call by counting parentheses and
+quoted strings (not a regex, which a `%s`/quote-heavy string would
+trip up) to find exactly where to insert the two new arguments,
+checked against a translation keyed by each call's own `Str::` id
+before writing anything — every one of the 213 accounted for, nothing
+inserted at the wrong call by mistake. `pick()` itself is 7-way now;
+`Language`'s own enum gained `PortugueseBrazilian`/`Russian`;
+`LanguageComboBox` lists both; the CLI's own multi-language `--help`
+text (which doesn't go through `pick()` — a separate per-language
+switch, since it's paragraphs, not single strings) gained matching
+Portuguese and Russian blocks too.
+
+*The Done column's own progress bar — plain ASCII on Windows.* Marked
+directly on a screenshot of the Windows port: `buildProgressBar()`'s
+own fill/empty characters (U+2588 full block, U+2591 light shade) showed
+as a row of "?" there, while window borders drawn by tvision's own
+internal frame-drawing rendered fine in the very same screenshot — the
+Windows console isn't reliably in UTF-8 mode the way a Linux/macOS
+terminal already is, and unlike tvision's own frame characters (which
+apparently already account for this), a raw UTF-8 string handed to it
+by the application can't be counted on to render. `#ifdef _WIN32`
+switches to `#`/`.` there — plain 7-bit ASCII, safe in any codepage —
+while Linux/macOS keep the original block characters unchanged.
+
+Verified live, not just re-read: opened "Add torrent" against a
+genuinely unreachable "remote" server and read the button's own actual
+cell colors — black-on-green (disabled) there, against white-on-green
+(enabled) for the exact same button moments earlier against a real,
+local server. Opened the language combo and confirmed both new entries
+listed correctly (with correctly-rendered native Cyrillic script for
+Russian) after all seven; picked Russian and confirmed the main list's
+own column headers switched to it immediately ("Имя", "Готово",
+"Разм."), not just that the combo's own selected value changed. The
+progress bar itself rendered exactly the same as before on this same
+Linux run (`#ifdef _WIN32` leaves the non-Windows path untouched by
+construction, but confirmed rather than assumed).
 
 **Windows/MinGW portability — the user's own three patches (`Config.cpp`,
 `TextUtil.cpp`, `TFolderBrowserDialog.cpp`, swapping POSIX headers for

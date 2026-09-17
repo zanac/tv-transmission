@@ -175,6 +175,8 @@ Torrent parseTorrent(const json& t) {
     tor.uploadLimited = t.value("uploadLimited", false);
     tor.uploadLimit = t.value("uploadLimit", 0);
     tor.honorsSessionLimits = t.value("honorsSessionLimits", true);
+    tor.seedRatioMode = t.value("seedRatioMode", 0);
+    tor.seedRatioLimit = t.value("seedRatioLimit", 0.0);
     tor.downloadDir = t.value("downloadDir", "");
     tor.isPrivate = t.value("isPrivate", false);
     tor.magnetLink = t.value("magnetLink", "");
@@ -211,7 +213,7 @@ std::vector<Torrent> TransmissionClient::listTorrents() {
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
                               "rateDownload","rateUpload","status","errorString",
                               "addedDate","downloadLimited","downloadLimit",
-                              "uploadLimited","uploadLimit","honorsSessionLimits",
+                              "uploadLimited","uploadLimit","honorsSessionLimits","seedRatioMode","seedRatioLimit",
                               "uploadRatio","uploadedEver","downloadedEver","downloadDir",
                               "eta","peersConnected","queuePosition","bandwidthPriority",
                               "doneDate"]})";
@@ -263,7 +265,7 @@ void TransmissionClient::startRefresh(CURLM* multi, void* privateData) {
     std::string args = R"({"fields":["id","name","totalSize","percentDone",
                               "rateDownload","rateUpload","status","errorString",
                               "addedDate","downloadLimited","downloadLimit",
-                              "uploadLimited","uploadLimit","honorsSessionLimits",
+                              "uploadLimited","uploadLimit","honorsSessionLimits","seedRatioMode","seedRatioLimit",
                               "uploadRatio","uploadedEver","downloadedEver","downloadDir",
                               "eta","peersConnected","queuePosition","bandwidthPriority",
                               "doneDate"]})";
@@ -358,7 +360,7 @@ Torrent TransmissionClient::getTorrentDetails(int torrentId) {
         {"fields", json::array({
             "id", "name", "totalSize", "percentDone", "rateDownload", "rateUpload",
             "status", "errorString", "addedDate", "downloadLimited", "downloadLimit",
-            "uploadLimited", "uploadLimit", "honorsSessionLimits",
+            "uploadLimited", "uploadLimit", "honorsSessionLimits", "seedRatioMode", "seedRatioLimit",
             "downloadDir", "isPrivate", "magnetLink", "pieceCount", "pieceSize",
             "downloadedEver", "uploadedEver", "uploadRatio", "activityDate",
             "secondsDownloading", "secondsSeeding",
@@ -616,6 +618,15 @@ bool TransmissionClient::setTorrentSpeedLimits(int id, bool downloadLimited, int
         {"uploadLimited", uploadLimited},
         {"uploadLimit", uploadLimitKBs},
         {"honorsSessionLimits", honorsSessionLimits},
+    };
+    return !call("torrent-set", args.dump()).empty();
+}
+
+bool TransmissionClient::setTorrentSeedRatioLimit(int id, int mode, double ratio) {
+    json args = {
+        {"ids", json::array({id})},
+        {"seedRatioMode", mode},
+        {"seedRatioLimit", ratio},
     };
     return !call("torrent-set", args.dump()).empty();
 }

@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <functional>
 
 namespace {
 
@@ -33,6 +34,26 @@ constexpr ushort cmApplySpeedLimits = 200;
 // called anyway.
 constexpr ushort cmCloseDetails = 201;
 constexpr ushort cmShowTrackers = 202;
+
+// Same idea as TTrackerPeerRadio (TrackerPeerWindow.h): a TRadioButtons
+// subclass that also calls back on every change, mouse or keyboard —
+// used here to enable the ratio input field only while "Stop seeding at
+// ratio" (item 1) is actually selected, disabled (greyed, unfocusable)
+// for the other two choices rather than left editable but silently
+// ignored.
+class TSeedRatioRadio : public TRadioButtons {
+public:
+    using TRadioButtons::TRadioButtons;
+    std::function<void(int)> onChanged;
+    void press(int item) override {
+        TRadioButtons::press(item);
+        if (onChanged) onChanged(item);
+    }
+    void movedTo(int item) override {
+        TRadioButtons::movedTo(item);
+        if (onChanged) onChanged(item);
+    }
+};
 
 // TStaticText already copies the text internally (newStr + delete[] in
 // its destructor), so passing it the temporary buffer is enough: there's
@@ -107,13 +128,14 @@ void TorrentDetailsWindow::showTrackers() {
         TProgram::application->insertWindow(win);
 }
 
-void TorrentDetailsWindow::applySpeedLimits() {
+void TorrentDetailsWindow::applyLimits() {
     // Unlike a modal dialog closed via execView() (where an attached
     // TValidator blocks cmOK automatically), this window's "Apply"
     // button is handled directly by us — so the validator's range check
     // needs to be triggered explicitly here. valid(cmOK) both runs it
     // and shows the validator's own error messageBox if it fails.
-    if (!downloadLimitField->valid(cmOK) || !uploadLimitField->valid(cmOK))
+    if (!downloadLimitField->valid(cmOK) || !uploadLimitField->valid(cmOK) ||
+        (seedRatioField && !seedRatioField->valid(cmOK)))
         return;
 
     ushort checked = 0;
@@ -130,12 +152,24 @@ void TorrentDetailsWindow::applySpeedLimits() {
 
     client_.setTorrentSpeedLimits(torrentId_, downloadLimited, downloadLimit,
                                    uploadLimited, uploadLimit, honorsSessionLimits);
+
+    if (seedRatioRadio) {
+        ushort mode = 0;
+        seedRatioRadio->getData(&mode);
+        double ratio = 0.0;
+        if (seedRatioField) {
+            char ratioBuf[32];
+            seedRatioField->getData(ratioBuf);
+            ratio = std::atof(ratioBuf);
+        }
+        client_.setTorrentSeedRatioLimit(torrentId_, (int)mode, ratio);
+    }
 }
 
 void TorrentDetailsWindow::handleEvent(TEvent& event) {
     TDialog::handleEvent(event);
     if (event.what == evCommand && event.message.command == cmApplySpeedLimits) {
-        applySpeedLimits();
+        applyLimits();
         clearEvent(event);
     } else if (event.what == evCommand && event.message.command == cmCloseDetails) {
         close();
@@ -274,6 +308,13 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
             // handled separately below, deliberately not folded into
             // this +3 (see the comment there for why)
 
+    // --- Per-torrent seed ratio limit — a second three-way cluster
+    // right below the speed-limit one, same reasoning for the +3 here.
+    y++; // blank separator
+    int seedRatioLabelY = y++;
+    int seedRatioRadioY = y;
+    y += 3; // 3 rows for this cluster too (3 mutually exclusive choices)
+
     // The gap here is 2 rows, not 1: TCluster's own drawMultiBox() loops
     // "i <= size.y" (off-by-one in tvision itself, not fixable from
     // here) rather than "i < size.y", so it paints one extra row right
@@ -353,6 +394,39 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
     win->uploadLimitField->setValidator(new TRangeValidator(0, 1000000));
     win->insert(win->uploadLimitField);
     win->insert(new TStaticText(TRect(51, checkboxesY + 1, 56, checkboxesY + 2), tr(Str::UnitKBs)));
+
+    // --- Per-torrent seed ratio limit ---
+    win->insert(new TStaticText(TRect(2, seedRatioLabelY, 66, seedRatioLabelY + 1),
+                                 tr(Str::LabelSeedRatioSection)));
+
+    // Width: same "5 + longest label" rule as limitCheckboxes above —
+    // "Stop seeding at ratio:" is the longest of the three at 22
+    // characters, so 5+22=27 is the bare minimum; this uses 32.
+    TSItem* ratioItems = new TSItem(tr(Str::RadioSeedRatioGlobal),
+        new TSItem(tr(Str::RadioSeedRatioCustom),
+        new TSItem(tr(Str::RadioSeedRatioUnlimited), nullptr)));
+    TSeedRatioRadio* ratioRadio = new TSeedRatioRadio(TRect(2, seedRatioRadioY, 34, seedRatioRadioY + 3), ratioItems);
+    ushort initialMode = (ushort)t.seedRatioMode;
+    ratioRadio->setData(&initialMode);
+    win->seedRatioRadio = ratioRadio;
+    win->insert(win->seedRatioRadio);
+
+    win->seedRatioField = new TInputLine(TRect(36, seedRatioRadioY + 1, 44, seedRatioRadioY + 2), 8);
+    std::vector<char> ratioBuf(9, 0);
+    std::snprintf(ratioBuf.data(), ratioBuf.size(), "%.2f", t.seedRatioLimit);
+    win->seedRatioField->setData(ratioBuf.data());
+    // No TRangeValidator here — unlike the KB/s fields above, this is a
+    // fractional value (TRangeValidator only ever validates whole
+    // numbers), and a malformed edit just parses to 0.0 via atof()
+    // rather than needing to be blocked outright.
+    win->insert(win->seedRatioField);
+    // Only editable while "Stop seeding at ratio" (item 1) is actually
+    // selected — matches the radio's own initial choice on open, then
+    // follows every change live via TSeedRatioRadio's own callback.
+    win->seedRatioField->setState(sfDisabled, initialMode != 1 ? True : False);
+    ratioRadio->onChanged = [win](int item) {
+        if (win->seedRatioField) win->seedRatioField->setState(sfDisabled, item != 1 ? True : False);
+    };
 
     win->insert(new TButton(TRect(16, buttonY, 26, buttonY + 2), tr(Str::ButtonApply), cmApplySpeedLimits, bfDefault));
     win->insert(new TButton(TRect(30, buttonY, 40, buttonY + 2), tr(Str::ButtonClose), cmCloseDetails, bfNormal));

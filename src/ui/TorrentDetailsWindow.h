@@ -3,6 +3,7 @@
 #define Uses_TDialog
 #define Uses_TInputLine
 #define Uses_TCheckBoxes
+#define Uses_TRadioButtons
 #include <tvision/tv.h>
 #include <string>
 #include <vector>
@@ -69,9 +70,18 @@ public:
     TCheckBoxes* limitCheckboxes = nullptr;
     TInputLine* downloadLimitField = nullptr;
     TInputLine* uploadLimitField = nullptr;
+    // TRadioButtons rather than TCheckBoxes here — see Torrent::
+    // seedRatioMode's own comment in Torrent.h for why this one setting
+    // is a three-way exclusive choice, not independent flags.
+    TRadioButtons* seedRatioRadio = nullptr;
+    TInputLine* seedRatioField = nullptr;
 
 private:
-    void applySpeedLimits();
+    // Applies BOTH the speed limit controls and the seed ratio choice
+    // together, on the same "Apply" button — one button for everything
+    // shown in this window, rather than a second one just for the
+    // newer setting.
+    void applyLimits();
     void showTrackers();
 
     int torrentId_;
