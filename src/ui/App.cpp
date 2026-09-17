@@ -27,6 +27,8 @@
 #define Uses_TKeys
 #define Uses_TEvent
 #define Uses_TCheckBoxes
+#define Uses_TInputLine
+#define Uses_TDialog
 #define Uses_TStaticText
 #define Uses_TSItem
 #define Uses_TFileDialog
@@ -34,6 +36,7 @@
 #include <tvision/tv.h>
 
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <curl/curl.h>
 #include <iterator>
@@ -55,13 +58,29 @@ TMenu* g_panelsMenu = nullptr;
 constexpr int kStatusPanelWidth = 28;
 }
 
-class StatusPanel : public TGroup {
+class StatusPanel : public TDialog {
 public:
-    StatusPanel(const TRect& bounds, const TorrentFilter& filter, std::function<void(ushort)> onChanged)
-        : TGroup(bounds), onChanged_(std::move(onChanged)) {
+    StatusPanel(const TRect& bounds, const TorrentFilter& filter,
+                std::function<void(const std::string&, ushort)> onChanged)
+        : TWindowInit(&TDialog::initFrame), TDialog(bounds, "Filters"),
+          onChanged_(std::move(onChanged)) {
+        // A docked panel, not an MDI window: keep TDialog's palette and frame
+        // (so it looks exactly like the Filters dialog) but don't let it be
+        // moved, resized, zoomed, closed or selected as the desktop's current
+        // application window.
+        flags = 0;
+        options &= ~ofSelectable;
         growMode = gfGrowHiY;
-        insert(new TStaticText(TRect(1, 1, kStatusPanelWidth - 1, 2), "Status"));
-        boxes_ = new TCheckBoxes(TRect(1, 3, kStatusPanelWidth - 1, 10),
+
+        insert(new TStaticText(TRect(2, 2, kStatusPanelWidth - 2, 3), tr(Str::LabelFilterName)));
+        nameField_ = new TInputLine(TRect(2, 3, kStatusPanelWidth - 2, 4), 128);
+        std::vector<char> nameBuf(129, 0);
+        std::snprintf(nameBuf.data(), nameBuf.size(), "%s", filter.nameContains.c_str());
+        nameField_->setData(nameBuf.data());
+        insert(nameField_);
+
+        insert(new TStaticText(TRect(2, 5, kStatusPanelWidth - 2, 6), tr(Str::LabelFilterStatusSection)));
+        boxes_ = new TCheckBoxes(TRect(2, 6, kStatusPanelWidth - 2, 13),
             new TSItem(tr(Str::TorrentStatusStopped),
             new TSItem(tr(Str::TorrentStatusCheckWait),
             new TSItem(tr(Str::TorrentStatusChecking),
@@ -69,46 +88,51 @@ public:
             new TSItem(tr(Str::TorrentStatusDownloading),
             new TSItem(tr(Str::TorrentStatusSeedWait),
             new TSItem(tr(Str::TorrentStatusSeeding), nullptr))))))));
-        ushort checked = (filter.showStopped ? 0x01 : 0) |
-                         (filter.showCheckWait ? 0x02 : 0) |
-                         (filter.showChecking ? 0x04 : 0) |
-                         (filter.showDownloadWait ? 0x08 : 0) |
-                         (filter.showDownloading ? 0x10 : 0) |
-                         (filter.showSeedWait ? 0x20 : 0) |
-                         (filter.showSeeding ? 0x40 : 0);
+        ushort checked = bitsFor(filter);
         boxes_->setData(&checked);
         insert(boxes_);
     }
 
     void handleEvent(TEvent& event) override {
-        // Turbo Vision does not expose a portable cmClusterMoved broadcast.
-        // Instead, compare the checkbox bitmask before and after TGroup has
-        // dispatched the event to the TCheckBoxes control.  This catches both
-        // mouse clicks and keyboard toggles without depending on a private/
-        // version-specific command constant.
-        ushort before = 0;
-        boxes_->getData(&before);
-        TGroup::handleEvent(event);
-        ushort after = 0;
-        boxes_->getData(&after);
-        if (after != before && onChanged_) onChanged_(after);
+        ushort beforeBits = 0;
+        boxes_->getData(&beforeBits);
+        char beforeName[129] = {0};
+        nameField_->getData(beforeName);
+
+        TDialog::handleEvent(event);
+
+        ushort afterBits = 0;
+        boxes_->getData(&afterBits);
+        char afterName[129] = {0};
+        nameField_->getData(afterName);
+        if ((afterBits != beforeBits || std::strcmp(afterName, beforeName) != 0) && onChanged_)
+            onChanged_(afterName, afterBits);
     }
 
     void setFilter(const TorrentFilter& filter) {
-        ushort checked = (filter.showStopped ? 0x01 : 0) |
-                         (filter.showCheckWait ? 0x02 : 0) |
-                         (filter.showChecking ? 0x04 : 0) |
-                         (filter.showDownloadWait ? 0x08 : 0) |
-                         (filter.showDownloading ? 0x10 : 0) |
-                         (filter.showSeedWait ? 0x20 : 0) |
-                         (filter.showSeeding ? 0x40 : 0);
+        std::vector<char> nameBuf(129, 0);
+        std::snprintf(nameBuf.data(), nameBuf.size(), "%s", filter.nameContains.c_str());
+        nameField_->setData(nameBuf.data());
+        nameField_->drawView();
+        ushort checked = bitsFor(filter);
         boxes_->setData(&checked);
         boxes_->drawView();
     }
 
 private:
+    static ushort bitsFor(const TorrentFilter& filter) {
+        return (filter.showStopped ? 0x01 : 0) |
+               (filter.showCheckWait ? 0x02 : 0) |
+               (filter.showChecking ? 0x04 : 0) |
+               (filter.showDownloadWait ? 0x08 : 0) |
+               (filter.showDownloading ? 0x10 : 0) |
+               (filter.showSeedWait ? 0x20 : 0) |
+               (filter.showSeeding ? 0x40 : 0);
+    }
+
+    TInputLine* nameField_ = nullptr;
     TCheckBoxes* boxes_ = nullptr;
-    std::function<void(ushort)> onChanged_;
+    std::function<void(const std::string&, ushort)> onChanged_;
 };
 
 App::App(const AppSettings& initialSettings)
@@ -659,6 +683,7 @@ void App::showFilterDialog() {
                 w->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
             }
             if (statusPanel_) statusPanel_->setFilter(settings_.filter);
+            if (statusPanel_) statusPanel_->setFilter(settings_.filter);
         }
         destroy(dlg);
     }
@@ -863,7 +888,7 @@ void App::setStatusPanelVisible(bool visible) {
         TRect r = deskTop->getExtent();
         r.b.x = r.a.x + kStatusPanelWidth;
         statusPanel_ = new StatusPanel(r, settings_.filter,
-            [this](ushort checked) { applyStatusPanelBits(checked); });
+            [this](const std::string& name, ushort checked) { applyStatusPanelFilter(name, checked); });
         deskTop->insert(statusPanel_);
     } else if (statusPanel_) {
         TGroup* parent = statusPanel_->owner;
@@ -880,7 +905,8 @@ void App::toggleStatusPanel() {
     setStatusPanelVisible(!settings_.statusPanelVisible);
 }
 
-void App::applyStatusPanelBits(ushort checked) {
+void App::applyStatusPanelFilter(const std::string& name, ushort checked) {
+    settings_.filter.nameContains = name;
     settings_.filter.showStopped = (checked & 0x01) != 0;
     settings_.filter.showCheckWait = (checked & 0x02) != 0;
     settings_.filter.showChecking = (checked & 0x04) != 0;

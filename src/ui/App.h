@@ -72,7 +72,7 @@ private:
     void toggleStatusPanel();
     void setStatusPanelVisible(bool visible);
     void layoutTorrentWindowsForPanel();
-    void applyStatusPanelBits(ushort checked);
+    void applyStatusPanelFilter(const std::string& name, ushort checked);
 
     // The TGridView belonging to whichever window currently has focus
     // (any TGridView-based window — a torrent list, the tracker list, a
