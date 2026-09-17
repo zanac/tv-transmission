@@ -49,6 +49,9 @@ jobs:
               ./packaging/appimage/build-appimage-arm.sh
             '
 
+      - name: Fix AppDir permissions
+        run: sudo chown -R "$USER:$USER" build-aarch64
+
       - name: Verify ARM64 binary
         run: |
           file build-aarch64/AppDir/usr/bin/tv-transmission
