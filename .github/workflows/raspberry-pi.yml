@@ -1,22 +1,12 @@
-name: Raspberry Pi ARM AppImages
+name: Raspberry Pi ARM AppImage
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-arm:
-    name: Raspberry Pi ${{ matrix.name }}
+  build-arm64:
+    name: Raspberry Pi 64-bit (aarch64)
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: 64-bit (aarch64)
-            platform: linux/arm64
-            arch: aarch64
-          - name: 32-bit (armhf)
-            platform: linux/arm/v7
-            arch: armhf
 
     steps:
       - name: Checkout
@@ -25,15 +15,12 @@ jobs:
       - name: Enable ARM emulation
         uses: docker/setup-qemu-action@v3
         with:
-          platforms: arm64,arm
+          platforms: arm64
 
-      - name: Build ARM AppImage
-        env:
-          PLATFORM: ${{ matrix.platform }}
-          ARCH: ${{ matrix.arch }}
+      - name: Build ARM64 AppImage
         run: |
           docker run --rm \
-            --platform "$PLATFORM" \
+            --platform linux/arm64 \
             -e DEBIAN_FRONTEND=noninteractive \
             -e APPIMAGE_EXTRACT_AND_RUN=1 \
             -v "$PWD:/workspace" \
@@ -65,13 +52,13 @@ jobs:
 
       - name: Verify architecture
         run: |
-          file "build-${{ matrix.arch }}/AppDir/usr/bin/tv-transmission"
-          test -f "build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage"
-          ls -lh "build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage"
+          file "build-aarch64/AppDir/usr/bin/tv-transmission"
+          test -f "build-aarch64/TvTransmission-linux-aarch64.AppImage"
+          ls -lh "build-aarch64/TvTransmission-linux-aarch64.AppImage"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tv-transmission-raspberry-pi-${{ matrix.arch }}
-          path: build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage
+          name: tv-transmission-raspberry-pi-aarch64
+          path: build-aarch64/TvTransmission-linux-aarch64.AppImage
           if-no-files-found: error
