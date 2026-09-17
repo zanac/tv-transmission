@@ -1,0 +1,77 @@
+name: Raspberry Pi ARM AppImages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-arm:
+    name: Raspberry Pi ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: 64-bit (aarch64)
+            platform: linux/arm64
+            arch: aarch64
+          - name: 32-bit (armhf)
+            platform: linux/arm/v7
+            arch: armhf
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable ARM emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,arm
+
+      - name: Build ARM AppImage
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker run --rm \
+            --platform "$PLATFORM" \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e APPIMAGE_EXTRACT_AND_RUN=1 \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            debian:bookworm \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential \
+                ca-certificates \
+                cmake \
+                curl \
+                file \
+                git \
+                libcurl4-openssl-dev \
+                libncursesw5-dev \
+                libgpm-dev \
+                libx11-dev \
+                libxmu-dev \
+                libxt-dev \
+                libxext-dev \
+                pkg-config
+              rm -rf external/tvision
+              git clone --depth 1 https://github.com/magiblot/tvision external/tvision
+              chmod +x packaging/appimage/build-appimage-arm.sh
+              ./packaging/appimage/build-appimage-arm.sh
+            '
+
+      - name: Verify architecture
+        run: |
+          file "build-${{ matrix.arch }}/AppDir/usr/bin/tv-transmission"
+          test -f "build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage"
+          ls -lh "build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-transmission-raspberry-pi-${{ matrix.arch }}
+          path: build-${{ matrix.arch }}/TvTransmission-linux-${{ matrix.arch }}.AppImage
+          if-no-files-found: error
