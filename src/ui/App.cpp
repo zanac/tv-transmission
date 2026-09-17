@@ -371,7 +371,7 @@ void App::showAddTorrentDialog(const std::string& initialValue, const std::strin
         return;
     }
 
-    if (result == cmNo) {
+    if (result == cmChangeFolder) {
         // "Change..." (destination folder) was clicked — same "close
         // first, one level of nesting" reasoning as Browse just above.
         // Labels built from this app's own translated strings right

@@ -824,6 +824,66 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**"Change..." (destination folder) still clickable while disabled,
+reported directly against a real remote IP — three separate bugs
+found working through it, not one.** The very first fix for this
+(setState(sfDisabled, ...) on the button, described further down)
+looked right at the moment the dialog opened but didn't survive: this
+button shared `cmNo` with other buttons elsewhere in the app, and
+every `TButton` re-checks `commandEnabled(its own command)` on every
+process-wide `cmCommandSetChanged` broadcast (tvision's own
+`tbutton.cpp`) — a command shared with anything else gets silently
+re-enabled the moment anything else in the app touches the global
+command set, regardless of this dialog's own intent.
+
+Asked directly whether hiding the button outright, rather than merely
+disabling it, would be simpler and less confusing — yes: a greyed
+button that's still clearly there invites clicking it anyway to see
+what happens, where a hidden one raises no such question. Switched to
+a dedicated `cmChangeFolder` command (not shared with `cmNo`) and
+`setState(sfVisible, ...)` instead.
+
+That dedicated command, first tried as `4`, collided with tvision's
+own built-in `cmClose` — the button drew enabled but a click visibly
+did nothing (not even the dialog closing, which is what `cmClose`
+would suggest; collisions inside tvision's own internals don't
+necessarily fail the way the name of whatever they collided with would
+suggest). Audited every local command constant in the project against
+tvision's own full command list once this was found, rather than
+fixing only the one that had already caused a visible symptom — found
+three more of the exact same class of bug: `cmVerifyFreeSpace` (this
+same file, was 3, collided with `cmMenu`), `cmSelectFolder`
+(`TFolderBrowserDialog.cpp`, was 1, collided with `cmQuit`), and
+`cmComboBoxItemAdded`/`cmComboBoxItemRemoved` (`TComboBox.h`, were
+60/61, collided with `cmRecordHistory` — a command defined in
+`dialogs.h`, a different header than the one an earlier pass had
+checked, `views.h`, which is why this one had been missed the first
+time around). All moved into the 200+ range every other local command
+in this project already uses, now confirmed clear of tvision's own
+command IDs across every header, not just the one checked before.
+
+Even with a genuinely unique command, the button still didn't respond:
+`cmOK`/`cmCancel`/`cmYes`/`cmNo` are the ones `TDialog`'s own
+`handleEvent()` has built-in knowledge of and turns into `endModal()`
+automatically while modal — a project-defined command like
+`cmChangeFolder` gets no such treatment for free. The click reached
+this dialog's own `handleEvent()` correctly, but without an explicit
+`endModal(cmChangeFolder)` there, `execView()` itself never returned,
+so `App.cpp`'s own `if (result == cmChangeFolder)` branch was simply
+never reached. Added the explicit `endModal()` call this needed —
+exactly what using `cmNo` had provided automatically, before it turned
+out to cause its own problem.
+
+Verified at each stage on a live running instance rather than assuming
+the previous step's fix already covered it: read the button's own
+actual cell color (not just eyeballed) for both a real local server and
+a real (if mocked) remote one; confirmed the button is absent from the
+screen entirely for the remote case, not just styled to look
+inactive; and, for the local case, confirmed a literal mouse click
+does open "Select Folder" — each of the three bugs above was caught
+by one of these checks failing, in turn, not by re-reading the code
+and assuming it was now right.
+
 **Reported directly, with a screenshot, that the Windows progress bar
 still showed "?" and the "Change..." button was still enabled for a
 remote host — asked "are you sure this was fixed?"** Re-verified both

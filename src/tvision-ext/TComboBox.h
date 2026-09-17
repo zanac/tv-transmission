@@ -116,21 +116,28 @@ protected:
 // patch to a core header (views.h) for even one constant would have
 // meant this file — despite being self-contained code-wise — still
 // silently required building against that exact fork rather than
-// plain upstream tvision. 59/60/61 are simply the next three free
-// values above upstream's own highest built-in command
-// (cmTimerExpired = 58, in upstream's views.h) — picked from
-// cmCommandBase's own numbering space, not from cmUserBase upward,
-// which is reserved for application-level commands, not widget-level
-// ones like these.
-constexpr ushort cmComboBoxSelectionChanged = 59;
+// plain upstream tvision.
+//
+// 270/271/272, not 59/60/61 as first tried: that choice checked only
+// views.h's own highest built-in command (cmTimerExpired = 58) and
+// missed that dialogs.h separately defines cmRecordHistory = 60 —
+// found only once a DIFFERENT local command elsewhere in this project
+// collided with a views.h command the same way (AddTorrentDialog's own
+// cmChangeFolder, originally 4, colliding with cmClose) and every
+// other local command constant in the project got checked against
+// tvision's own full command list as a result, not just the one that
+// had already caused a visible symptom. 270+ matches the range every
+// other local command in this project already uses, clear of
+// everything discovered in either header.
+constexpr ushort cmComboBoxSelectionChanged = 270;
 
 // Broadcast when "[+]"/"[-]" (editable mode — see below) actually add
 // or remove a list entry — not fired for the no-op cases (adding text
 // that already matches an entry, or "[-]" with nothing matching the
 // current text; see addCurrentValue()/removeCurrentValue()'s own
 // comments).
-constexpr ushort cmComboBoxItemAdded = 60;
-constexpr ushort cmComboBoxItemRemoved = 61;
+constexpr ushort cmComboBoxItemAdded = 271;
+constexpr ushort cmComboBoxItemRemoved = 272;
 
 // A single-line, single-selection drop-down combo box. Clicking it, or
 // pressing Space/Enter/Down while it is focused, opens a TComboWindow
