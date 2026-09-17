@@ -26,6 +26,9 @@
 #define Uses_TStatusItem
 #define Uses_TKeys
 #define Uses_TEvent
+#define Uses_TCheckBoxes
+#define Uses_TStaticText
+#define Uses_TSItem
 #define Uses_TFileDialog
 #define Uses_MsgBox
 #include <tvision/tv.h>
@@ -35,6 +38,7 @@
 #include <curl/curl.h>
 #include <iterator>
 #include <vector>
+#include <functional>
 
 namespace {
 // TProgInit requires initMenuBar() to be static, so there's no `this`
@@ -47,7 +51,61 @@ namespace {
 // mutable global specifically because exactly one App instance ever
 // exists in this process.
 TMenu* g_connectionsMenu = nullptr;
+TMenu* g_panelsMenu = nullptr;
+constexpr int kStatusPanelWidth = 28;
 }
+
+class StatusPanel : public TGroup {
+public:
+    StatusPanel(const TRect& bounds, const TorrentFilter& filter, std::function<void(ushort)> onChanged)
+        : TGroup(bounds), onChanged_(std::move(onChanged)) {
+        growMode = gfGrowHiY;
+        insert(new TStaticText(TRect(1, 1, kStatusPanelWidth - 1, 2), "Status"));
+        boxes_ = new TCheckBoxes(TRect(1, 3, kStatusPanelWidth - 1, 10),
+            new TSItem(tr(Str::TorrentStatusStopped),
+            new TSItem(tr(Str::TorrentStatusCheckWait),
+            new TSItem(tr(Str::TorrentStatusChecking),
+            new TSItem(tr(Str::TorrentStatusDownloadWait),
+            new TSItem(tr(Str::TorrentStatusDownloading),
+            new TSItem(tr(Str::TorrentStatusSeedWait),
+            new TSItem(tr(Str::TorrentStatusSeeding), nullptr))))))));
+        ushort checked = (filter.showStopped ? 0x01 : 0) |
+                         (filter.showCheckWait ? 0x02 : 0) |
+                         (filter.showChecking ? 0x04 : 0) |
+                         (filter.showDownloadWait ? 0x08 : 0) |
+                         (filter.showDownloading ? 0x10 : 0) |
+                         (filter.showSeedWait ? 0x20 : 0) |
+                         (filter.showSeeding ? 0x40 : 0);
+        boxes_->setData(&checked);
+        insert(boxes_);
+    }
+
+    void handleEvent(TEvent& event) override {
+        TGroup::handleEvent(event);
+        if (event.what == evBroadcast && event.message.command == cmClusterMoved &&
+            event.message.infoPtr == boxes_) {
+            ushort checked = 0;
+            boxes_->getData(&checked);
+            if (onChanged_) onChanged_(checked);
+        }
+    }
+
+    void setFilter(const TorrentFilter& filter) {
+        ushort checked = (filter.showStopped ? 0x01 : 0) |
+                         (filter.showCheckWait ? 0x02 : 0) |
+                         (filter.showChecking ? 0x04 : 0) |
+                         (filter.showDownloadWait ? 0x08 : 0) |
+                         (filter.showDownloading ? 0x10 : 0) |
+                         (filter.showSeedWait ? 0x20 : 0) |
+                         (filter.showSeeding ? 0x40 : 0);
+        boxes_->setData(&checked);
+        boxes_->drawView();
+    }
+
+private:
+    TCheckBoxes* boxes_ = nullptr;
+    std::function<void(ushort)> onChanged_;
+};
 
 App::App(const AppSettings& initialSettings)
     : TProgInit(&App::initStatusLine, &App::initMenuBar, &TApplication::initDeskTop),
@@ -82,6 +140,9 @@ App::App(const AppSettings& initialSettings)
         if (win && name == settings_.focusedServerAtClose) toFocus = win;
     }
     if (toFocus) toFocus->select();
+
+    if (settings_.statusPanelVisible) setStatusPanelVisible(true);
+    else rebuildPanelsMenu();
 
     // Only meaningful now that every configured server's own window
     // actually exists and the right one (if any) has focus — the
@@ -158,6 +219,10 @@ TMenuBar* App::initMenuBar(TRect r) {
     connectionsSubMenu->subMenu->items->disabled = True;
     g_connectionsMenu = connectionsSubMenu->subMenu;
 
+    TSubMenu* panelsSubMenu = new TSubMenu("~P~anels", kbNoKey);
+    *panelsSubMenu + *new TMenuItem("Status", cmToggleStatusPanel, kbNoKey);
+    g_panelsMenu = panelsSubMenu->subMenu;
+
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
@@ -190,6 +255,8 @@ TMenuBar* App::initMenuBar(TRect r) {
             // manager dialog — see ColumnManagerDialog.h.
             *new TMenuItem(tr(Str::MenuManageColumns), cmManageColumns, kbNoKey) +
         *new TSubMenu(tr(Str::MenuWindow), kbAltW) +
+            static_cast<TMenuItem&>(*panelsSubMenu) +
+            newLine() +
             // Standard tvision commands. Every torrent-list window
             // always exactly fills the desktop now (see
             // TorrentListWindow's own fullScreen comment) and stacks
@@ -270,7 +337,9 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     auto layoutIt = settings_.columnLayouts.find(name);
     if (layoutIt != settings_.columnLayouts.end()) columnLayout = layoutIt->second;
 
-    auto* win = new TorrentListWindow(deskTop->getExtent(), name, clientRef,
+    TRect torrentBounds = deskTop->getExtent();
+    if (settings_.statusPanelVisible) torrentBounds.a.x += kStatusPanelWidth;
+    auto* win = new TorrentListWindow(torrentBounds, name, clientRef,
         settings_.sortColumn, settings_.sortAscending, settings_.filter,
         columnLayout.widths, columnLayout.order, columnLayout.visible,
         [this](SortColumn col, bool asc) {
@@ -585,6 +654,7 @@ void App::showFilterDialog() {
             for (TorrentListWindow* w : allListWindows()) {
                 w->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
             }
+            if (statusPanel_) statusPanel_->setFilter(settings_.filter);
         }
         destroy(dlg);
     }
@@ -757,6 +827,65 @@ std::vector<TorrentListWindow*> App::allListWindows() const {
         } while (p != TProgram::deskTop->last);
     }
     return result;
+}
+
+void App::rebuildPanelsMenu() {
+    if (!g_panelsMenu) return;
+    TMenuItem* p = g_panelsMenu->items;
+    while (p) { TMenuItem* next = p->next; delete p; p = next; }
+    g_panelsMenu->items = nullptr;
+    g_panelsMenu->deflt = nullptr;
+    const char* label = settings_.statusPanelVisible ? "\xE2\x97\x8F Status" : "  Status";
+    auto* item = new TMenuItem(label, cmToggleStatusPanel, kbNoKey);
+    g_panelsMenu->items = item;
+    g_panelsMenu->deflt = item;
+}
+
+void App::layoutTorrentWindowsForPanel() {
+    if (!deskTop) return;
+    TRect r = deskTop->getExtent();
+    if (settings_.statusPanelVisible) r.a.x += kStatusPanelWidth;
+    for (TorrentListWindow* w : allListWindows()) w->changeBounds(r);
+}
+
+void App::setStatusPanelVisible(bool visible) {
+    if (visible == (statusPanel_ != nullptr)) {
+        settings_.statusPanelVisible = visible;
+        rebuildPanelsMenu();
+        return;
+    }
+    settings_.statusPanelVisible = visible;
+    if (visible) {
+        TRect r = deskTop->getExtent();
+        r.b.x = r.a.x + kStatusPanelWidth;
+        statusPanel_ = new StatusPanel(r, settings_.filter,
+            [this](ushort checked) { applyStatusPanelBits(checked); });
+        deskTop->insert(statusPanel_);
+    } else if (statusPanel_) {
+        TGroup* parent = statusPanel_->owner;
+        if (parent) parent->remove(statusPanel_);
+        destroy(statusPanel_);
+        statusPanel_ = nullptr;
+    }
+    layoutTorrentWindowsForPanel();
+    rebuildPanelsMenu();
+    saveSettings(settings_);
+}
+
+void App::toggleStatusPanel() {
+    setStatusPanelVisible(!settings_.statusPanelVisible);
+}
+
+void App::applyStatusPanelBits(ushort checked) {
+    settings_.filter.showStopped = (checked & 0x01) != 0;
+    settings_.filter.showCheckWait = (checked & 0x02) != 0;
+    settings_.filter.showChecking = (checked & 0x04) != 0;
+    settings_.filter.showDownloadWait = (checked & 0x08) != 0;
+    settings_.filter.showDownloading = (checked & 0x10) != 0;
+    settings_.filter.showSeedWait = (checked & 0x20) != 0;
+    settings_.filter.showSeeding = (checked & 0x40) != 0;
+    for (TorrentListWindow* w : allListWindows()) w->setFilter(settings_.filter);
+    saveSettings(settings_);
 }
 
 void App::rebuildConnectionsMenu() {
@@ -952,6 +1081,10 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmFilters:
             showFilterDialog();
+            clearEvent(event);
+            break;
+        case cmToggleStatusPanel:
+            toggleStatusPanel();
             clearEvent(event);
             break;
         case cmManageColumns:
