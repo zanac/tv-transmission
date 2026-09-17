@@ -17,12 +17,11 @@ jobs:
         with:
           platforms: arm64
 
-      - name: Build ARM64 AppImage
+      - name: Build ARM64 binary and AppDir
         run: |
           docker run --rm \
             --platform linux/arm64 \
             -e DEBIAN_FRONTEND=noninteractive \
-            -e APPIMAGE_EXTRACT_AND_RUN=1 \
             -v "$PWD:/workspace" \
             -w /workspace \
             debian:bookworm \
@@ -50,11 +49,23 @@ jobs:
               ./packaging/appimage/build-appimage-arm.sh
             '
 
-      - name: Verify architecture
+      - name: Verify ARM64 binary
         run: |
-          file "build-aarch64/AppDir/usr/bin/tv-transmission"
-          test -f "build-aarch64/TvTransmission-linux-aarch64.AppImage"
-          ls -lh "build-aarch64/TvTransmission-linux-aarch64.AppImage"
+          file build-aarch64/AppDir/usr/bin/tv-transmission
+          file build-aarch64/AppDir/usr/bin/tv-transmission | grep -q 'ARM aarch64'
+
+      - name: Package ARM64 AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          curl -fL -o appimagetool-x86_64.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=aarch64 ./appimagetool-x86_64.AppImage \
+            build-aarch64/AppDir \
+            build-aarch64/TvTransmission-linux-aarch64.AppImage
+          chmod +x build-aarch64/TvTransmission-linux-aarch64.AppImage
+          ls -lh build-aarch64/TvTransmission-linux-aarch64.AppImage
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
