@@ -352,6 +352,23 @@ const char* tr(Str id) {
             return pick("Speed limit for this torrent:", "Limite di velocità per questo torrent:",
                         "Limite de vitesse pour ce torrent :", "Geschwindigkeitslimit für diesen Torrent:",
                         "Límite de velocidad para este torrent:", "Limite de velocidade para este torrent:", "Ограничение скорости для этого торрента:");
+        case Str::LabelSeedRatioSection:
+            return pick("Seed ratio limit for this torrent:", "Limite di rapporto per questo torrent:",
+                        "Limite de partage pour ce torrent :", "Verhältnislimit für diesen Torrent:",
+                        "Límite de ratio para este torrent:", "Limite de compartilhamento para este torrent:",
+                        "Ограничение рейтинга для этого торрента:");
+        case Str::RadioSeedRatioGlobal:
+            return pick("Use global setting", "Usa impostazione globale", "Utiliser le réglage global",
+                        "Globale Einstellung verwenden", "Usar configuración global",
+                        "Usar configuração global", "Использовать глобальную настройку");
+        case Str::RadioSeedRatioCustom:
+            return pick("Stop seeding at ratio:", "Ferma il seed al rapporto:", "Arrêter le partage au ratio :",
+                        "Verteilen stoppen bei Verhältnis:", "Detener siembra en la proporción:",
+                        "Parar de semear na proporção:", "Остановить раздачу при рейтинге:");
+        case Str::RadioSeedRatioUnlimited:
+            return pick("Seed indefinitely", "Semina senza limiti", "Partager indéfiniment",
+                        "Unbegrenzt verteilen", "Sembrar indefinidamente",
+                        "Semear indefinidamente", "Раздавать без ограничений");
         case Str::CheckLimitDownload:
             return pick("Limit download", "Limita download", "Limiter le téléchargement",
                         "Download begrenzen", "Limitar descarga", "Limitar download", "Ограничить скачивание");

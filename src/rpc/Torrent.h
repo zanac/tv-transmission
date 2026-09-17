@@ -34,6 +34,17 @@ struct Torrent {
     int uploadLimit = 0;        // KB/s
     bool honorsSessionLimits = true;
 
+    // Per-torrent seed ratio limit — a three-way CHOICE (RPC field
+    // "seedRatioMode": 0 follow the global ratio limit, 1 use this
+    // torrent's own seedRatioLimit, 2 seed with no ratio limit at all),
+    // not two independent flags the way the speed limit above is.
+    // Transmission itself doesn't offer a fourth "no limit of any kind,
+    // but still capped by whatever the global one is" state, so a
+    // radio choice matches its own data model directly instead of
+    // needing to fake a three-way choice out of checkboxes.
+    int seedRatioMode = 0;       // RPC "seedRatioMode": 0/1/2, see above
+    double seedRatioLimit = 0.0; // RPC "seedRatioLimit" — only meaningful when seedRatioMode == 1
+
     // Extended details (torrent details window)
     std::string downloadDir;     // RPC "downloadDir"
     bool isPrivate = false;      // RPC "isPrivate"

@@ -60,6 +60,7 @@ enum class Str {
     LabelLastActivity,
     LabelTimeDownloading, LabelTimeSeeding,
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
+    LabelSeedRatioSection, RadioSeedRatioGlobal, RadioSeedRatioCustom, RadioSeedRatioUnlimited,
     CheckHonorGlobalLimits,
     ButtonApply, ButtonClose,
     ButtonTrackers, ButtonRefresh, ButtonBrowse, ButtonChangeFolder, ButtonVerify,

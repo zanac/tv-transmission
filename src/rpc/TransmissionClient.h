@@ -263,6 +263,14 @@ public:
     bool setTorrentSpeedLimits(int id, bool downloadLimited, int downloadLimitKBs,
                                 bool uploadLimited, int uploadLimitKBs,
                                 bool honorsSessionLimits);
+    // Sets the torrent's own seed ratio choice — mode 0 (follow the
+    // global ratio limit), 1 (use `ratio` as this torrent's own limit),
+    // or 2 (seed with no ratio limit at all); see Torrent::seedRatioMode
+    // (Torrent.h) for why this is one three-way choice rather than a
+    // flag. `ratio` is only sent meaningfully when mode == 1, but is
+    // always included — Transmission itself ignores it for the other
+    // two modes, so there's no need to omit it conditionally here.
+    bool setTorrentSeedRatioLimit(int id, int mode, double ratio);
 
     // Reads the session's global speed limits (session-get).
     // Fetches global (session-wide) speed limits. `ok`, if given, is set
