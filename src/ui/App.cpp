@@ -81,13 +81,17 @@ public:
     }
 
     void handleEvent(TEvent& event) override {
+        // Turbo Vision does not expose a portable cmClusterMoved broadcast.
+        // Instead, compare the checkbox bitmask before and after TGroup has
+        // dispatched the event to the TCheckBoxes control.  This catches both
+        // mouse clicks and keyboard toggles without depending on a private/
+        // version-specific command constant.
+        ushort before = 0;
+        boxes_->getData(&before);
         TGroup::handleEvent(event);
-        if (event.what == evBroadcast && event.message.command == cmClusterMoved &&
-            event.message.infoPtr == boxes_) {
-            ushort checked = 0;
-            boxes_->getData(&checked);
-            if (onChanged_) onChanged_(checked);
-        }
+        ushort after = 0;
+        boxes_->getData(&after);
+        if (after != before && onChanged_) onChanged_(after);
     }
 
     void setFilter(const TorrentFilter& filter) {
