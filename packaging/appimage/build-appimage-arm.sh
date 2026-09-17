@@ -27,19 +27,47 @@ OUTPUT="$BUILD_DIR/TvTransmission-linux-$ARCH.AppImage"
 
 mkdir -p "$TOOLS_DIR"
 
-LINUXDEPLOY="$TOOLS_DIR/linuxdeploy-$ARCH.AppImage"
-APPIMAGETOOL="$TOOLS_DIR/appimagetool-$ARCH.AppImage"
+LINUXDEPLOY_IMAGE="$TOOLS_DIR/linuxdeploy-$ARCH.AppImage"
+APPIMAGETOOL_IMAGE="$TOOLS_DIR/appimagetool-$ARCH.AppImage"
+LINUXDEPLOY_DIR="$TOOLS_DIR/linuxdeploy-extracted"
+APPIMAGETOOL_DIR="$TOOLS_DIR/appimagetool-extracted"
 
-if [ ! -x "$LINUXDEPLOY" ]; then
-    curl -fL -o "$LINUXDEPLOY" \
+if [ ! -f "$LINUXDEPLOY_IMAGE" ]; then
+    curl -fL -o "$LINUXDEPLOY_IMAGE" \
         "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$ARCH.AppImage"
-    chmod +x "$LINUXDEPLOY"
+    chmod +x "$LINUXDEPLOY_IMAGE"
 fi
 
-if [ ! -x "$APPIMAGETOOL" ]; then
-    curl -fL -o "$APPIMAGETOOL" \
+if [ ! -f "$APPIMAGETOOL_IMAGE" ]; then
+    curl -fL -o "$APPIMAGETOOL_IMAGE" \
         "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
-    chmod +x "$APPIMAGETOOL"
+    chmod +x "$APPIMAGETOOL_IMAGE"
+fi
+
+extract_appimage() {
+    local image="$1"
+    local dest="$2"
+
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    (
+        cd "$dest"
+        "$image" --appimage-extract >/dev/null
+        mv squashfs-root/* .
+        rmdir squashfs-root
+    )
+}
+
+echo "Preparing ARM AppImage tools..."
+extract_appimage "$LINUXDEPLOY_IMAGE" "$LINUXDEPLOY_DIR"
+extract_appimage "$APPIMAGETOOL_IMAGE" "$APPIMAGETOOL_DIR"
+
+LINUXDEPLOY="$LINUXDEPLOY_DIR/AppRun"
+APPIMAGETOOL="$APPIMAGETOOL_DIR/AppRun"
+
+if [ ! -x "$LINUXDEPLOY" ] || [ ! -x "$APPIMAGETOOL" ]; then
+    echo "Failed to extract AppImage tools" >&2
+    exit 1
 fi
 
 echo "Building tv-transmission for $ARCH..."
@@ -51,7 +79,6 @@ echo "Assembling AppDir..."
 mkdir -p "$APPDIR/usr/bin"
 cp "$BUILD_DIR/src/tv-transmission" "$APPDIR/usr/bin/"
 
-export APPIMAGE_EXTRACT_AND_RUN=1
 "$LINUXDEPLOY" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/tv-transmission" \
