@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.5.2** — stable release.
+**Version 1.6.0** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -823,6 +823,46 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Reported directly, with a screenshot, that the Windows progress bar
+still showed "?" and the "Change..." button was still enabled for a
+remote host — asked "are you sure this was fixed?"** Re-verified both
+from scratch on a live instance rather than re-reading the earlier
+fix and assuming it still held:
+- The progress bar: actually cross-compiled for MinGW and ran the
+  compiled binary under Wine this time (the earlier fix had only been
+  confirmed by reading the `#ifdef _WIN32` branch, never by running a
+  Windows build and looking at the literal bytes it produced) — the
+  binary printed `[################] 100%`, confirmed byte-for-byte
+  ASCII (`0x23` for every `#`), with the Linux build alongside it still
+  producing the original Unicode blocks unchanged. The fix, as
+  written, is correct.
+- The "Change..." button: rebuilt fresh and re-ran the exact scenario
+  from the screenshot (a server named "Local" — its logical name,
+  unrelated to `isLocalHost()`'s own check — whose actual host is a
+  real LAN address) and read the button's own cell color directly:
+  black-on-green, the disabled state, not enabled.
+Both come back correct on a clean rebuild of the current source, which
+points at the screenshot being taken against a build from before these
+fixes (an unrebuilt or pre-patch106 binary), not a defect in the fix
+itself — flagged directly rather than silently re-shipping the exact
+same code.
+
+**Reordered Portuguese and Brazilian Portuguese to sit next to each
+other in `Language`'s own enum and the language combo, asked for
+directly over keeping new languages append-only.** `Language`'s own
+numeric value is what's persisted in `settings.json`'s own "language"
+field, so this is a deliberate one-time compatibility break: an
+already-saved file with `"language": 5` or `"language": 6` now names a
+different language than before (Russian's own value moved from 6 to
+7 to make room). Confirmed this didn't actually require touching any
+of the 217 `pick()` call sites — `pick()`'s own internal switch already
+matches by `Language`'s enum NAME, not by which numbered case reads
+first in its own switch statement or which position an argument sits
+at in a given call, so renumbering the enum and reordering the combo's
+own item list was the entire change. Verified on a live instance:
+combo now lists "Português" immediately followed by "Português
+(Brasil)", not separated by Russian anymore.
 
 **New: European Portuguese, an eighth language, alongside the existing
 Brazilian Portuguese.** Same scale of change as adding Brazilian

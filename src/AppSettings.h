@@ -12,15 +12,15 @@ enum class Language {
     French = 2,
     German = 3,
     Spanish = 4,
-    PortugueseBrazilian = 5,
-    Russian = 6,
-    // Appended at the end (not inserted next to PortugueseBrazilian,
-    // its closer linguistic sibling) deliberately — the numeric value
-    // is what's actually persisted in settings.json's own "language"
-    // field, so inserting a new one in the middle would silently
-    // renumber every language after it, reinterpreting an
-    // already-saved file's own stored number as the wrong language.
-    Portuguese = 7,
+    // Portuguese and PortugueseBrazilian deliberately adjacent (5, 6),
+    // matching how the combo lists them — this DOES renumber Russian
+    // (was 6, now 7) and reinterprets any already-saved settings.json
+    // whose stored "language" was 5 or 6, a deliberate one-time
+    // compatibility break asked for directly, over keeping new
+    // languages append-only at the cost of a less readable ordering.
+    Portuguese = 5,
+    PortugueseBrazilian = 6,
+    Russian = 7,
 };
 
 // Column used to sort the torrent list; the numeric value matches the
