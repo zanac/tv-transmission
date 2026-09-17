@@ -54,6 +54,13 @@ jobs:
           file build-aarch64/AppDir/usr/bin/tv-transmission
           file build-aarch64/AppDir/usr/bin/tv-transmission | grep -q 'ARM aarch64'
 
+      - name: Prepare AppDir metadata
+        run: |
+          cp packaging/appimage/tv-transmission.png build-aarch64/AppDir/tv-transmission.png
+          rm -f build-aarch64/AppDir/.DirIcon
+          ln -s tv-transmission.png build-aarch64/AppDir/.DirIcon
+          ls -l build-aarch64/AppDir/.DirIcon
+
       - name: Package ARM64 AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
