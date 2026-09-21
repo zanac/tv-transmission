@@ -50,7 +50,26 @@ private:
     void showConnectionDialog();
     void showServerSettingsDialog();
     void showSessionStatsDialog();
-    void showFilterDialog();
+    // Replaces what used to be showFilterDialog() (a modal dialog) —
+    // the Status panel (Window -> Panels -> Status) is a live
+    // replacement for it now, so there's nothing left to open/close
+    // beyond the panel itself. Toggles whichever window currently has
+    // focus, same "act on the focused one" rule as everything else on
+    // the Torrent menu, and persists the new state right away (see
+    // AppSettings::PanelLayout).
+    void toggleStatusPanelForFocused();
+    // Same reasoning and shape as toggleStatusPanelForFocused() above,
+    // mirrored for the Files panel.
+    void toggleFilesPanelForFocused();
+    // Enters the same keyboard-driven resize mode dragResizeStatusPanel()/
+    // dragResizeFilesPanel() (TorrentListWindow's own) reach via mouse —
+    // menu-triggered here (Panels submenu's own "Resize ..." items,
+    // only present while the matching panel is open). The Ctrl+Left/
+    // Right shortcut reaches the very same TorrentListWindow methods
+    // directly from its own handleEvent() instead, without needing to
+    // come back up through App at all.
+    void resizeStatusPanelForFocused();
+    void resizeFilesPanelForFocused();
     void showColumnManagerDialog();
     void showWindowListDialog();
     void showAboutDialog();
@@ -67,6 +86,13 @@ private:
     // (clicking a different window directly, Window → Next, the Window
     // List dialog, or this very menu).
     void rebuildConnectionsMenu();
+    // Same reasoning as rebuildConnectionsMenu() above — a bullet next
+    // to "Status" when the FOCUSED window's own Status panel is open,
+    // rebuilt (not just relabeled) for the same "no per-item static
+    // label mutation" reason, and called from the same places: once at
+    // startup, and again whenever either the panel's own state or which
+    // window has focus changes.
+    void rebuildPanelsMenu();
 
     // The TGridView belonging to whichever window currently has focus
     // (any TGridView-based window — a torrent list, the tracker list, a
@@ -147,7 +173,6 @@ const ushort cmStartNowTorrent  = 109;
 const ushort cmShowDetails      = 110;
 const ushort cmDeleteTorrentWithData = 111;
 const ushort cmAbout            = 112;
-const ushort cmFilters          = 113;
 const ushort cmManageColumns    = 114;
 const ushort cmShowFiles        = 115;
 const ushort cmSelectMultiple   = 116;
@@ -160,6 +185,12 @@ const ushort cmSetPriorityLow    = 122;
 const ushort cmSetPriorityNormal = 123;
 const ushort cmSetPriorityHigh   = 124;
 const ushort cmSessionStats     = 125;
+const ushort cmToggleStatusPanel = 126;
+const ushort cmToggleFilesPanel = 127;
+const ushort cmResizeStatusPanel = 128; // menu-triggered keyboard resize
+const ushort cmResizeFilesPanel = 129;  // mode — see TorrentListWindow's
+                                          // own keyboardResizeStatusPanel()/
+                                          // keyboardResizeFilesPanel().
 // Base for the "Connections" menu's own dynamic per-server commands
 // (see App::rebuildConnectionsMenu()) — one entry per configured
 // server, however many there are, so this needs real headroom rather

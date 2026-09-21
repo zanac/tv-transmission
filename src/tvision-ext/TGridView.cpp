@@ -673,6 +673,88 @@ TGridView::TGridView(const TRect& bounds, ushort options)
     insert(header_);
 }
 
+void TGridView::changeBounds(const TRect& bounds) {
+    TGroup::changeBounds(bounds);
+    // Same rects as the constructor above, recomputed against this
+    // view's own new size (getExtent() now reflects `bounds`, already
+    // applied by the base class call just above) — see this method's
+    // own doc comment in TGridView.h for why growMode alone wasn't
+    // enough here.
+    TRect r = getExtent();
+    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 2);
+    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y - 1);
+    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y - 1);
+    TRect hScrollRect(r.a.x, r.b.y - 1, r.b.x - 1, r.b.y);
+
+    header_->locate(headerRect);
+    scrollBar_->locate(scrollRect);
+    rows_->locate(rowsRect);
+    hScrollBar_->locate(hScrollRect);
+
+    // hScrollBarRowReserved_'s own "1 row reserved for the horizontal
+    // scrollbar" bookkeeping (see updateHScrollBarVisibility()) is
+    // relative to rowsRect/scrollRect's own height, which the four
+    // locate() calls above just changed out from under it — restated
+    // here explicitly (reset to the "not reserved" baseline first,
+    // matching this class's own construction-time default) rather than
+    // left holding a stale ±1 adjustment from before this resize.
+    hScrollBarRowReserved_ = true;
+    updateHScrollBarVisibility();
+
+    // Both sfExposed and sfVisible, not just one — this override exists
+    // because a caller like this project's own FilesPanel (constructs
+    // this grid at a placeholder size before its own owner ever
+    // resizes it to the real one) was found leaving this grid's own
+    // scrollBar_ permanently unable to draw itself, and drawView()
+    // (tvision's own tview.cpp) gates on both of these flags, not just
+    // one.
+    //
+    // sfExposed: TView::setState()'s own `case sfVisible:` branch only
+    // forwards sfExposed to a child when THIS view's own owner already
+    // has it set AT THE MOMENT the child is shown — found directly, via
+    // a temporary diagnostic print added straight into tvision's own
+    // drawView()/draw(), that showed this grid's own scrollBar_ never
+    // had sfExposed set at all when embedded in a caller like
+    // FilesPanel, where every one of this grid's own children gets
+    // shown before FilesPanel itself has ever been inserted anywhere
+    // (and so before FilesPanel's own owner had sfExposed to forward
+    // down in the first place). The main torrent list's own grid never
+    // hit this, because TGridWindow constructs it already inside an
+    // already-exposed window.
+    //
+    // sfVisible: a second, separate finding, via the same kind of
+    // direct instrumentation (this time printed from inside this very
+    // override) — this grid's own scrollBar_ can be caught with
+    // sfVisible transiently False at the exact moment an owner's own
+    // resize reaches here, apparently mid-way through that owner's own
+    // insertBefore() sequence (TGroup::insertBefore(), tvision's own
+    // tgroup.cpp — hide(), relink, then show() again) rather than
+    // after it's fully settled. scrollBar_->show() below forces it back
+    // on regardless of that transient state, rather than trusting the
+    // owner's own later show() call to reach it correctly on its own.
+    //
+    // Re-synced here, every time this view's own bounds change (not
+    // just once at construction), since that's exactly when a caller
+    // like this one is most likely to still be un-exposed. header_'s
+    // and rows_'s own sfExposed are set for the same underlying reason,
+    // even though only scrollBar_'s own absence was the one actually
+    // reported (a visible gap in its own track, screenshot in hand);
+    // nothing here found rows_/header_ to be affected the same way,
+    // but leaving their own sfExposed unsynced while fixing only the
+    // one view that happened to be visibly broken felt like the wrong
+    // scope for this fix.
+    Boolean exposedNow = True; // forced unconditionally, not read from
+        // (state & sfExposed) here — that was tried first and didn't
+        // help, since this view's own sfExposed can be just as
+        // transiently unset at this exact moment as scrollBar_'s own
+        // sfVisible above.
+    header_->setState(sfExposed, exposedNow);
+    rows_->setState(sfExposed, exposedNow);
+    scrollBar_->show();
+    scrollBar_->setState(sfExposed, exposedNow);
+    hScrollBar_->setState(sfExposed, exposedNow);
+}
+
 int TGridView::addColumn(const TGridColumn& col) {
     columns_.push_back(col);
     defaultColumns_.push_back(col);

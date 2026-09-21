@@ -127,14 +127,19 @@ std::vector<int> emitTreeRows(const std::string& name, const TreeNode& node, int
     return allIndices;
 }
 
+} // namespace
+
+// Exposed (not kept anonymous like everything above it) specifically so
+// FilesPanel.cpp can build the same folder-grouped row list this window
+// itself displays, without duplicating this logic — see FilesPanel.h's
+// own comment on reusing this window's own tree-building rather than
+// keeping a second, separate implementation in sync with this one.
 std::vector<FileTreeRow> buildFileTreeRows(const std::vector<TorrentFile>& files) {
     std::vector<FileTreeRow> rows;
     TreeNode root = buildFileTree(files);
     emitTreeRows("", root, 0, "", rows);
     return rows;
 }
-
-} // namespace
 
 TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
                                         int torrentId, TransmissionClient& client)

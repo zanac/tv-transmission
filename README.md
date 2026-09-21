@@ -2,10 +2,9 @@
 
 ![GitHub Release](https://img.shields.io/github/v/release/zanac/tv-transmission?style=for-the-badge)
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.6.0** — stable release.
-<img width="1407" height="867" alt="image" src="https://github.com/user-attachments/assets/d33cad4d-918a-4aa4-9cad-202ec95f7af5" />
+**Version 1.7.0** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -517,6 +516,27 @@ focused one outside selection mode.
 - Standard menu: Zoom, Next, Close, Tile, Cascade, and a "Window list"
   dialog (Alt+0) listing every open window, letting you jump to one
 
+**Side panels (Window → Panels)**
+- **Status**: live replacement for what used to be a modal "Filters..."
+  dialog — the same name field and seven status checkboxes, but every
+  keystroke/checkbox toggle applies immediately, with nothing to
+  confirm or cancel back from. Docked to the left of the torrent list,
+  full height
+- **Files**: the currently focused torrent's own files (name and
+  wanted only — double-click to toggle; not TorrentFilesWindow's own
+  size/progress/priority columns or right-click menu), following
+  whichever row has focus in the list — arrow keys or a click alike.
+  Docked to the right, full height
+- Either panel: toggle from its own menu item (a bullet shows which are
+  currently open), drag the boundary between it and the list to resize,
+  double-click that same boundary to reset to its own default width.
+  Neither panel is a window of its own — nothing to accidentally drag
+  or resize out of place the way an ordinary MDI window could be; only
+  the boundary between panel and list responds to the mouse at all.
+  Open/closed state and width are both remembered per server (see
+  "Fixed bugs" below for the full story, including two bugs found and
+  fixed while building this)
+
 **Help menu**
 - "About" shows the app name, version (`src/Version.h` — bumped by
   hand, not tied to any build/commit counter), copyright (current year,
@@ -524,11 +544,12 @@ focused one outside selection mode.
   and the project's repository URL
 
 **Internationalization**
-- English (default), Italian, French, German, and Spanish, selectable
-  from the Connection dialog via `TComboBox` — vendored into this
-  project directly (see `src/tvision-ext/TComboBox.h` and "Fixed bugs"
-  below) rather than pulled in from the tvision fork this project still
-  points at; tvision itself has no built-in combo/dropdown control
+- English (default), Italian, French, German, Spanish, European
+  Portuguese, Brazilian Portuguese, and Russian, selectable from the
+  Connection dialog via `TComboBox` — vendored into this project
+  directly (see `src/tvision-ext/TComboBox.h` and "Fixed bugs" below)
+  rather than pulled in from the tvision fork this project still points
+  at; tvision itself has no built-in combo/dropdown control
 - Windows and dialogs that get rebuilt each time they're shown (Add
   torrent, Settings, Torrent details, the main list's title) update
   immediately; the menu bar and status bar are only built once at
@@ -824,6 +845,451 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**Collapse/expand arrow handles added to each panel's own divider —
+brainstormed first, then built.** Two rows at vertical center (not one
+— asked for directly, wider and easier to hit than a single cell):
+while a panel is open, an arrow on its own divider line points toward
+the direction that collapses it (► on Status's own divider, ◄ on
+Files's own — the opposite panel's own side always keeps its arrow
+pointing the other way); once closed, the same two rows on the
+window's own outer frame (column 0 for Status, the last column for
+Files) show the arrow flipped, reopening it. Clicking either posts the
+exact same command (`cmToggleStatusPanel`/`cmToggleFilesPanel`) a
+Panels-menu click would, via `putEvent()` — not by calling
+`setStatusPanelOpen()`/`setFilesPanelOpen()` directly — so this
+persists the new open/closed state immediately and rebuilds the
+Panels menu itself, exactly like using the menu would, rather than
+only relaying out this window's own children and leaving both of
+those for `shutDown()` to eventually catch up on.
+
+The frame-edge click (reopening a closed panel) is checked before
+calling this window's own base-class `handleEvent()`, not after — a
+click on the window's own frame would otherwise reach `TFrame`'s own
+click handling first, which treats any frame click as the start of a
+move/resize drag, never reaching this window's own check at all (same
+reasoning, and same fix shape, as the Ctrl+Left/Right panel-resize
+shortcut needing to be checked before the base class for its own,
+different reason — see that entry above).
+
+A real bug caught while verifying this, not just assumed away: the
+reopen arrow was found completely missing from the frame after
+closing a panel — read the actual cell at column 0 directly, and it
+was still just the plain frame character, `draw()`'s own arrow never
+having been painted there at all. `relayoutPanels()` (called by
+`setStatusPanelOpen()`/`setFilesPanelOpen()` whenever either panel
+opens or closes) relays out each of this window's own children
+individually but never asks this window itself to redraw — and the
+arrows are painted by this window's own `draw()` override, at spots
+(the frame's own edge columns) outside any child's own bounds
+entirely, so no child's own redraw would ever reach them. Fixed with
+an explicit `drawView()` at the end of `relayoutPanels()`. Verified
+live, both directions, both panels: closed each via its own divider
+arrow, confirmed the reopen arrow appeared correctly on the matching
+frame edge, then reopened each via that same arrow and confirmed the
+panel came back with its own divider arrow restored.
+
+**Panel keyboard resize added (Window → Panels → "Resize Status..."/
+"Resize Files...", or Ctrl+Left/Right when a panel itself currently has
+keyboard focus) — asked for directly, alongside the mouse drag that
+already existed.** Once triggered, Left/Right resizes live, Enter
+confirms, Esc cancels back to the width the panel had on entry — same
+convention as `TGridView::startKeyboardResize()` already uses for a
+column's own width. The menu items only appear while the matching
+panel is actually open (nothing useful to resize otherwise); each
+persists the new width the same way a mouse drag does.
+
+A real bug caught while verifying this, not just assumed away: the
+Ctrl+Left/Right check was originally placed *after* calling
+`TGridWindow::handleEvent()`, and whatever currently has focus deeper
+inside the panel (e.g. the name filter's own `TInputLine`) was found to
+consume Ctrl+Left/Right first, for its own standard "move a word at a
+time" behavior, before the event ever reached this window's own check
+— confirmed directly (a temporary diagnostic print, removed again once
+done) that the event simply never arrived except when nothing deeper
+happened to intercept it. Fixed by moving the check *before* the base
+class's own `handleEvent()` call, so it's handled here first whenever a
+panel itself has focus, before anything nested inside it gets a chance
+to consume it for something else.
+
+Verified live: activated the mode with Ctrl+Right while focus was
+inside the Status panel's own name field, resized with plain Left/
+Right, confirmed with Enter — the panel visibly widened and stayed
+that way — and separately confirmed via the Panels submenu that both
+"Resize Status..." and "Resize Files..." appear correctly once their
+own panel is open.
+
+**Files panel color changed again, to the same cyan the Status panel's
+own checkboxes use** — asked for directly ("il verdino usato nei check
+box"), over the plain gray/black uniform look from an earlier request.
+Applied to the panel's own background fill, rows, header, and the
+scrollbar's own `mapColor()` fallback alike, for consistency.
+
+**Files panel: long filenames stayed truncated with no way to see the
+rest — asked directly whether horizontal scroll was missing.** It
+wasn't quite the right diagnosis: `TGridView`'s own horizontal
+scrollbar shifts which *columns* are visible when they don't all fit,
+not how much of one column's own truncated text shows — the same way
+the main torrent list's own "Name" column behaves. What was actually
+missing was `gvResizableColumns` on this panel's own grid (present on
+the main list's own grid via `TGridWindow`, never passed here) — with
+it, dragging "Name" wider (same gesture as the main list, on the
+column-header separator) reveals more of a long filename directly, and
+horizontal scroll then naturally applies once "Name" and "Wanted"
+together exceed this panel's own width. `wantedCol` itself explicitly
+opts out of being resizable (`resizable = false`) — a fixed-width
+`[X]`/`[ ]`/`[-]` glyph, same reasoning as the main list's own "Done"
+column (a progress bar, also fixed width).
+
+Verified on a live instance with a deliberately very long test
+filename: confirmed it was genuinely truncated beforehand, then
+dragged the header separator (found by computing its own exact
+content-relative position from `TGridHeaderView::isOnSeparator()`
+rather than guessing from the rendered "□" marker's own position,
+which turned out to be offset from the actual hit-test column) and
+confirmed both that every filename showed fully afterward and that
+"Wanted" scrolled out of view to make room, exactly as intended.
+
+**Files panel switched from the precisely-computed "ListViewer" dialog
+colors (cyan normal, green focused, cyan/blue header) to plain
+gray/black throughout — rows, header, and the scrollbar — over the
+cyan/green scheme itself, which wasn't wanted even though it correctly
+matched what a real dialog's own list viewer resolves to.**
+`setRowColorCallback()`/`setHeaderColorCallback()` both now return a
+flat `0x70` regardless of row or focus state. The panel's own vertical
+scrollbar is a plain `TScrollBar`, which — unlike `TGridView`'s own
+rows/header — resolves through the ordinary palette chain, so reaching
+it needed this panel's own `mapColor()` override (not needed before,
+when the panel used the app's own standard blue and the scrollbar's
+own default already matched it well enough).
+
+**A separate issue found while testing the above — part of that same
+scrollbar's own track going unpainted, exactly overlapping the grid's
+own visible content rows — took a long investigation across two
+sessions, but is now resolved.** Isolated precisely before being
+fixed:
+
+- Read every cell's own actual color and character across the full
+  column, confirming this wasn't a wrong-color problem — the affected
+  cells had no color set at all (not even the panel's own fallback),
+  meaning nothing was drawing there, not that the wrong thing was.
+- Traced the actual call chain: `TGridView::refresh()` (called from
+  this panel's own `refresh()` after `setRowCount()`) calls
+  `rows_->setRange()`, which — tvision's own `TListViewer::setRange()`
+  — forwards to the scrollbar's own `setParams()`, conditional on the
+  value/range actually changing.
+- `TView::drawView()` itself is a no-op unless `exposed()` is true.
+  Confirmed directly (a temporary diagnostic print added straight into
+  tvision's own `TScrollBar::drawPos()`, removed again once done) that
+  this scrollbar's own `drawPos()` was never called even once, for any
+  reason — not merely producing an unpainted result. The main torrent
+  list's own vertical scrollbar, by contrast, drew correctly every
+  time.
+- Several fix attempts from this project's own side of the boundary —
+  reordering `showTorrent()` to run after this panel's own resize; an
+  explicit `redraw()` afterward; constructing the panel at its own
+  final size directly instead of placeholder-then-resize (this one
+  made things visibly worse and was reverted, rather than shipped) —
+  were all tried and confirmed not to resolve it.
+
+Picked back up with a different premise: `TGridView` is this project's
+own code, not a black box to work around from a caller's own side —
+so the actual fix belongs there. Two more, genuinely distinct root
+causes, found via direct instrumentation (temporary diagnostic prints
+added straight into tvision's own `drawView()`, and into this
+project's own new code, both removed again once done):
+
+1. **`grid_` (this panel's own embedded `TGridView`) had no `growMode`
+   of its own set at all**, so it stayed fixed at whatever size it was
+   constructed with (this panel's own placeholder size) and never grew
+   when the panel itself was resized to its real one afterward —
+   found by comparing actual visible row counts (stuck at ~8 rows no
+   matter how many files existed) against the panel's own real height.
+   Fixed with an explicit `grid_->growMode = gfGrowHiX | gfGrowHiY;`
+   right after construction.
+2. Fixing that surfaced the deeper issue precisely: `TGridView` itself
+   had no `changeBounds()` override, so growMode alone resized its own
+   four children (`header_`/`rows_`/`scrollBar_`/`hScrollBar_`)
+   without ever re-syncing two separate view-state flags
+   `drawView()` gates drawing on. `sfExposed`: `TView::setState()`'s
+   own `case sfVisible:` branch only forwards `sfExposed` to a child
+   when that child's own owner already has it set at the moment the
+   child is shown — a caller that builds this grid's own children
+   before the grid's own owner (here, `FilesPanel`) is ever itself
+   exposed (inserted into an already-visible window) leaves
+   `sfExposed` permanently unset on `scrollBar_` without something
+   correcting it later; the main list's own grid never hit this since
+   `TGridWindow` constructs it already inside an already-exposed
+   window. `sfVisible`: found separately, via the same kind of direct
+   printing, to be transiently unset on `scrollBar_` specifically at
+   the exact moment an owner's own resize reaches here — apparently
+   mid-way through that owner's own `TGroup::insertBefore()` sequence
+   (tvision's own `tgroup.cpp`: hide, relink, show again), not after
+   it's fully settled.
+
+Fixed with a new `TGridView::changeBounds()` override: recomputes
+every child's own rect from scratch (identical math to the
+constructor), explicitly relocates each one, and explicitly re-syncs
+both flags on every one of the four children — `scrollBar_->show()`
+specifically (not just `setState(sfExposed, ...)`) turned out to be
+the one call that mattered for the transient-`sfVisible` finding.
+
+Verified on a live instance: read the scrollbar's own actual
+characters and colors across its full column and confirmed a real
+scrollbar now — `▲`/`■`/`▒`/`▼`, correctly colored, not a gap — with
+all twenty files in a test torrent showing (previously stuck at
+eight), rather than trusting the fix from the code alone.
+
+**Files panel: still blue after Status switched to the dialog look, and
+its own content started one row lower than it should have, leaving an
+unexplained gap between the header and where the panel actually
+begins.** Both reported directly against a live screenshot.
+
+The gap: `grid_`'s own bounds carried a one-cell margin on every side
+(`TRect(1, 1, size.x-1, size.y-1)`), copied from `TGridWindow`'s own
+grid setup without reconsidering why that margin is there — `TGridWindow`
+needs it to clear its own real `TWindow` frame, which this panel has
+none of at all (the divider `TorrentListWindow` draws between this
+panel and the grid sits entirely outside this panel's own bounds, not
+as a border owned by the panel itself). The margin left an empty row
+above the header and another below the last row, for no border to have
+ever needed skipping past. Fixed to `TRect(0, 0, size.x, size.y)` — the
+grid now fills the whole panel, header aligned with the main list's own
+header exactly.
+
+The color: `TGridView`'s own row/header colors are fixed defaults, not
+palette-resolved (same reason as always — see its own README), so
+StatusPanel's `mapColor()`-based fix doesn't reach this panel's own
+embedded grid at all; it needs its own explicit
+`setRowColorCallback()`/`setHeaderColorCallback()`. Computed the same
+precise way as StatusPanel's own colors (chaining `dialogs.h`'s own
+documented dialog palette positions — 26 "ListViewer normal", 27
+"ListViewer focused", 29 "ListViewer divider" — through `cpGrayDialog`
+then `cpAppColor`, tvision's own `app.h`): normal `0x30` (cyan, black
+text), focused `0x2F` (green, bright white), header `0x31` (cyan, blue
+text) — reproducing what a real dialog's own list viewer resolves to,
+not approximated.
+
+Verified on a live instance: read the header's and the focused row's
+own actual cell colors directly, confirming both land exactly on the
+computed bytes, and confirmed the header now sits on the same row as
+the main list's own header — no gap above it.
+
+**Both side panels' own background fill only ever reached the rows a
+child widget actually sat on — every other row (blank space around or
+below labels/fields/the checkbox cluster/the grid) stayed whatever
+color was there before the panel existed, not the panel's own
+intended background.** Reported directly, against a live screenshot,
+as the input field being unreadable and the background looking blue
+instead of the dialog gray just added — not a re-reading of the code,
+a real symptom found by looking. Confirmed by reading actual cell data
+(not just the rendered screenshot) across the full height of both
+panels: rows without a child on them came back `fg=default bg=default`
+— untouched — while rows a label/field/cluster/grid actually covered
+showed the right color. `StatusPanel`/`FilesPanel`'s own `draw()`
+override (paint the whole area, then let `TGroup::draw()` draw
+children on top) only ever got invoked for whatever subset of rows
+tvision's own redraw system decided needed repainting at that
+particular moment — usually just the rows something else (a focus
+change, a periodic refresh) had already invalidated — not the panel's
+own full extent on every redraw, the assumption the fill loop was
+built on.
+
+Fixed by giving each panel a dedicated background-filling child view
+(`TPanelBackground`, inserted first so everything else still draws on
+top of it) instead of a container-level `draw()` override: a view of
+its own gets asked to redraw its own full bounds on tvision's normal
+per-view terms, rather than depending on whichever child's own
+invalidation happened to trigger the container's own draw() this time.
+Same fix applied to both panels — `FilesPanel` had the identical
+pattern, just less visible in practice since its own grid already
+covers most of the panel's own area, leaving less of a gap to notice.
+
+Verified this specific fix by reading every row's own actual color
+across the full height of both panels on a live instance, not just
+that the screenshot looked right this time — the gray/blue previously
+missing from rows without a child now shows correctly end to end.
+
+**Status panel changed again, from the app's own standard window blue
+to the standard tvision DIALOG look instead (gray background, blue
+input line, cyan checkbox cluster) — the exact colors any TDialog in
+this app already has, sent as a screenshot to show what was meant.**
+The panel lives inside a TWindow (TorrentListWindow), not a TDialog, so
+letting `TInputLine`/`TCheckBoxes`/`TStaticText` resolve through the
+ordinary palette chain (the previous attempt, after moving away from
+white/black) landed on this window's own blue theme instead of a
+dialog's — each of those widgets resolves relative to whatever it's
+actually embedded in, not to "however it would look inside some other
+kind of view."
+
+Computed the exact bytes a real `TDialog` resolves each of these
+widgets to, rather than guessing colors that merely looked close: every
+widget's own local palette (`cpStaticText`/`cpInputLine`/`cpCluster` —
+tvision's own `tstatict.cpp`/`tinputli.cpp`/`tcluster.cpp`) translates
+its own request into a dialog-relative position (1-32, documented
+directly above `cpGrayDialog` in tvision's own `dialogs.h`), which
+`cpGrayDialog` then translates again into `cpAppColor`'s own range
+(tvision's own `app.h`) — chained by hand with a small script instead
+of counting bytes manually, to get: label backgrounds `0x70` (gray,
+black text), the input line `0x1F` (blue, bright white), and the
+checkbox cluster `0x30` normal / `0x3F` selected / `0x3E` shortcut-letter
+(cyan throughout). `mapColor()` on the panel itself hardcodes exactly
+these bytes for exactly the local-palette values each widget is
+actually going to ask for — reproducing a real dialog's own resolved
+colors precisely, not routing through the chain itself (which doesn't
+work partway down an unrelated ownership tree — see the earlier
+`cpAppBlackWhite` attempt, same underlying reason).
+
+Verified against the computed table on a live instance, not just that
+it compiled: read every cell's own actual color in the name field's
+own row and confirmed blue/bright-white exactly where expected, even
+though in that particular test's own layout (the panel sitting right
+next to the main list, which happens to use the same blue) the two
+shades of blue visually run together with nothing to set them apart —
+a coincidence of that one test's own neighboring colors, not a flaw in
+which color got applied, confirmed by reading the underlying cell data
+directly rather than trusting a rendered screenshot alone to show it.
+
+**Panels switched from white-background/black-text to the app's own
+standard colors, and the boundary between a panel and the grid is now
+a visible line, not an invisible one-column gap.** Asked for directly,
+after seeing the white/black look in practice. `StatusPanel`'s own
+`mapColor()` override (and `FilesPanel`'s embedded grid's own
+`setRowColorCallback()`/`setHeaderColorCallback()`) removed entirely —
+every child now resolves through the ordinary palette chain instead,
+landing on the same blue theme as any other window or grid in the app
+without needing to be forced into matching by hand. Each panel's own
+`draw()` still fills its background explicitly (`TGroup` paints nothing
+of its own), just with the app's standard blue (`0x1F`) now instead of
+white.
+
+The boundary itself — previously just a reactive one-column gap
+`handleEvent()` happened to catch mouse events on, nothing shown there
+to suggest it did anything — is now a drawn vertical line (`│`, U+2502)
+the full height of the interior, on both sides where a panel is open.
+Drawn in `TorrentListWindow`'s own new `draw()` override, called AFTER
+`TGridWindow::draw()` so it paints on top of the grid/panel content
+already there rather than under it. Same boundary, same
+drag-to-resize/double-click-to-reset behavior as before — only now
+there's something visible marking where it is.
+
+One bug caught before it ever ran: the line was first attempted with
+`TDrawBuffer::moveChar()`, which only takes a single raw `char` — no
+way to hold a multi-byte UTF-8 sequence like `│`'s own three bytes.
+`moveStr()` (a `TStringView`, handling UTF-8 correctly) is what this
+project's own progress bars and box-drawing already use elsewhere for
+exactly this reason.
+
+**New: side panels (Window → Panels → Status/Files), replacing the old
+modal Filters dialog and adding a live file-and-wanted view alongside
+the torrent list.** Brainstormed first, at real length — the user's own
+question was specifically whether treating the torrent list as an
+MDI-like child (not user-movable/resizable, only panels controlling its
+own bounds) held up as reasoning, worked through with an ASCII mockup
+before any code. Landed on: the OUTER per-server window stays exactly
+what it already was (fullScreen, one visible at a time, switched via
+the "Connections" menu — see this file's own earlier note on why that
+was chosen over tiling) — only the INSIDE of that one window, between
+an optional left panel, the grid, and an optional right panel, is what
+neither panel lets the user drag out of place. Confirmed as fully
+sufficient on its own: with panels never independently draggable to
+begin with, the "arrange panels back to a sane layout" menu command the
+user anticipated needing turned out to be unnecessary — there's nothing
+a click could displace.
+
+`StatusPanel` (left) is a live, always-applied replacement for what
+used to be a modal dialog (`FilterDialog.cpp`, removed) — the exact
+same name field and seven status checkboxes, but every keystroke/
+checkbox toggle calls back immediately rather than collecting values
+for an eventual OK/Cancel that a live panel has no use for. `FilesPanel`
+(right) reuses `TorrentFilesWindow`'s own `buildFileTreeRows()`
+(exposed from that file's own anonymous namespace rather than
+duplicated) for the same folder-grouped display, reduced to name and
+wanted only, following whichever row has focus in the list (`TGridView`'s
+own `RowFocusFn` — fires on arrow keys and a click alike, already
+existed, never used until now).
+
+Asked directly whether reusing tvision's own `TInputLine`/`TCheckBoxes`
+inside a plain-colored panel would end up looking like an ordinary
+dialog instead of achieving the white-background look wanted — correct
+concern: a flat single-color override (the first attempt) loses every
+state distinction those widgets normally show (focused vs not,
+selected text, disabled). Tried reusing tvision's own built-in
+`cpAppBlackWhite` palette table (a proper monochrome/high-contrast
+scheme, not just one color) instead, but that table is designed to sit
+at `TApplication`'s own top level — applying it partway down the
+ownership chain, for just one panel, doesn't work the way a single
+`mapColor()` override can use it directly. Settled on the flat
+white/black override after all (state feedback like a focused field's
+own cursor still comes through regardless, since that's the terminal's
+own cursor, not a color) — `TGridView`'s own row/header colors turned
+out to need a second, different mechanism anyway once `FilesPanel` was
+built: they're fixed defaults set directly in `TGridView` itself (a
+deliberate choice from earlier work — see this file's own note on
+unifying those across windows), never resolved through the palette
+chain a `mapColor()` override reaches at all, so `FilesPanel`'s own
+grid needed its own explicit `setRowColorCallback()`/
+`setHeaderColorCallback()` instead (the same mechanism the main list
+already uses for its own per-status colors), not a color reachable
+through the panel's own override.
+
+Two real bugs found working through the menu integration, both caught
+by testing on a live instance rather than assumed from the code:
+
+1. **"Panels" rendered as its own extra menu-bar entry, next to
+   "Window", instead of nested inside it.** `TSubMenu`'s own
+   `operator+` has two overloads in tvision's own `menus.h` — one for
+   chaining a whole new top-level submenu onto the menu bar, one for
+   appending one more item to a submenu's own existing chain — and a
+   `TSubMenu&` used directly (`*panelsSubMenu`) upcasts to `TMenuItem&`
+   just well enough that C++ overload resolution still compiles either
+   way, silently picking the "new top-level menu" interpretation over
+   the "just another item here" one. Fixed with an explicit
+   `(TMenuItem&)` cast at the insertion point — the same idiom this
+   project's own comment on `cmManageColumns` had already named, for
+   two now-removed submenus that used to need it here too, before this
+   bug reintroduced the need for it.
+2. **Keyboard menu navigation (repeated Down-arrow presses) landed on
+   the wrong item the second time the same menu was reopened** — found
+   while testing the bug above, before switching the test itself over
+   to direct mouse clicks on menu text instead: the menu remembers
+   which item was last highlighted and resumes there rather than
+   always starting from the top, so a fixed "press Down N times" count
+   only works the first time a given menu is opened in a session. Not
+   a bug in the app — the test itself, once identified, switched
+   approach rather than continuing to fight it.
+
+Verified live throughout, not just re-read once written: opened both
+panels via the real menu path (mouse clicks on menu text, once keyboard
+navigation's own quirk above was found) and read the panel's own actual
+cell colors — black-on-white, not the app's usual blue; confirmed the
+grid's own bounds visibly shrank and shifted to make room; typed a name
+filter and toggled a status checkbox and watched the torrent list
+itself narrow down live, no confirmation needed; confirmed the bullet
+appears next to "Status" the next time the same menu is opened while
+it's open, and disappears once closed; killed the process outright
+(`SIGKILL`, not a graceful exit) immediately after opening a panel, to
+confirm the state saved instantly on toggle survives even a crash, not
+only a clean shutdown — a fresh instance afterward came up with the
+panel already open, matching exactly what was left; confirmed the
+Files panel updates to a different torrent's own files when a different
+row gets focus, arrow keys included, not just on the initial open.
+
+One interaction — toggling a file's own wanted checkbox via
+double-click inside the Files panel — wasn't confirmed this cleanly in
+the same pass as everything else above; reported honestly as such
+rather than claimed verified without being sure, since reliably
+scripting a genuine double-click's own timing/positioning against a
+live terminal had been the flakiest part of testing any of this,
+including one attempt where even reopening the panel itself didn't
+land correctly through a click sequence that had worked cleanly
+moments earlier. Confirmed properly in a later pass, with a fresh mock
+and a test built around checking each step actually landed before
+moving to the next rather than assuming it had: a double-click on the
+checkbox correctly flipped it, and the mock's own request log showed
+exactly `{"files-unwanted": [0], "ids": [2]}` — the earlier flakiness
+really had been a test-script timing issue, not anything wrong with
+the panel's own handling of it.
 
 **"Change..." (destination folder) still clickable while disabled,
 reported directly against a real remote IP — three separate bugs

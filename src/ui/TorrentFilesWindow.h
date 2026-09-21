@@ -40,6 +40,14 @@ struct FileTreeRow {
     std::string path;
 };
 
+// The folder-grouped row list this window itself displays (real files
+// regrouped under synthetic folder rows wherever their own paths share
+// a directory) — exposed here rather than kept local to this .cpp so
+// FilesPanel.cpp can build the exact same tree for its own, reduced
+// view (name + wanted only) without a second, separately-maintained
+// implementation of this same grouping logic.
+std::vector<FileTreeRow> buildFileTreeRows(const std::vector<TorrentFile>& files);
+
 class TorrentFilesWindow : public TDialog {
 public:
     TorrentFilesWindow(const TRect& bounds, TStringView title,

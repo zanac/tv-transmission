@@ -9,12 +9,23 @@
 #include "../rpc/TransmissionClient.h"
 #include "../rpc/Torrent.h"
 #include "../tvision-ext/TGridWindow.h"
+#include "StatusPanel.h"
+#include "FilesPanel.h"
 
 // Called whenever the user changes the sort column/direction (header
 // click — the toggle-direction and indicator-drawing logic itself now
 // lives in TGridView; see TGridView::SortChangedFn), so the caller can
 // persist it (see App::newTorrentListWindow()).
 using SortChangedCallback = std::function<void(SortColumn, bool)>;
+// Called on every keystroke/checkbox toggle in the Status panel (see
+// setStatusPanelOpen()) — NOT this window's own setFilter(): `filter`
+// is a single GLOBAL setting shared across every server's own window
+// (see AppSettings::filter's own comment), the same way onSortChanged
+// above hands cross-window coordination back to App rather than this
+// window trying to reach every other one itself. App's own
+// implementation both persists the new filter and applies it to every
+// currently open window, including this one.
+using FilterChangedCallback = std::function<void(const TorrentFilter&)>;
 
 // The main torrent list — a thin app-specific layer on top of the
 // generic TGridView (src/tvision-ext/), which supplies the actual
@@ -62,6 +73,7 @@ public:
                        const std::vector<int>& initialColumnOrder,
                        const std::vector<bool>& initialColumnVisible,
                        SortChangedCallback onSortChanged,
+                       FilterChangedCallback onFilterChanged,
                        const std::vector<int>& initialTrackerColumnWidths = {},
                        const std::vector<int>& initialTrackerColumnOrder = {},
                        const std::vector<bool>& initialTrackerColumnVisible = {},
@@ -70,6 +82,42 @@ public:
                        const std::vector<bool>& initialPeerColumnVisible = {});
 
     const std::string& serverName() const { return serverName_; }
+
+    // Window -> Panels -> Status: opens/closes the live filter panel on
+    // the left, resizing the grid to make room (or give the space
+    // back) — see relayoutPanels() in the .cpp. `width` is only used
+    // when opening; ignored (the panel keeps whatever width it already
+    // has) when closing, and irrelevant when neither.
+    void setStatusPanelOpen(bool open, int width);
+    bool isStatusPanelOpen() const { return statusPanel_ != nullptr; }
+    // Current width — read by App::shutDown() to persist whatever the
+    // user last dragged the panel's own border to (see AppSettings::
+    // PanelLayout::statusWidth), the same way columnWidths() below is
+    // read for the grid's own columns.
+    int statusPanelWidth() const { return statusPanelWidth_; }
+
+    // Window -> Panels -> Files: same idea as the Status panel above,
+    // mirrored on the right instead of the left — see
+    // relayoutPanels()'s own comment on why both share one
+    // implementation there rather than each having its own.
+    void setFilesPanelOpen(bool open, int width);
+    bool isFilesPanelOpen() const { return filesPanel_ != nullptr; }
+    int filesPanelWidth() const { return filesPanelWidth_; }
+
+    // Keyboard-driven equivalent of dragResizeStatusPanel()/
+    // dragResizeFilesPanel() (private, below — reached only via an
+    // in-progress mouse drag already being handled in handleEvent()):
+    // these two are public, since they're entered fresh each time from
+    // outside this class entirely (App's own Panels-menu command
+    // handlers, and this class's own handleEvent() reacting to
+    // Ctrl+Left/Right whenever the matching panel currently has
+    // keyboard focus) rather than continuing an event already being
+    // processed. Left/Right resizes live, Enter confirms at the
+    // current width, Esc cancels back to whatever width the panel had
+    // on entry — same convention as TGridView::startKeyboardResize()
+    // uses for a column's own width.
+    void keyboardResizeStatusPanel();
+    void keyboardResizeFilesPanel();
 
     void refresh();       // calls listTorrents() and updates the view
 
@@ -97,6 +145,29 @@ public:
     // the constructor) would silently keep showing whichever other
     // window's state was set last, not its own.
     void setState(ushort aState, Boolean enable) override;
+    // Overridden for exactly one reason: relayoutPanels() has to run
+    // again on every resize this window gets from ANYTHING (the
+    // terminal itself resizing, which is what actually reaches this in
+    // practice given fullScreen's own flags=0 rules out interactive
+    // resize — see TGridWindow.cpp's own comment on why), not only when
+    // a panel is opened/closed/dragged — otherwise the grid and any
+    // open panel would keep whatever bounds they had from BEFORE a
+    // terminal resize, no longer matching this window's own new size.
+    void changeBounds(const TRect& bounds) override;
+    // Overridden for exactly one reason: catching a mouse click/drag
+    // on the boundary between an open panel and the grid (there's
+    // nothing else here that needs its own handleEvent) — see
+    // relayoutPanels()'s own comment on why that boundary isn't a
+    // separate view of its own with its own event handling.
+    void handleEvent(TEvent& event) override;
+    // Draws a visible vertical divider at each open panel's own
+    // boundary with the grid, on top of whatever TGridWindow's own
+    // draw() already drew — asked for directly, doubling as a visible
+    // affordance for the same drag-to-resize/double-click-to-reset
+    // boundary handleEvent() above already reacts to (previously an
+    // invisible one-column gap the mouse simply happened to react to,
+    // with nothing shown there to suggest it).
+    void draw() override;
     void startSelected();
     void stopSelected();
     void removeSelected();       // confirmation prompt, then keeps files on disk
@@ -169,6 +240,29 @@ private:
     // added here rather than separately in each one.
     std::vector<const Torrent*> targetTorrents() const;
     void showContextMenuFor(int row, TPoint screenPos);
+    // Recomputes grid_'s own bounds (and statusPanel_'s, if open) from
+    // this window's own CURRENT extent and statusPanelWidth_ — called
+    // after every change to any of those three things (panel opened/
+    // closed, its own width dragged, or this window itself resized —
+    // see changeBounds() above), rather than each of those updating
+    // bounds independently and risking drifting out of sync with each
+    // other.
+    void relayoutPanels();
+    // kBorderX is the boundary's OWN X, in this window's local
+    // coordinates — recomputed by relayoutPanels() and cached here
+    // rather than re-derived on every mouse event, since handleEvent()
+    // needs it on every evMouseDown to know whether a click landed on
+    // the boundary at all.
+    int statusPanelBorderX_ = -1; // -1: no panel open, no boundary to hit-test
+    int filesPanelBorderX_ = -1;  // same idea, mirrored on the right
+    static constexpr int kStatusPanelMinWidth = 12;
+    static constexpr int kStatusPanelMaxWidth = 60;
+    static constexpr int kStatusPanelDefaultWidth = 24;
+    static constexpr int kFilesPanelMinWidth = 16;
+    static constexpr int kFilesPanelMaxWidth = 70;
+    static constexpr int kFilesPanelDefaultWidth = 30;
+    void dragResizeStatusPanel(TEvent& event);
+    void dragResizeFilesPanel(TEvent& event);
 
     TransmissionClient& client_;
     std::string serverName_;
@@ -210,4 +304,10 @@ private:
     SortColumn sortColumn_;
     bool sortAscending_;
     SortChangedCallback onSortChanged_;
+    FilterChangedCallback onFilterChanged_;
+    // Non-null exactly when the panel is open — see setStatusPanelOpen().
+    StatusPanel* statusPanel_ = nullptr;
+    int statusPanelWidth_ = kStatusPanelDefaultWidth;
+    FilesPanel* filesPanel_ = nullptr;
+    int filesPanelWidth_ = kFilesPanelDefaultWidth;
 };

@@ -58,7 +58,6 @@ const char* tr(Str id) {
         case Str::MenuSettingsMenu: return pick("~S~ettings", "~I~mpostazioni", "~P~aramètres", "~E~instellungen", "~C~onfiguración", "~C~onfigurações", "~Н~астройки", "~D~efinições");
         case Str::MenuColumnsMenu:
             return pick("~C~olumns", "~C~olonne", "~C~olonnes", "~S~palten", "Co~l~umnas", "~C~olunas", "Ст~о~лбцы", "~C~olunas");
-        case Str::MenuFilters:      return pick("~F~ilters...", "~F~iltri...", "~F~iltres...", "~F~ilter...", "~F~iltros...", "~F~iltros...", "~Ф~ильтры...", "~F~iltros...");
         case Str::MenuConnectionsMenu:
             return pick("Con~n~ections", "Conn~e~ssioni", "Co~n~nexions", "~V~erbindungen", "Co~n~exiones", "Cone~x~ões", "Под~к~лючения", "Li~g~ações");
         case Str::MenuConnectionsEmpty:
@@ -66,8 +65,6 @@ const char* tr(Str id) {
         case Str::MenuManageColumns:
             return pick("~M~anage columns...", "~G~estisci colonne...", "~G~érer les colonnes...",
                         "Spalten ~v~erwalten...", "~G~estionar columnas...", "~G~erenciar colunas...", "~У~правление столбцами...", "~G~erir colunas...");
-        case Str::DialogTitleFilters:
-            return pick("Filters", "Filtri", "Filtres", "Filter", "Filtros", "Filtros", "Фильтры", "Filtros");
         case Str::LabelFilterName:
             return pick("Name contains:", "Il nome contiene:", "Le nom contient :",
                         "Name enthält:", "El nombre contiene:", "O nome contém:", "Имя содержит:", "O nome contém:");
@@ -186,6 +183,20 @@ const char* tr(Str id) {
         case Str::MenuWindowCascade: return pick("C~a~scade", "Casc~a~ta", "Casc~a~de", "Kas~a~de", "Casc~a~da", "Casc~a~ta", "Кас~к~ад", "Casc~a~ta");
         case Str::MenuWindowList:    return pick("Window ~l~ist", "~E~lenco finestre", "~L~iste des fenêtres",
                                                   "~F~ensterliste", "~L~ista de ventanas", "~L~ista de janelas", "~С~писок окон", "~L~ista de janelas");
+        case Str::MenuPanelsMenu:    return pick("~P~anels", "~P~annelli", "~P~anneaux",
+                                                  "~P~anele", "~P~aneles", "~P~ainéis", "~П~анели", "~P~ainéis");
+        case Str::MenuPanelStatus:   return pick("~S~tatus", "~S~tato", "É~t~at",
+                                                  "~S~tatus", "~E~stado", "~S~tatus", "~С~татус", "~E~stado");
+        case Str::MenuPanelFiles:    return pick("~F~iles", "~F~ile", "~F~ichiers",
+                                                  "~D~ateien", "~A~rchivos", "~A~rquivos", "~Ф~айлы", "~F~icheiros");
+        // Hotkeys deliberately NOT "S"/"F" here — those are already the
+        // toggle items' own, in the same Panels submenu — picked from
+        // within "Status"/"Files" itself instead, to stay unique within
+        // that same menu without needing an unrelated letter.
+        case Str::MenuPanelResizeStatus: return pick("Resize S~t~atus...", "Ridimensiona S~t~atus...", "Redimensionner É~t~at...",
+                                                  "S~t~atus skalieren...", "Redimensionar Es~t~ado...", "Redimensionar S~t~atus...", "Размер: ~С~татус...", "Redimensionar Es~t~ado...");
+        case Str::MenuPanelResizeFiles:  return pick("Resize F~i~les...", "Ridimensiona F~i~les...", "Redimensionner F~i~chiers...",
+                                                  "Date~i~en skalieren...", "Redimensionar Arch~i~vos...", "Redimensionar Arqu~i~vos...", "Размер: ~Ф~айлы...", "Redimensionar F~i~cheiros...");
         // Separate from MenuWindowList on purpose: menu/status labels use
         // ~x~ markup to underline a hotkey letter, which only TMenuItem/
         // TStatusItem/TButton interpret. A TDialog title does NOT strip

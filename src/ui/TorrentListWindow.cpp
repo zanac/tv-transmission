@@ -185,6 +185,7 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
                                       const std::vector<int>& initialColumnOrder,
                                       const std::vector<bool>& initialColumnVisible,
                                       SortChangedCallback onSortChanged,
+                                      FilterChangedCallback onFilterChanged,
                                       const std::vector<int>& initialTrackerColumnWidths,
                                       const std::vector<int>& initialTrackerColumnOrder,
                                       const std::vector<bool>& initialTrackerColumnVisible,
@@ -222,7 +223,8 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
       initialPeerColumnVisible_(initialPeerColumnVisible),
       filter_(std::move(initialFilter)),
       sortColumn_(initialSort), sortAscending_(initialAscending),
-      onSortChanged_(std::move(onSortChanged)) {
+      onSortChanged_(std::move(onSortChanged)),
+      onFilterChanged_(std::move(onFilterChanged)) {
     setupColumns(initialColumnWidths);
     applyColumnLabels();
     // Restores a persisted arrangement without needing any reaction from
@@ -295,6 +297,18 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
         if (onSortChanged_) onSortChanged_(sortColumn_, sortAscending_);
     });
     grid()->setRowActivateCallback([this](int) { showDetailsForSelected(); });
+    // Updates the Files panel's own content to whichever torrent is now
+    // focused — fires on arrow-key navigation and a plain click alike
+    // (see RowFocusFn's own comment in TGridView.h), which is what lets
+    // it "follow" the selection the way the user described (not just
+    // reacting to a double-click, which showDetailsForSelected() above
+    // already handles separately). A no-op whenever the panel isn't
+    // open — nothing to update if there's nothing showing it.
+    grid()->setRowFocusCallback([this](int row) {
+        if (!filesPanel_) return;
+        if (row < 0 || row >= (int)visible_.size()) return;
+        filesPanel_->showTorrent(visible_[row].id, visible_[row].name);
+    });
     // Double-clicking the queue position column cycles through the four
     // queue-move actions instead of opening details, the same way
     // TorrentFilesWindow's own priority column cycles instead of
@@ -520,6 +534,441 @@ void TorrentListWindow::updateTitleForConnectionState(bool lost) {
 void TorrentListWindow::setFilter(TorrentFilter filter) {
     filter_ = std::move(filter);
     applyFilterAndSort();
+}
+
+void TorrentListWindow::setStatusPanelOpen(bool open, int width) {
+    if (open == (statusPanel_ != nullptr)) {
+        if (open) statusPanelWidth_ = width; // already open, just apply the new width
+        relayoutPanels();
+        return;
+    }
+    if (open) {
+        statusPanelWidth_ = width;
+        // Bounds given here don't matter beyond being non-degenerate —
+        // relayoutPanels(), called at the end of this function, always
+        // repositions/resizes it correctly before anything gets drawn.
+        statusPanel_ = new StatusPanel(TRect(0, 0, statusPanelWidth_, 10), filter_,
+            [this](const TorrentFilter& f) { if (onFilterChanged_) onFilterChanged_(f); });
+        insert(statusPanel_);
+    } else {
+        // TView::destroy() (not `delete`) removes it from this
+        // window's own subview list first — a bare `delete` here would
+        // leave a dangling pointer in that list, the same
+        // use-after-free class of bug already documented elsewhere in
+        // this project (TWindow::close() on a still-modal dialog, see
+        // "Fixed bugs" in README.md) for a different lifetime, same
+        // underlying mistake.
+        destroy(statusPanel_);
+        statusPanel_ = nullptr;
+    }
+    relayoutPanels();
+}
+
+void TorrentListWindow::setFilesPanelOpen(bool open, int width) {
+    if (open == (filesPanel_ != nullptr)) {
+        if (open) filesPanelWidth_ = width;
+        relayoutPanels();
+        return;
+    }
+    if (open) {
+        filesPanelWidth_ = width;
+        // Bounds given here don't matter beyond being non-degenerate —
+        // relayoutPanels(), called right after, always repositions/
+        // resizes it correctly before anything gets drawn (same
+        // convention as StatusPanel's own equivalent).
+        //
+        // A still-open scrollbar-rendering issue exists here (some of
+        // grid_'s own embedded vertical TScrollBar's own track goes
+        // unpainted for the visible-content rows — reported directly,
+        // screenshot in hand). Tried three different fixes attempting
+        // to address timing around this panel's own construction-time
+        // size vs. its later resize to the real one (reordering
+        // showTorrent() after relayoutPanels(), an explicit redraw()
+        // after locate(), and constructing at the final size directly
+        // instead of a placeholder-then-resize) — none of the first
+        // two changed the symptom, and the third made it visibly
+        // worse (the whole scrollbar losing its own color, not just
+        // part of it), so reverted back to this simpler, known
+        // baseline rather than keep compounding attempted fixes into
+        // something harder to reason about. The actual root cause
+        // wasn't found this pass — likely something inside TGridView's
+        // own embedded TScrollBar not fully accounting for being
+        // resized after its own construction, still needs isolating
+        // directly (e.g. instrumenting TScrollBar's own drawPos()
+        // itself) rather than guessed at from this file's own side.
+        filesPanel_ = new FilesPanel(TRect(0, 0, filesPanelWidth_, 10), client_);
+        insert(filesPanel_);
+        relayoutPanels();
+        int row = grid()->focusedRow();
+        if (row >= 0 && row < (int)visible_.size()) {
+            filesPanel_->showTorrent(visible_[row].id, visible_[row].name);
+        }
+        return;
+    } else {
+        destroy(filesPanel_);
+        filesPanel_ = nullptr;
+    }
+    relayoutPanels();
+}
+
+void TorrentListWindow::relayoutPanels() {
+    TRect r = getExtent();
+    r.grow(-1, -1); // interior, same as TGridWindow's own constructor
+    TRect gridRect = r;
+    if (statusPanel_) {
+        TRect panelRect = r;
+        panelRect.b.x = r.a.x + statusPanelWidth_;
+        statusPanel_->locate(panelRect);
+        gridRect.a.x = panelRect.b.x + 1; // +1: a one-column gap is the
+                                           // draggable boundary itself
+                                           // (see handleEvent()) — not
+                                           // owned by either view, so
+                                           // it has to come from
+                                           // somewhere between them
+                                           // rather than either one's
+                                           // own edge.
+        statusPanelBorderX_ = panelRect.b.x;
+    } else {
+        statusPanelBorderX_ = -1;
+    }
+    if (filesPanel_) {
+        TRect panelRect = r;
+        panelRect.a.x = r.b.x - filesPanelWidth_;
+        filesPanel_->locate(panelRect);
+        // redraw(), not drawView() — drawView() only asks this panel's
+        // own draw() to run once; redraw() (TGroup's own) explicitly
+        // walks every nested child and asks EACH of them to redraw
+        // itself unconditionally. grid_'s own embedded TScrollBar,
+        // resized this same way when this panel's own size changes,
+        // was found leaving part of its own track unpainted after a
+        // resize (reported directly, screenshot in hand) — the same
+        // "only ever repaints whatever's already invalidated, not its
+        // own full extent" pattern already found and fixed once for
+        // this project's own TPanelBackground, this time surfacing in
+        // a plain stock tvision widget nested two levels deep instead.
+        filesPanel_->redraw();
+        gridRect.b.x = panelRect.a.x - 1; // same one-column-gap reasoning,
+                                           // mirrored on this side
+        filesPanelBorderX_ = panelRect.a.x - 1;
+    } else {
+        filesPanelBorderX_ = -1;
+    }
+    grid()->locate(gridRect);
+    // Explicit — this window's own draw() (not any child's) is what
+    // paints the collapse/expand arrows, including the ones on this
+    // window's own frame when a panel is closed (column 0 or
+    // size.x-1, outside any child's own bounds entirely, so no
+    // child's own redraw would ever reach them). Nothing above this
+    // point asks THIS window to redraw itself — only its children,
+    // each individually — so without this, closing a panel correctly
+    // relaid out the grid but left the reopen arrow simply never
+    // drawn (found directly: read the actual cell at column 0 after
+    // closing Status, and it was still just the plain frame
+    // character, not the arrow drawn() was supposed to have painted
+    // there).
+    drawView();
+}
+
+void TorrentListWindow::changeBounds(const TRect& bounds) {
+    TWindow::changeBounds(bounds);
+    relayoutPanels();
+}
+
+void TorrentListWindow::handleEvent(TEvent& event) {
+    // Ctrl+Left/Right: keyboard-driven resize, contextual on whichever
+    // panel currently has keyboard focus (`current`, TGroup's own
+    // direct-child focus tracking) — the same two entry points the
+    // Panels menu's own "Resize ..." commands reach (App's own
+    // resizeStatusPanelForFocused()/resizeFilesPanelForFocused(), which
+    // call these same two methods), just reached directly here instead
+    // of via a menu round-trip, and only when a panel itself (not the
+    // main grid) is what's currently focused — Ctrl+Left/Right with the
+    // grid focused does nothing here, on purpose: there's no panel
+    // context to resize in that case.
+    //
+    // Checked and handled BEFORE calling TGridWindow::handleEvent()
+    // below, not after — found directly (a temporary diagnostic print,
+    // removed again once done, showed the event simply never arriving
+    // here at all except for Enter) that whatever currently has focus
+    // deeper inside the panel (e.g. the name filter's own TInputLine)
+    // consumes Ctrl+Left/Right first for its own purposes (moving the
+    // text cursor a word at a time, a standard TInputLine behavior) if
+    // the base class's own handleEvent() — which dispatches down to
+    // `current` and, from there, recursively into whatever CURRENT
+    // holds — gets to run first.
+    if (event.what == evKeyDown &&
+        (event.keyDown.keyCode == kbCtrlLeft || event.keyDown.keyCode == kbCtrlRight)) {
+        if (statusPanel_ && current == statusPanel_) {
+            keyboardResizeStatusPanel();
+            clearEvent(event);
+            return;
+        }
+        if (filesPanel_ && current == filesPanel_) {
+            keyboardResizeFilesPanel();
+            clearEvent(event);
+            return;
+        }
+    }
+    // Collapse/expand arrow handles (draw()'s own comment shows exactly
+    // where these get painted) — checked here, before
+    // TGridWindow::handleEvent() below, for the same reason
+    // Ctrl+Left/Right is checked here rather than after: a click on the
+    // window's own frame (the reopen case, arrow on column 0 or
+    // size.x-1) would otherwise reach TFrame's own click handling
+    // first, which treats a frame click as the start of a move/resize
+    // drag — never reaching this window's own check at all. A click
+    // on the divider itself (the collapse case) isn't at risk the same
+    // way, but is checked in the same place for one consistent spot
+    // rather than splitting this feature across two.
+    //
+    // Posts the exact same command a Panels-menu click would (rather
+    // than calling setStatusPanelOpen()/setFilesPanelOpen() directly)
+    // via putEvent() — TView's own standard way to inject a command
+    // into the pending queue, propagating up through the owner chain
+    // (TView::putEvent(), tview.cpp) until TProgram's own queue picks
+    // it up on the next getEvent() — so this reaches App's own
+    // cmToggleStatusPanel/cmToggleFilesPanel handling exactly as a
+    // real menu selection would: persisting the new open/closed state
+    // right away and rebuilding the Panels menu itself, instead of
+    // only changing this window's own layout and leaving both of
+    // those for shutDown() to eventually catch up on.
+    if (event.what == evMouseDown) {
+        TPoint local = makeLocal(event.mouse.where);
+        TRect r = getExtent();
+        r.grow(-1, -1);
+        int midY = r.a.y + (r.b.y - r.a.y) / 2;
+        bool onArrowRow = (local.y == midY || local.y == midY + 1);
+        if (onArrowRow) {
+            TEvent cmdEvent;
+            cmdEvent.what = evCommand;
+            cmdEvent.message.infoPtr = nullptr;
+            if (statusPanelBorderX_ >= 0 && local.x == statusPanelBorderX_) {
+                cmdEvent.message.command = cmToggleStatusPanel;
+                putEvent(cmdEvent);
+                clearEvent(event);
+                return;
+            }
+            if (statusPanelBorderX_ < 0 && local.x == 0) {
+                cmdEvent.message.command = cmToggleStatusPanel;
+                putEvent(cmdEvent);
+                clearEvent(event);
+                return;
+            }
+            if (filesPanelBorderX_ >= 0 && local.x == filesPanelBorderX_) {
+                cmdEvent.message.command = cmToggleFilesPanel;
+                putEvent(cmdEvent);
+                clearEvent(event);
+                return;
+            }
+            if (filesPanelBorderX_ < 0 && local.x == size.x - 1) {
+                cmdEvent.message.command = cmToggleFilesPanel;
+                putEvent(cmdEvent);
+                clearEvent(event);
+                return;
+            }
+        }
+    }
+    TGridWindow::handleEvent(event);
+    if (event.what == evMouseDown && statusPanelBorderX_ >= 0) {
+        TPoint local = makeLocal(event.mouse.where);
+        if (local.x == statusPanelBorderX_) {
+            if (event.mouse.eventFlags & meDoubleClick) {
+                statusPanelWidth_ = kStatusPanelDefaultWidth;
+                relayoutPanels();
+            } else {
+                dragResizeStatusPanel(event);
+            }
+            clearEvent(event);
+            return;
+        }
+    }
+    if (event.what == evMouseDown && filesPanelBorderX_ >= 0) {
+        TPoint local = makeLocal(event.mouse.where);
+        if (local.x == filesPanelBorderX_) {
+            if (event.mouse.eventFlags & meDoubleClick) {
+                filesPanelWidth_ = kFilesPanelDefaultWidth;
+                relayoutPanels();
+            } else {
+                dragResizeFilesPanel(event);
+            }
+            clearEvent(event);
+        }
+    }
+}
+
+void TorrentListWindow::draw() {
+    TGridWindow::draw();
+    // Drawn AFTER the base class's own draw() — this is deliberately
+    // on top of the grid/panel content it already painted, not a
+    // background fill like StatusPanel/FilesPanel's own draw()
+    // overrides. Full interior height, same rect relayoutPanels() uses
+    // for everything else here, so the line always lines up with
+    // whatever's actually on either side of it, panel width drag
+    // included.
+    TRect r = getExtent();
+    r.grow(-1, -1);
+    TDrawBuffer b;
+    b.moveStr(0, "\xE2\x94\x82", TColorAttr(0x1F)); // │ (U+2502, UTF-8) —
+        // moveStr, not moveChar: moveChar only takes a single raw
+        // byte, which can't hold a multi-byte UTF-8 sequence (found
+        // before this ever ran — moveChar's own signature takes `char`,
+        // not a string). Standard app blue, matching everything else
+        // here.
+    if (statusPanelBorderX_ >= 0) {
+        for (int y = r.a.y; y < r.b.y; y++) writeLine(statusPanelBorderX_, y, 1, 1, b);
+    }
+    if (filesPanelBorderX_ >= 0) {
+        for (int y = r.a.y; y < r.b.y; y++) writeLine(filesPanelBorderX_, y, 1, 1, b);
+    }
+
+    // Collapse/expand handles — two rows at vertical center (not one:
+    // asked for directly, wider and easier to hit than a single cell),
+    // computed from the same interior rect everything else here uses,
+    // so they stay centered regardless of terminal height. Drawn last,
+    // on top of the divider line itself (or the window's own frame,
+    // when the matching panel is closed) — see handleEvent()'s own
+    // comment for how a click on one of these same four spots is
+    // recognized and acted on.
+    int midY = r.a.y + (r.b.y - r.a.y) / 2;
+    TDrawBuffer arrow;
+    if (statusPanelBorderX_ >= 0) {
+        // Open: right-pointing arrow on the divider itself — closes it.
+        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x1F)); // ►
+        writeLine(statusPanelBorderX_, midY, 1, 1, arrow);
+        writeLine(statusPanelBorderX_, midY + 1, 1, 1, arrow);
+    } else {
+        // Closed: left-pointing arrow on the window's own left frame —
+        // reopens it. Same color as the frame itself would otherwise
+        // show there, so it reads as part of the frame rather than a
+        // patch of mismatched color glued onto it.
+        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x71)); // ◄
+        writeLine(0, midY, 1, 1, arrow);
+        writeLine(0, midY + 1, 1, 1, arrow);
+    }
+    if (filesPanelBorderX_ >= 0) {
+        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x1F)); // ◄
+        writeLine(filesPanelBorderX_, midY, 1, 1, arrow);
+        writeLine(filesPanelBorderX_, midY + 1, 1, 1, arrow);
+    } else {
+        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x71)); // ►
+        writeLine(size.x - 1, midY, 1, 1, arrow);
+        writeLine(size.x - 1, midY + 1, 1, 1, arrow);
+    }
+}
+
+void TorrentListWindow::dragResizeStatusPanel(TEvent& event) {
+    // Same live drag-and-relayout loop as TGridView's own column
+    // dragResize() (TGridView.cpp) — tracks the mouse while the button
+    // stays down, updating the width and relaying out on every move,
+    // rather than only committing once on release.
+    int startX = event.mouse.where.x;
+    int startWidth = statusPanelWidth_;
+    // kStatusPanelMaxWidth is a fixed ceiling; this window's own
+    // current width is a separate, dynamic one — a narrow terminal
+    // shouldn't let the panel grow wide enough to leave the grid with
+    // no meaningful space at all, whatever kStatusPanelMaxWidth itself
+    // says.
+    int dynamicMax = std::min(kStatusPanelMaxWidth, size.x - 22);
+    while (mouseEvent(event, evMouseMove)) {
+        int delta = event.mouse.where.x - startX;
+        int newWidth = startWidth + delta;
+        if (newWidth < kStatusPanelMinWidth) newWidth = kStatusPanelMinWidth;
+        if (newWidth > dynamicMax) newWidth = dynamicMax;
+        statusPanelWidth_ = newWidth;
+        relayoutPanels();
+    }
+}
+
+void TorrentListWindow::dragResizeFilesPanel(TEvent& event) {
+    // Mirror image of dragResizeStatusPanel() above — dragging left
+    // GROWS this panel (it's pinned to the right edge), the opposite
+    // sign from the status panel's own drag, otherwise identical.
+    int startX = event.mouse.where.x;
+    int startWidth = filesPanelWidth_;
+    int dynamicMax = std::min(kFilesPanelMaxWidth, size.x - 22);
+    while (mouseEvent(event, evMouseMove)) {
+        int delta = startX - event.mouse.where.x;
+        int newWidth = startWidth + delta;
+        if (newWidth < kFilesPanelMinWidth) newWidth = kFilesPanelMinWidth;
+        if (newWidth > dynamicMax) newWidth = dynamicMax;
+        filesPanelWidth_ = newWidth;
+        relayoutPanels();
+    }
+}
+
+void TorrentListWindow::keyboardResizeStatusPanel() {
+    if (!statusPanel_) return; // shouldn't happen — App's own caller
+                                // already checked isStatusPanelOpen()
+    int originalWidth = statusPanelWidth_;
+    int dynamicMax = std::min(kStatusPanelMaxWidth, size.x - 22);
+    TEvent event;
+    for (;;) {
+        // Same "pump events in a loop" primitive TGridView::
+        // startKeyboardResize() itself uses (see its own comment there
+        // for why getEvent() specifically, not mouseEvent() — this
+        // isn't continuing a drag already in progress).
+        getEvent(event);
+        if (event.what != evKeyDown) continue;
+        switch (event.keyDown.keyCode) {
+            case kbLeft:
+                if (statusPanelWidth_ > kStatusPanelMinWidth) {
+                    statusPanelWidth_--;
+                    relayoutPanels();
+                }
+                break;
+            case kbRight:
+                if (statusPanelWidth_ < dynamicMax) {
+                    statusPanelWidth_++;
+                    relayoutPanels();
+                }
+                break;
+            case kbEnter:
+                return; // confirmed at the current width
+            case kbEsc:
+                statusPanelWidth_ = originalWidth;
+                relayoutPanels();
+                return; // cancelled: reverted to the width it had on entry
+            default:
+                break; // any other key: ignored, keep waiting
+        }
+    }
+}
+
+void TorrentListWindow::keyboardResizeFilesPanel() {
+    if (!filesPanel_) return;
+    int originalWidth = filesPanelWidth_;
+    int dynamicMax = std::min(kFilesPanelMaxWidth, size.x - 22);
+    TEvent event;
+    for (;;) {
+        getEvent(event);
+        if (event.what != evKeyDown) continue;
+        switch (event.keyDown.keyCode) {
+            // Mirrored from the status panel's own above — pinned to
+            // the right edge, so Right (not Left) is the one that
+            // SHRINKS it, matching dragResizeFilesPanel()'s own
+            // reversed delta sign.
+            case kbLeft:
+                if (filesPanelWidth_ < dynamicMax) {
+                    filesPanelWidth_++;
+                    relayoutPanels();
+                }
+                break;
+            case kbRight:
+                if (filesPanelWidth_ > kFilesPanelMinWidth) {
+                    filesPanelWidth_--;
+                    relayoutPanels();
+                }
+                break;
+            case kbEnter:
+                return;
+            case kbEsc:
+                filesPanelWidth_ = originalWidth;
+                relayoutPanels();
+                return;
+            default:
+                break;
+        }
+    }
 }
 
 std::vector<int> TorrentListWindow::columnWidths() const {

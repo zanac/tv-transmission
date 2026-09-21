@@ -101,6 +101,16 @@ AppSettings loadSettings() {
                 settings.columnLayouts[name] = layout;
             }
         }
+        if (j.contains("panelLayouts") && j["panelLayouts"].is_object()) {
+            for (auto& [name, pj] : j["panelLayouts"].items()) {
+                AppSettings::PanelLayout layout;
+                layout.statusOpen = pj.value("statusOpen", layout.statusOpen);
+                layout.statusWidth = pj.value("statusWidth", layout.statusWidth);
+                layout.filesOpen = pj.value("filesOpen", layout.filesOpen);
+                layout.filesWidth = pj.value("filesWidth", layout.filesWidth);
+                settings.panelLayouts[name] = layout;
+            }
+        }
         if (j.contains("trackerColumnWidths") && j["trackerColumnWidths"].is_array()) {
             settings.trackerColumnWidths = j["trackerColumnWidths"].get<std::vector<int>>();
         }
@@ -168,6 +178,16 @@ bool saveSettings(const AppSettings& settings) {
         };
     }
     j["columnLayouts"] = columnLayoutsJson;
+    json panelLayoutsJson = json::object();
+    for (const auto& [name, layout] : settings.panelLayouts) {
+        panelLayoutsJson[name] = {
+            {"statusOpen", layout.statusOpen},
+            {"statusWidth", layout.statusWidth},
+            {"filesOpen", layout.filesOpen},
+            {"filesWidth", layout.filesWidth},
+        };
+    }
+    j["panelLayouts"] = panelLayoutsJson;
     j["trackerColumnWidths"] = settings.trackerColumnWidths;
     j["trackerColumnOrder"] = settings.trackerColumnOrder;
     j["trackerColumnVisible"] = settings.trackerColumnVisible;
