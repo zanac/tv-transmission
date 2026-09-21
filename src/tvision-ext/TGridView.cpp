@@ -1,0 +1,1180 @@
+#include "TGridView.h"
+
+#define Uses_TDrawBuffer
+#define Uses_TListViewer
+#define Uses_TScrollBar
+#define Uses_TEvent
+#define Uses_TKeys
+#include <tvision/tv.h>
+
+#include <algorithm>
+#include <chrono>
+#include <cstring>
+
+namespace {
+
+// --- Minimal, self-contained UTF-8 helpers -------------------------------
+// Deliberately reimplemented here rather than shared with the rest of the
+// project: this folder has no dependency on anything outside tvision + the
+// standard library (see the comment at the top of TGridView.h).
+
+std::vector<size_t> codepointStarts(const std::string& s) {
+    std::vector<size_t> starts;
+    for (size_t i = 0; i < s.size(); ) {
+        starts.push_back(i);
+        unsigned char c = (unsigned char)s[i];
+        size_t len = (c < 0x80) ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 1;
+        i += len;
+    }
+    return starts;
+}
+
+int codepointCount(const std::string& s) { return (int)codepointStarts(s).size(); }
+
+std::string truncateUtf8(const std::string& s, int maxWidth) {
+    auto starts = codepointStarts(s);
+    if ((int)starts.size() <= maxWidth) return s;
+    if (maxWidth <= 0) return "";
+    return s.substr(0, starts[maxWidth]);
+}
+
+// Drops the first `n` display columns' worth of characters — the
+// left-edge counterpart to truncateUtf8() above, used when horizontal
+// scrolling has pushed part of a cell's text off the left of the view.
+// Codepoint-aware for the same reason truncateUtf8() is: an indent
+// counted in raw bytes could land mid-character on non-ASCII content.
+std::string skipLeadingUtf8(const std::string& s, int n) {
+    if (n <= 0) return s;
+    auto starts = codepointStarts(s);
+    if (n >= (int)starts.size()) return "";
+    return s.substr(starts[n]);
+}
+
+// Pads/truncates to exactly `width` columns, aligned as requested.
+std::string fitToWidth(const std::string& s, int width, TGridColumn::Align align) {
+    if (width <= 0) return "";
+    std::string t = truncateUtf8(s, width);
+    int pad = width - codepointCount(t);
+    if (pad <= 0) return t;
+    return align == TGridColumn::Align::Right
+        ? std::string(pad, ' ') + t
+        : t + std::string(pad, ' ');
+}
+
+constexpr int kSeparatorWidth = 1; // one character between adjacent columns
+// "[X] " / "[ ] " — the leftmost checkbox column shown while in
+// selection mode (see gvMultiSelect). Fixed width, fixed position,
+// never scrolled — see drawScrolled()'s prefixWidth parameter.
+constexpr int kSelectionColumnWidth = 4;
+
+// Draws `text` (already fitted to exactly `width` display columns) at
+// CONTENT-relative position `contentX`, translating it into the actual
+// on-screen indent by subtracting the current horizontal scroll
+// `offset`. Skipped entirely if fully scrolled past; left-clipped
+// (never handing TDrawBuffer a negative indent — its `indent` parameter
+// is a `ushort`, which can't represent one, and would silently wrap
+// into a huge value instead) if only partially scrolled past; drawn
+// normally otherwise. The right edge needs no equivalent handling:
+// TDrawBuffer's own fixed-size buffer already clips anything past
+// `size.x` safely — the same reason columns beyond the visible width
+// simply didn't appear at all before this widget had any horizontal
+// scrolling.
+// Draws `text` (already fitted to exactly `width` display columns) at
+// CONTENT-relative position `contentX`, translating it into the actual
+// on-screen indent by subtracting the current horizontal scroll
+// `offset` and adding `prefixWidth` — the width of any FIXED,
+// never-scrolled area reserved to its left (the selection checkbox
+// column, when in selection mode; 0 otherwise). Skipped entirely if
+// fully scrolled past; left-clipped (never handing TDrawBuffer a
+// negative indent — its `indent` parameter is a `ushort`, which can't
+// represent one, and would silently wrap into a huge value instead) if
+// only partially scrolled past; drawn normally otherwise. The right
+// edge needs no equivalent handling: TDrawBuffer's own fixed-size
+// buffer already clips anything past `size.x` safely — the same reason
+// columns beyond the visible width simply didn't appear at all before
+// this widget had any horizontal scrolling.
+void drawScrolled(TDrawBuffer& b, int contentX, int width, const std::string& text,
+                   int offset, TColorAttr color, int prefixWidth = 0) {
+    int screenX = contentX - offset + prefixWidth;
+    if (screenX + width <= prefixWidth) return; // fully scrolled past
+    if (screenX < prefixWidth) {
+        b.moveStr((ushort)prefixWidth, skipLeadingUtf8(text, prefixWidth - screenX).c_str(), color);
+    } else {
+        b.moveStr((ushort)screenX, text.c_str(), color);
+    }
+}
+
+} // namespace
+
+// ===========================================================================
+// TGridHeaderView — draws column headers; when gvResizableColumns is set,
+// dragging the single-character separator between two headers resizes the
+// column to its left (see TGridView-README.md for why "left column only", not a
+// proportional split, was chosen). When gvReorderableColumns is set,
+// double-clicking a column's name enters TGridView::runReorderLoop().
+//
+// Every method here works in VISUAL positions — indices into
+// owner_->visibleDisplayOrder() specifically, i.e. positions among only
+// the columns that are currently shown (see TGridColumn::visible) — never
+// raw indices into owner_->displayOrder_, which also includes hidden
+// columns. Translating to the LOGICAL index (the column's stable
+// identity, what the owner's own callbacks expect — see the big comment
+// on TGridView::column() in TGridView.h) happens at the point of actually
+// calling into the owner. Kept local to this class rather than pushed
+// into TGridView itself because hit-testing (which visual position a
+// click/drag lands on) is inherently about what's currently drawn, which
+// only this view computes.
+// ===========================================================================
+class TGridHeaderView : public TView {
+public:
+    TGridHeaderView(const TRect& r, TGridView* owner)
+        : TView(r), owner_(owner) {
+        growMode = gfGrowHiX;
+        eventMask |= evMouseDown;
+    }
+
+    // Same single palette slot TStaticText uses (see cpStaticText in
+    // tvision's tstatict.cpp: "\x06") — a header showing text is no
+    // different a visual role than a label, so by default it should
+    // look identical rather than inventing a new hardcoded color. An
+    // app embedding TGridView is free to recolor by overriding this
+    // view's palette resolution the normal tvision way (its own
+    // getPalette() chain), since this is just a TView like any other.
+    TPalette& getPalette() const override {
+        static TPalette palette("\x06", 1);
+        return palette;
+    }
+
+    void draw() override {
+        // Corrected here, not only in relayout(), because tvision's own
+        // view-insertion machinery can flip a child's visibility state
+        // independently of this widget's own hide()/show() calls (see
+        // updateHScrollBarVisibility()'s own doc comment) — checking
+        // again right before every draw catches that before it would
+        // ever actually reach the screen.
+        owner_->updateHScrollBarVisibility();
+
+        TDrawBuffer b;
+        // Falls back to yellow-on-blue directly (TColorAttr(0x1E)) when
+        // no callback is set, rather than resolving through the owner's
+        // own palette chain (getColor(1)) the way this used to — the
+        // SAME kind of unification already applied to row colors just
+        // below (see TGridRowsView::draw()'s own comment on why): the
+        // main torrent list's own header already showed yellow-on-blue,
+        // but only incidentally, from TWindow's own default palette
+        // resolving index 1 that way — a TDialog-based window (every
+        // OTHER TGridView user in this app) resolves the very same
+        // index differently, which is what made headers look
+        // inconsistent across windows despite nobody having asked for
+        // that difference. Every caller that used to set this
+        // explicitly to match — TrackerPeerWindow — no longer needs to.
+        TColorAttr color = owner_->headerColor_ ? owner_->headerColor_() : TColorAttr(0x1E);
+        b.moveChar(0, ' ', color, size.x);
+        int offset = owner_->horizontalScrollOffset();
+        // Fixed, never-scrolled — see drawScrolled()'s own doc comment.
+        // Left blank in the header (there's nothing per-column to show
+        // there; the checkboxes themselves are per-ROW, drawn by
+        // TGridRowsView below) other than the space it reserves.
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
+        int x = 0; // CONTENT-relative (before the scroll offset is applied) — see drawScrolled()
+        auto vis = owner_->visibleDisplayOrder();
+        int n = (int)vis.size();
+        for (int visualPos = 0; visualPos < n; visualPos++) {
+            int logicalCol = vis[visualPos];
+            const TGridColumn& col = owner_->column(logicalCol);
+            std::string cellText;
+
+            if (visualPos == owner_->reorderVisualPos_) {
+                // Reorder-highlighted: "<"/">" are reserved at the
+                // exact first/last character of the column's own
+                // width — computed explicitly, not by concatenating
+                // them onto the label and letting fitToWidth() truncate
+                // whatever doesn't fit. That used to silently drop the
+                // trailing ">" (and, less often, the leading "<") for
+                // any column whose label came close to filling the
+                // width, which is exactly why the right marker
+                // sometimes didn't seem to register a click: it simply
+                // wasn't drawn where the hit-test expected it. No
+                // marker on whichever side doesn't apply — there's
+                // nowhere further to move at either edge of what's
+                // currently visible.
+                std::string left = (visualPos > 0) ? "<" : "";
+                std::string right = (visualPos < n - 1) ? ">" : "";
+                int innerWidth = col.width - (int)left.size() - (int)right.size();
+                cellText = left + fitToWidth(col.header, innerWidth, col.align) + right;
+            } else if (col.sortable) {
+                // Same fixed-position reasoning for the sort indicator:
+                // the last character is always reserved for it — "^"/
+                // "v" for the active sort column, "□" otherwise (a
+                // visible, clickable hint that this column CAN be
+                // sorted) — with a separating space before it, rather
+                // than appended to the label and hoping it fits. This
+                // also gives sorting its own dedicated, single-character
+                // hotspot distinct from the rest of the column's name —
+                // see handleEvent() below for why that matters.
+                const char* glyph = (logicalCol == owner_->sortColumn_)
+                    ? (owner_->sortAscending_ ? "^" : "v")
+                    : "\xE2\x96\xA1"; // □
+                int innerWidth = col.width - 2; // " " + glyph
+                cellText = fitToWidth(col.header, innerWidth, col.align) + " " + glyph;
+            } else {
+                cellText = fitToWidth(col.header, col.width, col.align);
+            }
+
+            drawScrolled(b, x, col.width, cellText, offset, color, prefixWidth);
+            x += col.width;
+            if (visualPos < n - 1) {
+                // The separator doubles as the resize handle's visual
+                // cue when resizing is enabled — "│" makes the grabbable
+                // boundary visible instead of it being an invisible gap
+                // the user has to guess at.
+                const char* sep = (owner_->options_ & gvResizableColumns) ? "\xE2\x94\x82" /* │ */ : " ";
+                drawScrolled(b, x, kSeparatorWidth, sep, offset, color, prefixWidth);
+                x += kSeparatorWidth;
+            }
+        }
+        writeLine(0, 0, size.x, 1, b);
+
+        // Second row: a plain "=" rule, full width, in the same header
+        // color — separates the column labels from the actual data
+        // rows below, the way a printed table's header rule would.
+        // Not affected by horizontal scrolling — a rule line looks the
+        // same regardless of what's scrolled into view above it, so
+        // there's nothing to shift here.
+        TDrawBuffer ruleLine;
+        ruleLine.moveChar(0, '=', color, size.x);
+        writeLine(0, 1, size.x, 1, ruleLine);
+    }
+
+    void handleEvent(TEvent& event) override {
+        TView::handleEvent(event);
+        if (event.what != evMouseDown) return;
+
+        TPoint local = makeLocal(event.mouse.where);
+        // Row 1 is the "=" rule line (see draw() above) — purely
+        // decorative, not another row of column headers, so clicks
+        // there are ignored rather than falling through to whichever
+        // column happens to occupy that x position.
+        if (local.y != 0) return;
+
+        // The checkbox column's own reserved space (see draw()) has no
+        // column underneath it to hit-test against — nothing to sort,
+        // resize, or reorder there, so a click within it is simply
+        // ignored rather than falling through to whatever column
+        // happens to sit at that same x once scrolling is accounted
+        // for.
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
+        if (local.x < prefixWidth) return;
+
+        // Every hit-test below works in CONTENT-relative x (the same
+        // coordinate space draw() builds cellText positions in, before
+        // horizontal scrolling shifts them on screen) — converting once
+        // here means columnAtX()/isOnSortGlyph()/etc. don't need to
+        // know scrolling exists at all.
+        int contentX = (local.x - prefixWidth) + owner_->horizontalScrollOffset();
+
+        auto vis = owner_->visibleDisplayOrder();
+        int visualPos = owner_->columnAtX(contentX, vis);
+
+        // The sort glyph has its own fixed, single-character hotspot
+        // (the column's last character — see draw() above), checked
+        // first and unconditionally, regardless of whether this
+        // mouse-down carries the double-click flag. That's deliberate:
+        // clicking the glyph is sort-only, on either click of a
+        // double-click, and must never be interpreted as the start of
+        // a reorder — otherwise every double-click on a sortable
+        // column would toggle the sort AND start a move at the same
+        // time (the sort toggling on the double-click's own first,
+        // ordinary mouse-down, before tvision even knows a second one
+        // is coming). Not drawn (and so not checked) for the column
+        // currently reorder-highlighted, since draw() replaces the
+        // glyph with the "<"/">" markers there instead.
+        if (visualPos >= 0 && visualPos != owner_->reorderVisualPos_) {
+            int logicalCol = vis[visualPos];
+            if (owner_->column(logicalCol).sortable && isOnSortGlyph(contentX, visualPos, vis)) {
+                bool ascending = (logicalCol == owner_->sortColumn_) ? !owner_->sortAscending_ : true;
+                owner_->setSortIndicator(logicalCol, ascending);
+                if (owner_->onSortChanged_) owner_->onSortChanged_(logicalCol, ascending);
+                clearEvent(event);
+                return;
+            }
+        }
+
+        if ((owner_->options_ & gvReorderableColumns) &&
+            (event.mouse.eventFlags & meDoubleClick) && visualPos >= 0) {
+            int logicalCol = vis[visualPos];
+            if (owner_->column(logicalCol).movable) {
+                owner_->runReorderLoop(visualPos);
+                clearEvent(event);
+                return;
+            }
+        }
+
+        if ((owner_->options_ & gvResizableColumns) && isOnSeparator(contentX, visualPos, vis)) {
+            dragResize(vis[visualPos], event);
+            clearEvent(event);
+            return;
+        }
+        // A plain single click elsewhere on a column's name — not the
+        // sort glyph, not a resize separator — intentionally does
+        // nothing now. It used to also toggle sort, which was the
+        // other half of the double-click collision described above.
+    }
+
+private:
+    // True if x lands exactly on the sort glyph's reserved position —
+    // the last character of the column's own width (see draw() above:
+    // never shifted by truncation, since it's placed there explicitly
+    // rather than by concatenation).
+    bool isOnSortGlyph(int x, int visualPos, const std::vector<int>& vis) const {
+        int pos = 0;
+        for (int i = 0; i < visualPos; i++) pos += owner_->column(vis[i]).width + kSeparatorWidth;
+        int width = owner_->column(vis[visualPos]).width;
+        return x == pos + width - 1;
+    }
+
+    // True if x lands exactly on the separator column right after visual
+    // position `visualPos` (i.e. the resize handle between it and the
+    // next visible one).
+    bool isOnSeparator(int x, int visualPos, const std::vector<int>& vis) const {
+        if (visualPos < 0 || visualPos >= (int)vis.size() - 1) return false;
+        int pos = 0;
+        for (int i = 0; i < visualPos; i++) pos += owner_->column(vis[i]).width + kSeparatorWidth;
+        pos += owner_->column(vis[visualPos]).width;
+        return x == pos;
+    }
+
+    void dragResize(int logicalCol, TEvent& event) {
+        int startX = event.mouse.where.x;
+        int startWidth = owner_->column(logicalCol).width;
+        while (mouseEvent(event, evMouseMove)) {
+            int delta = event.mouse.where.x - startX;
+            owner_->setColumnWidth(logicalCol, startWidth + delta);
+            owner_->relayout();
+        }
+    }
+
+    TGridView* owner_;
+};
+
+// ===========================================================================
+// TGridRowsView — the actual scrolling rows, rendered entirely from
+// TGridView's callbacks (see TGridView.h's "Data source" section for why
+// there's no row-data storage here at all). Iterates columns via
+// owner_->visibleDisplayOrder() for the same reason the header does — see
+// its own doc comment above.
+// ===========================================================================
+class TGridRowsView : public TListViewer {
+public:
+    TGridRowsView(const TRect& r, TScrollBar* hScroll, TScrollBar* vScroll, TGridView* owner)
+        : TListViewer(r, 1, hScroll, vScroll), owner_(owner) {
+        setRange(0);
+    }
+
+    void getText(char* dest, short item, short maxLen) override {
+        std::string line = buildRow(item);
+        std::snprintf(dest, maxLen, "%s", line.c_str());
+    }
+
+    // Notifies TGridView::onRowFocus_ on every focus change — arrow-key
+    // navigation, a plain click, or a caller's own focusRow() all funnel
+    // through this one override (see focusItem()'s doc comment on
+    // TListViewer itself: every other focus-changing method calls this).
+    void focusItem(short item) override {
+        TListViewer::focusItem(item);
+        if (owner_->onRowFocus_) owner_->onRowFocus_(item);
+    }
+
+    void draw() override {
+        TDrawBuffer b;
+        auto vis = owner_->visibleDisplayOrder();
+        int prefixWidth = owner_->isInSelectionMode() ? kSelectionColumnWidth : 0;
+        for (short i = 0; i < size.y; i++) {
+            short item = topItem + i;
+            bool isFocused = (item == focused);
+            // Always goes through the callback (with the correct
+            // `focused` flag) when one is set, rather than only for
+            // non-focused rows: a caller may want a specific focused-row
+            // look (e.g. this project's black-on-white, distinct from
+            // tvision's own default "selected" palette color) just as
+            // much as a per-status color for the rest. When NO callback
+            // is set, falls back to that exact same white-on-blue/
+            // black-on-white pair directly (TColorAttr(0x1F)/(0xF0))
+            // rather than resolving through the owner's own palette
+            // chain (getColor(1)/getColor(2)) the way this used to —
+            // every caller of this generic widget across this project
+            // needed to set an IDENTICAL callback just to get readable
+            // contrast inside a TDialog (the palette chain's own default
+            // doesn't contrast enough there), duplicated across four
+            // separate files for no reason other than this fallback
+            // not already doing it. Still fully overridable — the main
+            // torrent list's own per-status coloring (yellow for
+            // checking/queued, cyan for downloading, ...) sets its own
+            // callback same as always, this only changes what happens
+            // when nothing does.
+            TColorAttr rowColor = owner_->rowColor_
+                ? owner_->rowColor_(item, isFocused)
+                : TColorAttr(isFocused ? 0xF0 : 0x1F);
+            b.moveChar(0, ' ', rowColor, size.x);
+            if (item >= 0 && item < owner_->rowCount_) {
+                if (prefixWidth > 0) {
+                    // Fixed, never scrolled — see drawScrolled()'s own
+                    // doc comment — so drawn directly rather than
+                    // through it.
+                    bool checked = item < (int)owner_->selectedRows_.size() && owner_->selectedRows_[item];
+                    b.moveStr(0, checked ? "[X] " : "[ ] ", rowColor);
+                }
+                int offset = owner_->horizontalScrollOffset();
+                int x = 0; // CONTENT-relative — see drawScrolled()
+                int n = (int)vis.size();
+                for (int visualPos = 0; visualPos < n; visualPos++) {
+                    int logicalCol = vis[visualPos];
+                    const TGridColumn& col = owner_->column(logicalCol);
+                    std::string cellStr = owner_->cellText_ ? owner_->cellText_(item, logicalCol) : "";
+                    std::string fitted = fitToWidth(cellStr, col.width, col.align);
+                    TColorAttr cellColor = rowColor;
+                    // Applied regardless of focus state — bold is a
+                    // property of the cell (e.g. "this is the name
+                    // column"), not something that should silently stop
+                    // applying just because the row happens to be
+                    // selected right now.
+                    if (owner_->cellBold_ && owner_->cellBold_(item, logicalCol)) {
+                        cellColor = TColorAttr(cellColor.getForeground(), cellColor.getBackground(),
+                                                cellColor.getStyle() | slBold);
+                    }
+                    drawScrolled(b, x, col.width, fitted, offset, cellColor, prefixWidth);
+                    x += col.width;
+                    if (visualPos < n - 1) {
+                        drawScrolled(b, x, kSeparatorWidth, " ", offset, rowColor, prefixWidth);
+                        x += kSeparatorWidth;
+                    }
+                }
+            }
+            writeLine(0, i, size.x, 1, b);
+        }
+    }
+
+    void handleEvent(TEvent& event) override {
+        if (event.what == evMouseDown && (event.mouse.buttons & mbRightButton) != 0 &&
+            owner_->onRowContext_) {
+            // Handled here, BEFORE calling the base class below — not
+            // after, which is where this used to live. TListViewer::
+            // handleEvent()'s own `if (event.what == evMouseDown)` block
+            // (see tlstview.cpp) never actually checks which button was
+            // pressed: it unconditionally enters its own click-tracking
+            // loop for ANY mouseDown, left or right, and that loop
+            // blocks internally (via mouseEvent()) until the button is
+            // released — at which point it has overwritten `event.what`
+            // to evMouseUp before ever returning control here. Checking
+            // "was this a right-click" AFTER calling the base class
+            // therefore could never succeed, on any terminal — by then
+            // event.what was never still evMouseDown, regardless of
+            // which button was actually pressed. Handling it here
+            // instead, before the base class ever sees the event,
+            // sidesteps the whole problem rather than trying to recover
+            // the original button after the fact.
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                focusItemNum(row);
+                owner_->onRowContext_(row, event.mouse.where);
+            }
+            clearEvent(event);
+            return;
+        }
+
+        if (event.what == evMouseDown && (event.mouse.buttons & mbMiddleButton) != 0 &&
+            owner_->onRowMiddleClick_ && !owner_->isInSelectionMode()) {
+            // Same reasoning as the right-click handling just above:
+            // TListViewer::handleEvent()'s own click-tracking loop
+            // doesn't check which button was pressed either, so this
+            // has to be handled here, before the base class ever sees
+            // the event, for the same reason. Not fired in selection
+            // mode, matching RowActivateFn/CellActivateFn there too —
+            // see this class's own doc comment on why a click there
+            // means "toggle this row", not "act on it".
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                focusItemNum(row);
+                owner_->onRowMiddleClick_(row);
+            }
+            clearEvent(event);
+            return;
+        }
+
+        if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0 &&
+            (event.mouse.eventFlags & meDoubleClick) && !owner_->isInSelectionMode()) {
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                // CellActivateFn gets first refusal — figures out which
+                // column the double-click landed on and fires the
+                // callback. If it reports having handled this column
+                // (see CellActivateFn's own doc comment), the event is
+                // consumed here — never reaching either RowActivateFn or
+                // the selection-mode entry just below, so a column
+                // that's meant to do something else on double-click
+                // (e.g. cycling the Queue Position column) keeps doing
+                // that instead.
+                bool consumedByCell = false;
+                if (owner_->onCellActivate_) {
+                    int contentX = local.x + owner_->horizontalScrollOffset();
+                    auto vis = owner_->visibleDisplayOrder();
+                    int visualPos = owner_->columnAtX(contentX, vis);
+                    consumedByCell = visualPos >= 0 && owner_->onCellActivate_(row, vis[visualPos]);
+                }
+                if (consumedByCell) {
+                    clearEvent(event);
+                    return;
+                }
+                if (owner_->multiSelectCapable()) {
+                    // A double-click CellActivateFn didn't already
+                    // handle enters selection mode instead of falling
+                    // through to RowActivateFn — this is what a
+                    // double-click means for a grid that supports
+                    // selection mode now, replacing the old press-and-
+                    // hold gesture entirely (simpler to discover, and
+                    // symmetric with a double-click also being what
+                    // closes it again — see the isInSelectionMode()
+                    // branch below). A grid without multi-select support
+                    // (e.g. the tracker list) falls through unchanged,
+                    // to TListViewer::handleEvent()'s own double-click
+                    // detection and whatever RowActivateFn does with it,
+                    // since an event that already carries meDoubleClick
+                    // on arrival never blocks there (see tlstview.cpp —
+                    // its own press-tracking loop checks for this flag
+                    // before ever calling mouseEvent()).
+                    owner_->enterSelectionMode(row);
+                    clearEvent(event);
+                    return;
+                }
+            }
+        }
+
+        if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0) {
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                if (owner_->isInSelectionMode()) {
+                    if (event.mouse.eventFlags & meDoubleClick) {
+                        // The second mouseDown of a double-click while
+                        // already in selection mode exits it — the
+                        // mirror of how a double-click enters it in the
+                        // first place, above. Toggling the row twice
+                        // here (what an earlier version of this simply
+                        // skipped) would silently cancel itself back to
+                        // the original state anyway, so closing
+                        // selection mode instead is strictly more useful
+                        // for the same gesture, and matches "double-
+                        // click to start, double-click to stop" being
+                        // the whole mental model now.
+                        owner_->exitSelectionMode();
+                        clearEvent(event);
+                        return;
+                    }
+                    // Any (single) click on the row toggles it — not
+                    // just a precise hit on the tiny "[X]" itself, which
+                    // would be needlessly fiddly for something meant to
+                    // make batch-selecting easier.
+                    owner_->toggleRowSelected(row);
+                    focusItemNum(row); // still moves focus there, same
+                                        // as an ordinary click would
+                    clearEvent(event);  // stops here — never reaches
+                                         // TListViewer::handleEvent()'s
+                                         // own double-click "activate"
+                                         // detection below, which would
+                                         // otherwise open a details
+                                         // window mid-selection
+                    return;
+                }
+            }
+        } else if (event.what == evKeyDown && owner_->isInSelectionMode() &&
+                   event.keyDown.charScan.charCode == ' ') {
+            owner_->toggleRowSelected(focused);
+            clearEvent(event);
+            return;
+        } else if (event.what == evKeyDown && owner_->isInSelectionMode() &&
+                   (event.keyDown.keyCode == kbEsc || event.keyDown.keyCode == kbEnter)) {
+            // Esc or Enter both just leave selection mode — neither
+            // toggles the focused row on the way out (Space already
+            // covers "toggle", these two are specifically "I'm done").
+            owner_->exitSelectionMode();
+            clearEvent(event);
+            return;
+        }
+
+        TListViewer::handleEvent(event);
+    }
+
+private:
+    // Used by getText() (plain, used by TListViewer internals such as
+    // any future type-ahead search) — draw() builds the same content
+    // per-segment instead, for per-cell coloring, but the column
+    // iteration itself (via visibleDisplayOrder()) matches so the two
+    // never drift apart on layout.
+    std::string buildRow(int item) {
+        if (item < 0 || item >= owner_->rowCount_) return "";
+        std::string out;
+        auto vis = owner_->visibleDisplayOrder();
+        int n = (int)vis.size();
+        for (int visualPos = 0; visualPos < n; visualPos++) {
+            int logicalCol = vis[visualPos];
+            const TGridColumn& col = owner_->column(logicalCol);
+            std::string cellStr = owner_->cellText_ ? owner_->cellText_(item, logicalCol) : "";
+            out += fitToWidth(cellStr, col.width, col.align);
+            if (visualPos < n - 1) out += " ";
+        }
+        return out;
+    }
+
+    TGridView* owner_;
+};
+
+// ===========================================================================
+// TGridView
+// ===========================================================================
+
+TGridView::TGridView(const TRect& bounds, ushort options)
+    : TGroup(bounds), options_(options) {
+    TRect r = getExtent();
+
+    // The header is 2 rows tall: column labels on the first, a full
+    // "=" rule line on the second — see TGridHeaderView::draw() — and
+    // the bottom row is reserved for the horizontal scrollbar, so the
+    // rows/vertical-scrollbar area sits between the two.
+    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 2);
+    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y - 1);
+    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y - 1);
+    TRect hScrollRect(r.a.x, r.b.y - 1, r.b.x - 1, r.b.y);
+
+    scrollBar_ = new TScrollBar(scrollRect);
+    scrollBar_->growMode = gfGrowLoX | gfGrowHiX | gfGrowHiY;
+    insert(scrollBar_);
+
+    // A TScrollBar infers horizontal-vs-vertical from its own bounds'
+    // shape (wider than tall here, the opposite of scrollBar_ above) —
+    // see tvision's own TScrollBar constructor. Passed straight into
+    // TGridRowsView's TListViewer base below, whose own inherited
+    // handleEvent() already reacts to this specific scrollbar changing
+    // (see tlstview.cpp) and redraws the rows on its own; TGridView's
+    // own handleEvent() (further down) does the same for the header,
+    // which — unlike the rows — isn't a TListViewer and has no such
+    // built-in reaction of its own.
+    hScrollBar_ = new TScrollBar(hScrollRect);
+    hScrollBar_->growMode = gfGrowLoY | gfGrowHiY | gfGrowHiX;
+    insert(hScrollBar_);
+
+    rows_ = new TGridRowsView(rowsRect, hScrollBar_, scrollBar_, this);
+    rows_->growMode = gfGrowHiX | gfGrowHiY;
+    insert(rows_);
+
+    header_ = new TGridHeaderView(headerRect, this);
+    insert(header_);
+}
+
+void TGridView::changeBounds(const TRect& bounds) {
+    TGroup::changeBounds(bounds);
+    // Same rects as the constructor above, recomputed against this
+    // view's own new size (getExtent() now reflects `bounds`, already
+    // applied by the base class call just above) — see this method's
+    // own doc comment in TGridView.h for why growMode alone wasn't
+    // enough here.
+    TRect r = getExtent();
+    TRect headerRect(r.a.x, r.a.y, r.b.x, r.a.y + 2);
+    TRect scrollRect(r.b.x - 1, r.a.y + 2, r.b.x, r.b.y - 1);
+    TRect rowsRect(r.a.x, r.a.y + 2, r.b.x - 1, r.b.y - 1);
+    TRect hScrollRect(r.a.x, r.b.y - 1, r.b.x - 1, r.b.y);
+
+    header_->locate(headerRect);
+    scrollBar_->locate(scrollRect);
+    rows_->locate(rowsRect);
+    hScrollBar_->locate(hScrollRect);
+
+    // hScrollBarRowReserved_'s own "1 row reserved for the horizontal
+    // scrollbar" bookkeeping (see updateHScrollBarVisibility()) is
+    // relative to rowsRect/scrollRect's own height, which the four
+    // locate() calls above just changed out from under it — restated
+    // here explicitly (reset to the "not reserved" baseline first,
+    // matching this class's own construction-time default) rather than
+    // left holding a stale ±1 adjustment from before this resize.
+    hScrollBarRowReserved_ = true;
+    updateHScrollBarVisibility();
+
+    // Both sfExposed and sfVisible, not just one — this override exists
+    // because a caller like this project's own FilesPanel (constructs
+    // this grid at a placeholder size before its own owner ever
+    // resizes it to the real one) was found leaving this grid's own
+    // scrollBar_ permanently unable to draw itself, and drawView()
+    // (tvision's own tview.cpp) gates on both of these flags, not just
+    // one.
+    //
+    // sfExposed: TView::setState()'s own `case sfVisible:` branch only
+    // forwards sfExposed to a child when THIS view's own owner already
+    // has it set AT THE MOMENT the child is shown — found directly, via
+    // a temporary diagnostic print added straight into tvision's own
+    // drawView()/draw(), that showed this grid's own scrollBar_ never
+    // had sfExposed set at all when embedded in a caller like
+    // FilesPanel, where every one of this grid's own children gets
+    // shown before FilesPanel itself has ever been inserted anywhere
+    // (and so before FilesPanel's own owner had sfExposed to forward
+    // down in the first place). The main torrent list's own grid never
+    // hit this, because TGridWindow constructs it already inside an
+    // already-exposed window.
+    //
+    // sfVisible: a second, separate finding, via the same kind of
+    // direct instrumentation (this time printed from inside this very
+    // override) — this grid's own scrollBar_ can be caught with
+    // sfVisible transiently False at the exact moment an owner's own
+    // resize reaches here, apparently mid-way through that owner's own
+    // insertBefore() sequence (TGroup::insertBefore(), tvision's own
+    // tgroup.cpp — hide(), relink, then show() again) rather than
+    // after it's fully settled. scrollBar_->show() below forces it back
+    // on regardless of that transient state, rather than trusting the
+    // owner's own later show() call to reach it correctly on its own.
+    //
+    // Re-synced here, every time this view's own bounds change (not
+    // just once at construction), since that's exactly when a caller
+    // like this one is most likely to still be un-exposed. header_'s
+    // and rows_'s own sfExposed are set for the same underlying reason,
+    // even though only scrollBar_'s own absence was the one actually
+    // reported (a visible gap in its own track, screenshot in hand);
+    // nothing here found rows_/header_ to be affected the same way,
+    // but leaving their own sfExposed unsynced while fixing only the
+    // one view that happened to be visibly broken felt like the wrong
+    // scope for this fix.
+    Boolean exposedNow = True; // forced unconditionally, not read from
+        // (state & sfExposed) here — that was tried first and didn't
+        // help, since this view's own sfExposed can be just as
+        // transiently unset at this exact moment as scrollBar_'s own
+        // sfVisible above.
+    header_->setState(sfExposed, exposedNow);
+    rows_->setState(sfExposed, exposedNow);
+    scrollBar_->show();
+    scrollBar_->setState(sfExposed, exposedNow);
+    hScrollBar_->setState(sfExposed, exposedNow);
+}
+
+int TGridView::addColumn(const TGridColumn& col) {
+    columns_.push_back(col);
+    defaultColumns_.push_back(col);
+    resetColumnOrder();
+    relayout();
+    return (int)columns_.size() - 1;
+}
+
+void TGridView::insertColumn(int index, const TGridColumn& col) {
+    index = std::clamp(index, 0, (int)columns_.size());
+    columns_.insert(columns_.begin() + index, col);
+    defaultColumns_.insert(defaultColumns_.begin() + index, col);
+    resetColumnOrder();
+    relayout();
+}
+
+void TGridView::removeColumn(int index) {
+    if (index < 0 || index >= (int)columns_.size()) return;
+    columns_.erase(columns_.begin() + index);
+    defaultColumns_.erase(defaultColumns_.begin() + index);
+    resetColumnOrder();
+    relayout();
+}
+
+void TGridView::clearColumns() {
+    columns_.clear();
+    defaultColumns_.clear();
+    resetColumnOrder();
+    relayout();
+}
+
+void TGridView::setColumnWidth(int index, int width) {
+    if (index < 0 || index >= (int)columns_.size()) return;
+    columns_[index].width = std::max(width, columns_[index].minWidth);
+}
+
+void TGridView::setColumnVisible(int index, bool visible) {
+    if (index < 0 || index >= (int)columns_.size()) return;
+    columns_[index].visible = visible;
+    relayout();
+}
+
+void TGridView::resetColumns() {
+    for (int i = 0; i < (int)columns_.size(); i++) {
+        columns_[i].width = defaultColumns_[i].width;
+        columns_[i].visible = defaultColumns_[i].visible;
+    }
+    resetColumnOrder();
+    relayout();
+}
+
+void TGridView::setRowCount(int count) {
+    rowCount_ = std::max(count, 0);
+    // Kept in lockstep so a mid-selection refresh (more or fewer rows
+    // than before) doesn't leave selectedRows_ shorter than rowCount_ —
+    // toggleRowSelected()/selectedRows() would then either silently
+    // reject a valid row or read past the end. Existing entries are
+    // preserved by index rather than cleared outright: whether that
+    // still means the same thing after a refresh depends on whether the
+    // caller's own data kept the same order, which is the caller's
+    // concern, not this widget's (see TorrentListWindow's own handling
+    // of this, which avoids the question by not reordering while
+    // selection mode is active).
+    if (selectionModeActive_) selectedRows_.resize(rowCount_, false);
+}
+
+void TGridView::setCellTextCallback(CellTextFn fn) { cellText_ = std::move(fn); }
+void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); }
+void TGridView::setHeaderColorCallback(HeaderColorFn fn) { headerColor_ = std::move(fn); }
+void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
+void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
+void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }
+void TGridView::setRowMiddleClickCallback(RowMiddleClickFn fn) { onRowMiddleClick_ = std::move(fn); }
+void TGridView::setCellActivateCallback(CellActivateFn fn) { onCellActivate_ = std::move(fn); }
+
+int TGridView::columnAtX(int x, const std::vector<int>& vis) const {
+    int pos = 0;
+    int n = (int)vis.size();
+    for (int visualPos = 0; visualPos < n; visualPos++) {
+        int w = column(vis[visualPos]).width + (visualPos < n - 1 ? kSeparatorWidth : 0);
+        if (x >= pos && x < pos + w) return visualPos;
+        pos += w;
+    }
+    return -1;
+}
+
+void TGridView::enterSelectionMode(int initialRow) {
+    if (!(options_ & gvMultiSelect) || selectionModeActive_) return;
+    selectionModeActive_ = true;
+    selectedRows_.assign(rowCount_, false);
+    if (initialRow >= 0 && initialRow < rowCount_) selectedRows_[initialRow] = true;
+    relayout(); // header/rows need to redraw with the new checkbox column
+}
+
+void TGridView::exitSelectionMode() {
+    if (!selectionModeActive_) return;
+    selectionModeActive_ = false;
+    selectedRows_.clear();
+    relayout();
+}
+
+void TGridView::toggleRowSelected(int row) {
+    if (!selectionModeActive_ || row < 0 || row >= (int)selectedRows_.size()) return;
+    selectedRows_[row] = !selectedRows_[row];
+    rows_->drawView();
+}
+
+std::vector<int> TGridView::selectedRows() const {
+    std::vector<int> out;
+    for (int i = 0; i < (int)selectedRows_.size(); i++)
+        if (selectedRows_[i]) out.push_back(i);
+    return out;
+}
+void TGridView::setRowFocusCallback(RowFocusFn fn) { onRowFocus_ = std::move(fn); }
+void TGridView::setSortChangedCallback(SortChangedFn fn) { onSortChanged_ = std::move(fn); }
+void TGridView::setColumnOrderChangedCallback(ColumnOrderChangedFn fn) { onColumnOrderChanged_ = std::move(fn); }
+
+void TGridView::setSortIndicator(int col, bool ascending) {
+    sortColumn_ = col;
+    sortAscending_ = ascending;
+    if (header_) header_->drawView();
+}
+
+void TGridView::startKeyboardResize(int col) {
+    if (col < 0 || col >= (int)columns_.size()) return;
+    if (!columns_[col].resizable) return;
+
+    int originalWidth = columns_[col].width;
+    TEvent event;
+    for (;;) {
+        // Same "pump events in a loop" primitive mouseEvent() itself
+        // is built on (see tview.cpp) — any TView can call getEvent()
+        // to synchronously pull the next event, which is what makes
+        // this callable from outside the header's own event handling
+        // (e.g. a menu item), not just from a mouse-down already being
+        // processed there.
+        getEvent(event);
+        if (event.what != evKeyDown) continue;
+        switch (event.keyDown.keyCode) {
+            case kbLeft:
+                setColumnWidth(col, columns_[col].width - 1);
+                relayout();
+                break;
+            case kbRight:
+                setColumnWidth(col, columns_[col].width + 1);
+                relayout();
+                break;
+            case kbEnter:
+                return; // confirmed at the current width
+            case kbEsc:
+                setColumnWidth(col, originalWidth);
+                relayout();
+                return; // cancelled: reverted to the width it had on entry
+            default:
+                break; // any other key: ignored, keep waiting
+        }
+    }
+}
+
+std::vector<int> TGridView::visibleDisplayOrder() const {
+    std::vector<int> vis;
+    vis.reserve(displayOrder_.size());
+    for (int logicalCol : displayOrder_)
+        if (columns_[logicalCol].visible) vis.push_back(logicalCol);
+    return vis;
+}
+
+int TGridView::visualPositionOf(int logicalCol) const {
+    for (int i = 0; i < (int)displayOrder_.size(); i++)
+        if (displayOrder_[i] == logicalCol) return i;
+    return -1;
+}
+
+int TGridView::visiblePositionOf(int logicalCol) const {
+    auto vis = visibleDisplayOrder();
+    for (int i = 0; i < (int)vis.size(); i++)
+        if (vis[i] == logicalCol) return i;
+    return -1;
+}
+
+void TGridView::resetColumnOrder() {
+    displayOrder_.resize(columns_.size());
+    for (int i = 0; i < (int)displayOrder_.size(); i++) displayOrder_[i] = i;
+}
+
+void TGridView::setColumnOrder(const std::vector<int>& order) {
+    // Must be exactly a permutation of [0, columnCount()) — anything
+    // else (wrong size, an out-of-range or duplicate index) would leave
+    // some column undrawable or drawn twice, so it's rejected wholesale
+    // rather than applied partially.
+    if (order.size() != columns_.size()) return;
+    std::vector<bool> seen(columns_.size(), false);
+    for (int v : order) {
+        if (v < 0 || v >= (int)columns_.size() || seen[v]) return;
+        seen[v] = true;
+    }
+    displayOrder_ = order;
+    relayout();
+}
+
+void TGridView::startKeyboardReorder(int col) {
+    if (col < 0 || col >= (int)columns_.size()) return;
+    if (!columns_[col].movable || !columns_[col].visible) return;
+    int visPos = visiblePositionOf(col);
+    if (visPos < 0) return;
+    runReorderLoop(visPos);
+}
+
+void TGridView::runReorderLoop(int startVisualPos) {
+    reorderVisualPos_ = startVisualPos;
+    std::vector<int> originalOrder = displayOrder_;
+    header_->drawView();
+
+    // Swaps the visible-list neighbors at positions `a` and `a+1` — found
+    // via their TRUE (possibly non-adjacent, if hidden columns sit
+    // between them) positions in displayOrder_, since that's the array
+    // actually being reordered; visibleDisplayOrder() is just a filtered
+    // view over it, recomputed fresh here because the previous swap may
+    // have changed it.
+    auto swapVisibleNeighbors = [this](int a, int b) {
+        auto vis = visibleDisplayOrder();
+        int rawA = visualPositionOf(vis[a]);
+        int rawB = visualPositionOf(vis[b]);
+        std::swap(displayOrder_[rawA], displayOrder_[rawB]);
+    };
+
+    TEvent event;
+    for (;;) {
+        // Same getEvent()-loop primitive as startKeyboardResize() — see
+        // its own comment for why this works both from a menu command
+        // and (via the header's double-click handling) from within an
+        // event already being processed.
+        getEvent(event);
+        if (event.what == evKeyDown) {
+            switch (event.keyDown.keyCode) {
+                case kbLeft:
+                    if (reorderVisualPos_ > 0) {
+                        swapVisibleNeighbors(reorderVisualPos_, reorderVisualPos_ - 1);
+                        reorderVisualPos_--;
+                        relayout();
+                    }
+                    continue;
+                case kbRight:
+                    if (reorderVisualPos_ < (int)visibleDisplayOrder().size() - 1) {
+                        swapVisibleNeighbors(reorderVisualPos_, reorderVisualPos_ + 1);
+                        reorderVisualPos_++;
+                        relayout();
+                    }
+                    continue;
+                case kbEnter:
+                    reorderVisualPos_ = -1;
+                    header_->drawView();
+                    if (onColumnOrderChanged_) onColumnOrderChanged_(displayOrder_);
+                    return;
+                case kbEsc:
+                    displayOrder_ = originalOrder;
+                    reorderVisualPos_ = -1;
+                    relayout();
+                    return; // cancelled: nothing actually changed, no callback
+                default:
+                    continue;
+            }
+        } else if (event.what == evMouseDown) {
+            TPoint local = header_->makeLocal(event.mouse.where);
+            int contentX = local.x + horizontalScrollOffset();
+            int hit = reorderArrowHitTest(contentX);
+            auto vis = visibleDisplayOrder();
+            if (hit == -1 && reorderVisualPos_ > 0) {
+                swapVisibleNeighbors(reorderVisualPos_, reorderVisualPos_ - 1);
+                reorderVisualPos_--;
+                relayout();
+                continue;
+            }
+            if (hit == 1 && reorderVisualPos_ < (int)vis.size() - 1) {
+                swapVisibleNeighbors(reorderVisualPos_, reorderVisualPos_ + 1);
+                reorderVisualPos_++;
+                relayout();
+                continue;
+            }
+            // Anything else — a click inside the highlighted column but
+            // not on a marker, or outside it entirely — confirms, same
+            // as Enter: it's a deliberate "leave it here" either way,
+            // and a click outside the column would otherwise be
+            // silently swallowed instead of acting on whatever it was
+            // actually meant for once this mode ends.
+            reorderVisualPos_ = -1;
+            header_->drawView();
+            if (onColumnOrderChanged_) onColumnOrderChanged_(displayOrder_);
+            return;
+        }
+        // Any other event type: ignored, keep waiting.
+    }
+}
+
+int TGridView::reorderArrowHitTest(int x) const {
+    if (reorderVisualPos_ < 0) return -2;
+    auto vis = visibleDisplayOrder();
+    int n = (int)vis.size();
+    if (reorderVisualPos_ >= n) return -2; // stale (shouldn't happen, defensive)
+    int pos = 0;
+    for (int i = 0; i < reorderVisualPos_; i++) pos += column(vis[i]).width + kSeparatorWidth;
+    int width = column(vis[reorderVisualPos_]).width;
+    if (x < pos || x >= pos + width) return -2; // outside the highlighted column
+    bool hasLeft = reorderVisualPos_ > 0;
+    bool hasRight = reorderVisualPos_ < n - 1;
+    if (hasLeft && x == pos) return -1;
+    if (hasRight && x == pos + width - 1) return 1;
+    return 0; // inside the column, but not on a marker
+}
+
+void TGridView::refresh() {
+    rows_->setRange((short)rowCount_);
+    if (rows_->focused >= rows_->range && rows_->range > 0)
+        rows_->focusItem(rows_->range - 1);
+    rows_->drawView();
+    header_->drawView();
+}
+
+int TGridView::focusedRow() const { return rows_->focused; }
+
+void TGridView::focusRow(int row) { rows_->focusItem((short)row); }
+
+int TGridView::totalContentWidth() const {
+    int total = 0;
+    auto vis = visibleDisplayOrder();
+    for (size_t i = 0; i < vis.size(); i++) {
+        total += columns_[vis[i]].width;
+        if (i + 1 < vis.size()) total += kSeparatorWidth;
+    }
+    return total;
+}
+
+int TGridView::horizontalScrollOffset() const {
+    return hScrollBar_ ? hScrollBar_->value : 0;
+}
+
+int TGridView::scrollableViewportWidth() const {
+    // The checkbox column (see kSelectionColumnWidth) is fixed and
+    // never scrolls, so it isn't part of what the horizontal
+    // scrollbar's range is computed against — only the space actually
+    // available to the real, scrollable columns is.
+    return rows_->size.x - (selectionModeActive_ ? kSelectionColumnWidth : 0);
+}
+
+void TGridView::updateHScrollBarVisibility() {
+    if (!hScrollBar_) return;
+    int maxOffset = std::max(0, totalContentWidth() - scrollableViewportWidth());
+    bool needed = maxOffset > 0;
+    // The resize itself only ever runs once per actual transition,
+    // guarded by our own tracked flag — never by re-reading
+    // hScrollBar_->state (see this method's own doc comment for why
+    // that would cause an unbounded, repeated resize instead).
+    if (needed != hScrollBarRowReserved_) {
+        TRect rowsBounds = rows_->getBounds();
+        TRect vScrollBounds = scrollBar_->getBounds();
+        if (needed) {
+            rowsBounds.b.y -= 1;
+            vScrollBounds.b.y -= 1;
+        } else {
+            rowsBounds.b.y += 1;
+            vScrollBounds.b.y += 1;
+        }
+        rows_->changeBounds(rowsBounds);
+        scrollBar_->changeBounds(vScrollBounds);
+        hScrollBarRowReserved_ = needed;
+    }
+    // Repeated unconditionally, every call — cheap, and harmless even
+    // when nothing changed — so that whatever else might have flipped
+    // hScrollBar_'s own visible/hidden appearance gets corrected every
+    // time, without that correction ever feeding back into the resize
+    // decision above.
+    if (hScrollBarRowReserved_) hScrollBar_->show(); else hScrollBar_->hide();
+}
+
+void TGridView::relayout() {
+    if (hScrollBar_) {
+        // Range is how far content extends past the visible width — 0
+        // (nothing to scroll) once every column fits, same idea as the
+        // vertical scrollbar's own range being 0 when every row fits.
+        // scrollableViewportWidth() (not header_'s/rows_'s raw width)
+        // is the actual viewport, since it already excludes the
+        // checkbox column's own fixed space when selection mode is
+        // active. Unaffected by the show/hide toggle just below — that
+        // only ever changes rows_'s HEIGHT, never its width.
+        int maxOffset = std::max(0, totalContentWidth() - scrollableViewportWidth());
+        // A drag/click already past the new maximum (e.g. after
+        // widening a column back down) needs pulling back in bounds —
+        // setRange() alone doesn't clamp an out-of-range current value.
+        if (hScrollBar_->value > maxOffset) hScrollBar_->setValue(maxOffset);
+        hScrollBar_->setRange(0, maxOffset);
+
+        // Hidden — and its row handed back to the rows/vertical-
+        // scrollbar area — whenever there's nothing to scroll, rather
+        // than always reserving a row for a control that would do
+        // nothing.
+        updateHScrollBarVisibility();
+    }
+    header_->drawView();
+    rows_->drawView();
+}
+
+void TGridView::handleEvent(TEvent& event) {
+    TGroup::handleEvent(event);
+    // TListViewer::selectItem() sends this broadcast to its own owner
+    // (this group) on double-click / Enter (see tlstview.cpp).
+    if (event.what == evBroadcast &&
+        event.message.command == cmListItemSelected &&
+        event.message.infoPtr == rows_) {
+        if (onRowActivate_) onRowActivate_(rows_->focused);
+        clearEvent(event);
+    }
+    // rows_ (a TListViewer) already reacts to this on its own for
+    // hScrollBar_ (see its own inherited handleEvent() in tlstview.cpp)
+    // — this is only for header_, which isn't a TListViewer and has no
+    // such built-in reaction, but still needs to redraw in sync so its
+    // column labels stay lined up with whatever the rows just scrolled
+    // to.
+    if (event.what == evBroadcast &&
+        event.message.command == cmScrollBarChanged &&
+        event.message.infoPtr == hScrollBar_) {
+        header_->drawView();
+    }
+}

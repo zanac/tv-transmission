@@ -846,6 +846,19 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Files panel's own "Enable" column was still getting truncated (to
+"Ena") — asked directly to show in full, and to make the separate
+Files window use the same label for consistency.** Widened from 5 to
+8 (matching the separate Files window's own column, which already fit
+the word at that width) — the panel's own name column already
+computed its own width as `size.x - 8`, so this lines up exactly, no
+further adjustment needed there. The separate Files window switched
+from its own "Wanted" string to this same "Enable" one; the
+now-unused old string was removed rather than left behind unreferenced.
+Verified live: read the actual cells past where the terminal dump's
+own display width had been cutting it off, confirming "Enable" shows
+in full, not just assumed from the source change.
+
 **v1.7.1**: Files panel's own wanted-toggle column header renamed from
 "Wanted" to "Enable" — asked for directly, specific to this panel (the
 separate, full-size Files window keeps "Wanted", where the extra space
