@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.0** — stable release.
+**Version 1.7.1** — stable release.
 
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
@@ -845,6 +845,19 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**v1.7.1**: Files panel's own wanted-toggle column header renamed from
+"Wanted" to "Enable" — asked for directly, specific to this panel (the
+separate, full-size Files window keeps "Wanted", where the extra space
+still fits the original word comfortably). Also asked directly:
+whether toggling a file's own wanted status should be restricted to
+certain torrent states (e.g. disallowed once seeding) — checked
+against Transmission's own RPC spec and reference clients rather than
+guessed at: neither documents any state restriction on
+`files-wanted`/`files-unwanted`, and toggling a file on a completed,
+seeding torrent is a real, intentional feature (stop seeding just that
+file without stopping the whole torrent) — so this stays exactly as
+it already worked, unrestricted.
 
 **Status panel: widening it left its own child widgets (the name
 filter, the status checkboxes) at their original width, leaving a

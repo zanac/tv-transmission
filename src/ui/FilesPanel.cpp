@@ -85,7 +85,7 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     nameCol.minWidth = 8;
     grid_->addColumn(nameCol);
     TGridColumn wantedCol;
-    wantedCol.header = tr(Str::HeaderFileWanted);
+    wantedCol.header = tr(Str::HeaderFileEnable);
     wantedCol.width = 5;
     wantedCol.minWidth = 5;
     wantedCol.resizable = false; // fixed width for the "[X]"/"[ ]"/"[-]"

@@ -603,6 +603,13 @@ const char* tr(Str id) {
             return pick("Done", "Fatto", "Terminé", "Fertig", "Hecho", "Feito", "Готово", "Feito");
         case Str::HeaderFileWanted:
             return pick("Wanted", "Richiesto", "Voulu", "Gewünscht", "Deseado", "Desejado", "Нужен", "Pretendido");
+        case Str::HeaderFileEnable:
+            // Same column FilesPanel's own wantedCol.header uses
+            // (TorrentFilesWindow's own, separate window keeps
+            // HeaderFileWanted above unchanged — asked for directly as
+            // this panel's own column specifically, and that window
+            // has more room for the longer word anyway).
+            return pick("Enable", "Abilita", "Activer", "Aktivieren", "Habilitar", "Habilitar", "Включить", "Ativar");
         case Str::ValueMixed: return pick("Mixed", "Misto", "Mixte", "Gemischt", "Mixto", "Misto", "Смешанно", "Misto");
         case Str::ButtonToggleWanted:
             return pick("~T~oggle wanted", "~A~ttiva/disattiva", "Basc~u~ler voulu",

@@ -101,6 +101,7 @@ enum class Str {
     // Torrent files window (src/ui/TorrentFilesWindow.cpp)
     WindowTitleFiles,
     HeaderFileName, HeaderFileSize, HeaderFileProgress, HeaderFileWanted,
+    HeaderFileEnable,
     ValueMixed,
     ButtonToggleWanted, ButtonSelectAll, ButtonSelectNone,
     ButtonPriorityLow, ButtonPriorityNormal, ButtonPriorityHigh,
