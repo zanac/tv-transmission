@@ -102,6 +102,13 @@ public:
     // implementation there rather than each having its own.
     void setFilesPanelOpen(bool open, int width);
     bool isFilesPanelOpen() const { return filesPanel_ != nullptr; }
+    // nullptr whenever isFilesPanelOpen() is false — same convention as
+    // grid()'s own non-null guarantee doesn't apply here, since this
+    // one really can be absent. Added for FilesSyncHelper's own use
+    // (walking every open TorrentListWindow to find whichever one's
+    // own FilesPanel, if any, is showing a given torrent id) — nothing
+    // in this class itself needed it before.
+    FilesPanel* filesPanel() const { return filesPanel_; }
     int filesPanelWidth() const { return filesPanelWidth_; }
 
     // Keyboard-driven equivalent of dragResizeStatusPanel()/

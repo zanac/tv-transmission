@@ -846,6 +846,48 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Clicking a torrent row stopped updating the Files panel's own
+content — reported directly.** `grid()->setRowFocusCallback()` was
+called twice in `TorrentListWindow`'s own setup: the first call
+updated the Files panel, a second one (added later, for
+`updateCommandStates()`) silently replaced it rather than adding to
+it — `onRowFocus_` (`TGridView.h`) is a single `std::function`, an
+assignment, not something two separate calls could accumulate into.
+`updateCommandStates()` kept firing on every row change; the Files
+panel's own update never did at all. Fixed by combining both into one
+callback. Verified live: selecting a different torrent now correctly
+shows that torrent's own files.
+
+**FilesPanel and the separate, full-size TorrentFilesWindow didn't
+stay in sync with each other when both happened to be open for the
+same torrent at once — reported directly, both directions.** Neither
+view had any way to learn that the other had just changed the same
+underlying data (a file's own wanted state, or its priority), and
+neither is touched by the app's own periodic refresh (which only
+re-fetches the torrent list itself). Fixed with a small new file,
+`FilesSyncHelper.h/.cpp`: after either view changes wanted or priority
+data, it now also walks `TProgram::deskTop`'s own child list (the
+same "find an already-open window for this torrent id" pattern
+`TorrentListWindow::showFilesForSelected()` already used to avoid
+opening a duplicate window) looking for the other one, and asks it to
+re-fetch if it's open for the same torrent. Both views' own `refresh()`
+had to be made public for this (previously private, called only from
+inside each class itself).
+
+Verified live, harder than expected to pull off convincingly: the
+mock server used for this project's own manual testing didn't handle
+`torrent-set` at all (any method it didn't specifically recognize just
+got an empty success reply — real, but silently inert), so no
+"wanted" change would ever have actually stuck between one RPC call
+and the next, which would have made this fix look broken (or look
+like it worked when it hadn't) regardless of whether it actually did.
+Extended the mock itself to genuinely apply `files-wanted`/
+`files-unwanted`/`priority-*` to its own in-memory file state first,
+confirmed that directly over a raw RPC call, then opened both views
+for the same torrent, clicked "Select none" inside TorrentFilesWindow,
+and confirmed FilesPanel — untouched directly — updated to show every
+file unchecked too.
+
 **Files panel's own "Enable" column was still getting truncated (to
 "Ena") — asked directly to show in full, and to make the separate
 Files window use the same label for consistency.** Widened from 5 to

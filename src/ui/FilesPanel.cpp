@@ -1,4 +1,5 @@
 #include "FilesPanel.h"
+#include "FilesSyncHelper.h"
 #include "Strings.h"
 #include "TextUtil.h"
 
@@ -184,4 +185,9 @@ void FilesPanel::toggleWantedForFocused() {
     for (int idx : indices) if (!files_[idx].wanted) { allWanted = false; break; }
     client_.setFilesWanted(torrentId_, indices, !allWanted);
     refresh();
+    // If TorrentFilesWindow is also open for this same torrent right
+    // now, its own copy of this same data just went stale — reported
+    // directly ("changing enable from the panel doesn't update the
+    // check on the dialog, and vice versa, when both are open").
+    refreshTorrentFilesWindowForTorrent(torrentId_);
 }

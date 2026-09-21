@@ -44,15 +44,23 @@ public:
     TColorAttr mapColor(uchar) override;
 
     // Switches to showing a different torrent's own files — safe to
-    // call with the same torrentId already showing (just re-fetches),
-    // which is exactly what happens on every periodic refresh tick
-    // while a torrent is already selected (see TorrentListWindow's own
-    // refresh cycle).
+    // call with the same torrentId already showing (just re-fetches).
     void showTorrent(int torrentId, const std::string& torrentName);
     int torrentId() const { return torrentId_; }
 
-private:
+    // Re-fetches this panel's own current torrent's files from the
+    // server and redraws — called internally after this panel's own
+    // wanted-toggle, and externally by FilesSyncHelper (see its own
+    // header) after TorrentFilesWindow's own toggle changes the same
+    // underlying data this panel is showing. Public for that second
+    // caller's sake; there's no periodic refresh cycle that reaches
+    // this on its own otherwise (an earlier version of this comment
+    // claimed there was — there isn't: TorrentListWindow's own refresh
+    // cycle only re-fetches the torrent list itself, never this
+    // panel's own file data).
     void refresh();
+
+private:
     void toggleWantedForFocused();
 
     TransmissionClient& client_;

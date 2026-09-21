@@ -304,10 +304,21 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
     // reacting to a double-click, which showDetailsForSelected() above
     // already handles separately). A no-op whenever the panel isn't
     // open — nothing to update if there's nothing showing it.
+    //
+    // Combined with updateCommandStates() into ONE callback — a SECOND
+    // setRowFocusCallback() call used to follow this one, silently
+    // replacing it (onRowFocus_ is a single std::function, an
+    // assignment, not something both calls could accumulate into),
+    // meaning updateCommandStates() ran on every row change but the
+    // Files panel's own update here never did at all. Reported
+    // directly ("clicking a torrent row doesn't update the file shown
+    // in the Files panel") rather than caught by re-reading the code
+    // first.
     grid()->setRowFocusCallback([this](int row) {
-        if (!filesPanel_) return;
-        if (row < 0 || row >= (int)visible_.size()) return;
-        filesPanel_->showTorrent(visible_[row].id, visible_[row].name);
+        if (filesPanel_ && row >= 0 && row < (int)visible_.size()) {
+            filesPanel_->showTorrent(visible_[row].id, visible_[row].name);
+        }
+        updateCommandStates();
     });
     // Double-clicking the queue position column cycles through the four
     // queue-move actions instead of opening details, the same way
@@ -329,7 +340,6 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
     });
     grid()->setRowContextCallback([this](int row, TPoint pos) { showContextMenuFor(row, pos); });
     grid()->setRowMiddleClickCallback([this](int) { showFilesForSelected(); });
-    grid()->setRowFocusCallback([this](int) { updateCommandStates(); });
 
     refresh();
 }

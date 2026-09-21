@@ -13,6 +13,7 @@ add_executable(tv-transmission
     ui/SessionStatsDialog.cpp
     ui/StatusPanel.cpp
     ui/FilesPanel.cpp
+    ui/FilesSyncHelper.cpp
     tvision-ext/TGridColumnManagerDialog.cpp
     tvision-ext/TFolderBrowserDialog.cpp
     ui/LanguageComboBox.cpp

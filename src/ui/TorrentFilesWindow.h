@@ -66,8 +66,15 @@ public:
     // own comment for what this is for.
     TransmissionClient* clientPtr() const { return &client_; }
 
-private:
+    // Re-fetches this window's own current file list from the server
+    // and redraws — called internally after every wanted/priority
+    // change here, and externally by FilesSyncHelper (see its own
+    // header) after FilesPanel's own toggle changes the same
+    // underlying data this window is showing, when both happen to be
+    // open for the same torrent at once.
     void refresh();
+
+private:
     void toggleWantedForFocused();
     void setPriorityForFocused(int priority);
     void cyclePriorityForFocused(); // Low -> Normal -> High -> Low; Mixed resolves to Low

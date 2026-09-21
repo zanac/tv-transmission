@@ -1,4 +1,5 @@
 #include "TorrentFilesWindow.h"
+#include "FilesSyncHelper.h"
 #include "Strings.h"
 #include "../TextUtil.h"
 
@@ -301,6 +302,10 @@ void TorrentFilesWindow::toggleWantedForFocused() {
     for (int idx : indices) if (!files_[idx].wanted) { allWanted = false; break; }
     client_.setFilesWanted(torrentId_, indices, !allWanted);
     refresh();
+    // If FilesPanel is also open for this same torrent right now (see
+    // FilesSyncHelper's own header for the full reasoning — reported
+    // directly, both directions, when both happen to be open at once).
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::setPriorityForFocused(int priority) {
@@ -310,6 +315,7 @@ void TorrentFilesWindow::setPriorityForFocused(int priority) {
     if (indices.empty()) return;
     client_.setFilesPriority(torrentId_, indices, priority);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::cyclePriorityForFocused() {
@@ -333,6 +339,7 @@ void TorrentFilesWindow::cyclePriorityForFocused() {
     }
     client_.setFilesPriority(torrentId_, indices, next);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::setAllWanted(bool wanted) {
@@ -342,6 +349,7 @@ void TorrentFilesWindow::setAllWanted(bool wanted) {
     for (int i = 0; i < (int)files_.size(); i++) allIndices.push_back(i);
     client_.setFilesWanted(torrentId_, allIndices, wanted);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::renameFocused() {
