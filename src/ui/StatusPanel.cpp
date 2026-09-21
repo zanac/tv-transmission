@@ -66,14 +66,30 @@ StatusPanel::StatusPanel(const TRect& bounds, const TorrentFilter& initial,
     // guessed to merely look close.
     insert(new TPanelBackground(TRect(0, 0, size.x, size.y), TColorAttr(0x70)));
 
-    insert(new TStaticText(TRect(1, 1, size.x - 1, 2), tr(Str::LabelFilterName)));
+    // Every child below gets its own growMode = gfGrowHiX explicitly —
+    // none of them had it until now, meaning none of them grew when
+    // this panel itself was resized wider (only ever getting their
+    // own final width at construction time, from this panel's own
+    // size.x AT THAT MOMENT): reported directly, with a screenshot
+    // showing exactly the gap this left on the right, after widening
+    // the panel via drag. TPanelBackground (above, already correctly
+    // covering the full width) was the one exception, since it
+    // already needed this same fix for a different, earlier reason
+    // (see its own constructor call above and TGridView's own
+    // analogous fix, same underlying pattern).
+    auto* nameLabel = new TStaticText(TRect(1, 1, size.x - 1, 2), tr(Str::LabelFilterName));
+    nameLabel->growMode = gfGrowHiX;
+    insert(nameLabel);
     nameField_ = new TInputLine(TRect(1, 2, size.x - 1, 3), 128);
+    nameField_->growMode = gfGrowHiX;
     std::vector<char> nameBuf(129, 0);
     std::snprintf(nameBuf.data(), nameBuf.size(), "%s", initial.nameContains.c_str());
     nameField_->setData(nameBuf.data());
     insert(nameField_);
 
-    insert(new TStaticText(TRect(1, 4, size.x - 1, 5), tr(Str::LabelFilterStatusSection)));
+    auto* statusLabel = new TStaticText(TRect(1, 4, size.x - 1, 5), tr(Str::LabelFilterStatusSection));
+    statusLabel->growMode = gfGrowHiX;
+    insert(statusLabel);
 
     auto* boxes = new TLiveCheckBoxes(TRect(1, 5, size.x - 1, 12),
         new TSItem(tr(Str::TorrentStatusStopped),
@@ -83,6 +99,7 @@ StatusPanel::StatusPanel(const TRect& bounds, const TorrentFilter& initial,
         new TSItem(tr(Str::TorrentStatusDownloading),
         new TSItem(tr(Str::TorrentStatusSeedWait),
         new TSItem(tr(Str::TorrentStatusSeeding), nullptr))))))));
+    boxes->growMode = gfGrowHiX;
     ushort checked = (initial.showStopped ? 0x01 : 0) |
                      (initial.showCheckWait ? 0x02 : 0) |
                      (initial.showChecking ? 0x04 : 0) |

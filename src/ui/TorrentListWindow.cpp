@@ -832,25 +832,29 @@ void TorrentListWindow::draw() {
     int midY = r.a.y + (r.b.y - r.a.y) / 2;
     TDrawBuffer arrow;
     if (statusPanelBorderX_ >= 0) {
-        // Open: right-pointing arrow on the divider itself — closes it.
-        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x1F)); // ►
+        // Open: left-pointing arrow on the divider itself — closes it.
+        // (Originally drawn right-pointing here — reported directly as
+        // visually backwards from what it should mean, with the fix
+        // described as simply swapping left/right throughout, which is
+        // exactly what this and the other three below do.)
+        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x1F)); // ◄
         writeLine(statusPanelBorderX_, midY, 1, 1, arrow);
         writeLine(statusPanelBorderX_, midY + 1, 1, 1, arrow);
     } else {
-        // Closed: left-pointing arrow on the window's own left frame —
+        // Closed: right-pointing arrow on the window's own left frame —
         // reopens it. Same color as the frame itself would otherwise
         // show there, so it reads as part of the frame rather than a
         // patch of mismatched color glued onto it.
-        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x71)); // ◄
+        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x71)); // ►
         writeLine(0, midY, 1, 1, arrow);
         writeLine(0, midY + 1, 1, 1, arrow);
     }
     if (filesPanelBorderX_ >= 0) {
-        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x1F)); // ◄
+        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x1F)); // ►
         writeLine(filesPanelBorderX_, midY, 1, 1, arrow);
         writeLine(filesPanelBorderX_, midY + 1, 1, 1, arrow);
     } else {
-        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x71)); // ►
+        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x71)); // ◄
         writeLine(size.x - 1, midY, 1, 1, arrow);
         writeLine(size.x - 1, midY + 1, 1, 1, arrow);
     }

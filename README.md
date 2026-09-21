@@ -846,6 +846,29 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Status panel: widening it left its own child widgets (the name
+filter, the status checkboxes) at their original width, leaving a
+visible gap on the right** — reported directly, with a screenshot
+circling the gap after dragging the panel wider. Same underlying
+pattern already found and fixed once for `FilesPanel`'s own embedded
+grid: none of these children had `growMode` set at all, so none of
+them grew when this panel itself was resized — only ever getting
+their own final width at construction time, from this panel's own
+`size.x` AT THAT MOMENT. Fixed by giving each of them
+`growMode = gfGrowHiX` explicitly (the name label, the name field, the
+status-section label, the checkbox cluster). Verified live: widened
+the panel well past its own default width and confirmed every child
+now extends its own full new width, no gap left behind.
+
+**Collapse/expand arrows: pointing the wrong way — visually backwards
+from what they should mean.** Reported directly, described as simply
+needing left/right swapped throughout for the meaning to read
+correctly. Fixed by swapping all four (Status's own divider arrow,
+Files's own divider arrow, and each one's own reopen arrow on the
+window's frame) to the opposite direction from what they were.
+Verified live alongside the panel-widening fix above, in the same
+screenshot.
+
 **Collapse/expand arrow handles added to each panel's own divider —
 brainstormed first, then built.** Two rows at vertical center (not one
 — asked for directly, wider and easier to hit than a single cell):
