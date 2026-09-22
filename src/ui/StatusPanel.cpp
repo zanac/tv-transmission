@@ -91,22 +91,31 @@ StatusPanel::StatusPanel(const TRect& bounds, const TorrentFilter& initial,
     statusLabel->growMode = gfGrowHiX;
     insert(statusLabel);
 
-    auto* boxes = new TLiveCheckBoxes(TRect(1, 5, size.x - 1, 12),
+    auto* boxes = new TLiveCheckBoxes(TRect(1, 5, size.x - 1, 9),
         new TSItem(tr(Str::TorrentStatusStopped),
-        new TSItem(tr(Str::TorrentStatusCheckWait),
         new TSItem(tr(Str::TorrentStatusChecking),
-        new TSItem(tr(Str::TorrentStatusDownloadWait),
         new TSItem(tr(Str::TorrentStatusDownloading),
-        new TSItem(tr(Str::TorrentStatusSeedWait),
-        new TSItem(tr(Str::TorrentStatusSeeding), nullptr))))))));
+        new TSItem(tr(Str::TorrentStatusSeeding), nullptr)))));
     boxes->growMode = gfGrowHiX;
+    // Four boxes, not seven — asked for directly, to make this panel
+    // more compact: "Checking" here covers both Transmission's own
+    // "queued to check" and "checking" states together, "Downloading"
+    // both "queued to download" and "downloading", "Seeding" both
+    // "queued to seed" and "seeding" — one checkbox setting both of
+    // TorrentFilter's own underlying fields at once (readFilter()/
+    // setFilter() below) rather than exposing each pair separately.
+    // TorrentListWindow's own filter matching (TorrentListWindow.cpp)
+    // needed no change at all for this — it already checks all seven
+    // fields individually; they just always move in these three pairs
+    // now; and AppSettings.h keeps all seven as well, unchanged, so an
+    // existing settings.json full of the old, separate values still
+    // loads exactly as it always did (initial checkbox state below
+    // just ORs each pair together to decide whether the one combined
+    // box reads as checked).
     ushort checked = (initial.showStopped ? 0x01 : 0) |
-                     (initial.showCheckWait ? 0x02 : 0) |
-                     (initial.showChecking ? 0x04 : 0) |
-                     (initial.showDownloadWait ? 0x08 : 0) |
-                     (initial.showDownloading ? 0x10 : 0) |
-                     (initial.showSeedWait ? 0x20 : 0) |
-                     (initial.showSeeding ? 0x40 : 0);
+                     ((initial.showCheckWait || initial.showChecking) ? 0x02 : 0) |
+                     ((initial.showDownloadWait || initial.showDownloading) ? 0x04 : 0) |
+                     ((initial.showSeedWait || initial.showSeeding) ? 0x08 : 0);
     boxes->setData(&checked);
     boxes->onChanged = [this] { notifyChanged(); };
     insert(boxes);
@@ -170,12 +179,9 @@ TorrentFilter StatusPanel::readFilter() const {
         ushort checked = 0;
         statusBoxes_->getData(&checked);
         result.showStopped = (checked & 0x01) != 0;
-        result.showCheckWait = (checked & 0x02) != 0;
-        result.showChecking = (checked & 0x04) != 0;
-        result.showDownloadWait = (checked & 0x08) != 0;
-        result.showDownloading = (checked & 0x10) != 0;
-        result.showSeedWait = (checked & 0x20) != 0;
-        result.showSeeding = (checked & 0x40) != 0;
+        result.showCheckWait = result.showChecking = (checked & 0x02) != 0;
+        result.showDownloadWait = result.showDownloading = (checked & 0x04) != 0;
+        result.showSeedWait = result.showSeeding = (checked & 0x08) != 0;
     }
     return result;
 }
@@ -193,12 +199,9 @@ void StatusPanel::setFilter(const TorrentFilter& filter) {
     }
     if (statusBoxes_) {
         ushort checked = (filter.showStopped ? 0x01 : 0) |
-                         (filter.showCheckWait ? 0x02 : 0) |
-                         (filter.showChecking ? 0x04 : 0) |
-                         (filter.showDownloadWait ? 0x08 : 0) |
-                         (filter.showDownloading ? 0x10 : 0) |
-                         (filter.showSeedWait ? 0x20 : 0) |
-                         (filter.showSeeding ? 0x40 : 0);
+                         ((filter.showCheckWait || filter.showChecking) ? 0x02 : 0) |
+                         ((filter.showDownloadWait || filter.showDownloading) ? 0x04 : 0) |
+                         ((filter.showSeedWait || filter.showSeeding) ? 0x08 : 0);
         statusBoxes_->setData(&checked);
         statusBoxes_->drawView();
     }
