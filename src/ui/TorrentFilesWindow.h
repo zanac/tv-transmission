@@ -40,6 +40,14 @@ struct FileTreeRow {
     std::string path;
 };
 
+// The folder-grouped row list this window itself displays (real files
+// regrouped under synthetic folder rows wherever their own paths share
+// a directory) — exposed here rather than kept local to this .cpp so
+// FilesPanel.cpp can build the exact same tree for its own, reduced
+// view (name + wanted only) without a second, separately-maintained
+// implementation of this same grouping logic.
+std::vector<FileTreeRow> buildFileTreeRows(const std::vector<TorrentFile>& files);
+
 class TorrentFilesWindow : public TDialog {
 public:
     TorrentFilesWindow(const TRect& bounds, TStringView title,
@@ -58,8 +66,15 @@ public:
     // own comment for what this is for.
     TransmissionClient* clientPtr() const { return &client_; }
 
-private:
+    // Re-fetches this window's own current file list from the server
+    // and redraws — called internally after every wanted/priority
+    // change here, and externally by FilesSyncHelper (see its own
+    // header) after FilesPanel's own toggle changes the same
+    // underlying data this window is showing, when both happen to be
+    // open for the same torrent at once.
     void refresh();
+
+private:
     void toggleWantedForFocused();
     void setPriorityForFocused(int priority);
     void cyclePriorityForFocused(); // Low -> Normal -> High -> Low; Mixed resolves to Low

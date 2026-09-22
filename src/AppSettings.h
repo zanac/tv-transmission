@@ -204,6 +204,26 @@ struct AppSettings {
     std::vector<int> peerColumnOrder;
     std::vector<bool> peerColumnVisible;
 
+    // Every configured server's own side-panel state (Window → Panels)
+    // — open/closed and width, per panel, per server — keyed the same
+    // way columnLayouts above is (a server with no entry here yet, or
+    // an older settings.json predating this, falls back to every panel
+    // closed at its own default width). Per-server rather than global
+    // the same reason columnLayouts is: each server's own window
+    // manages its own layout independently, even though the window
+    // itself is always exactly the same size (see ColumnLayout's own
+    // comment on why) — a user may well want the Status panel open on
+    // one server and not another. `filter` above, by contrast, stays
+    // global: only WHERE it's edited moved (a live panel instead of a
+    // modal dialog), not its own scope, since that wasn't asked for.
+    struct PanelLayout {
+        bool statusOpen = false;
+        int statusWidth = 24; // columns; the panel's own default width
+        bool filesOpen = false;
+        int filesWidth = 30;
+    };
+    std::map<std::string, PanelLayout> panelLayouts;
+
     // `activeServer`'s own connection details, or a default-constructed
     // ServerProfile if it's empty or doesn't match anything in servers
     // — the CLI's own fallback when no server is given on the command

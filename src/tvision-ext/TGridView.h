@@ -79,6 +79,28 @@ public:
     // shape this replaces).
     TGridView(const TRect& bounds, ushort options = gvNone);
 
+    // Overridden because this grid's own four children (header_,
+    // rows_, scrollBar_, hScrollBar_) were only ever laid out once, in
+    // the constructor above, at whatever bounds the caller happened to
+    // construct this view with — TView's own default changeBounds()
+    // (inherited, unoverridden until now) only adjusts each child's own
+    // bounds via growMode, without re-syncing two separate view-state
+    // flags tvision's own drawView() gates drawing on. Recomputes every
+    // child's own rect from scratch (identical math to the constructor
+    // above), explicitly relocates each one, and re-syncs both flags —
+    // see the .cpp for the full story on each, found via direct
+    // instrumentation rather than guessed at: sfExposed, which a
+    // caller constructing this grid before ITS OWN owner is ever
+    // exposed (e.g. FilesPanel, built at a placeholder size, then
+    // resized once actually in the tree — the main torrent list's own
+    // grid never hits this, since TGridWindow constructs it already
+    // inside an already-exposed window) leaves permanently unset on
+    // scrollBar_ without this; and sfVisible, found separately to be
+    // transiently unset on scrollBar_ specifically at the moment an
+    // owner's own resize reaches here, mid-way through that owner's own
+    // TGroup::insertBefore() sequence.
+    void changeBounds(const TRect& bounds) override;
+
     // --- Column management — fully dynamic, at any time ---
     // Returns the new column's index.
     //

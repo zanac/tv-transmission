@@ -1,4 +1,5 @@
 #include "TorrentFilesWindow.h"
+#include "FilesSyncHelper.h"
 #include "Strings.h"
 #include "../TextUtil.h"
 
@@ -127,14 +128,19 @@ std::vector<int> emitTreeRows(const std::string& name, const TreeNode& node, int
     return allIndices;
 }
 
+} // namespace
+
+// Exposed (not kept anonymous like everything above it) specifically so
+// FilesPanel.cpp can build the same folder-grouped row list this window
+// itself displays, without duplicating this logic — see FilesPanel.h's
+// own comment on reusing this window's own tree-building rather than
+// keeping a second, separate implementation in sync with this one.
 std::vector<FileTreeRow> buildFileTreeRows(const std::vector<TorrentFile>& files) {
     std::vector<FileTreeRow> rows;
     TreeNode root = buildFileTree(files);
     emitTreeRows("", root, 0, "", rows);
     return rows;
 }
-
-} // namespace
 
 TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
                                         int torrentId, TransmissionClient& client)
@@ -176,7 +182,11 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
     grid_->addColumn(doneCol);
 
     TGridColumn wantedCol;
-    wantedCol.header = tr(Str::HeaderFileWanted);
+    wantedCol.header = tr(Str::HeaderFileEnable); // same string
+        // FilesPanel's own column uses now — asked for directly, for
+        // consistency between the two (this window's own width,
+        // already 8, already fit "Wanted"/the old, separate string —
+        // same length as "Enable", so no width change needed here).
     wantedCol.width = 8;
     wantedCol.minWidth = 5;
     grid_->addColumn(wantedCol);
@@ -292,6 +302,10 @@ void TorrentFilesWindow::toggleWantedForFocused() {
     for (int idx : indices) if (!files_[idx].wanted) { allWanted = false; break; }
     client_.setFilesWanted(torrentId_, indices, !allWanted);
     refresh();
+    // If FilesPanel is also open for this same torrent right now (see
+    // FilesSyncHelper's own header for the full reasoning — reported
+    // directly, both directions, when both happen to be open at once).
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::setPriorityForFocused(int priority) {
@@ -301,6 +315,7 @@ void TorrentFilesWindow::setPriorityForFocused(int priority) {
     if (indices.empty()) return;
     client_.setFilesPriority(torrentId_, indices, priority);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::cyclePriorityForFocused() {
@@ -324,6 +339,7 @@ void TorrentFilesWindow::cyclePriorityForFocused() {
     }
     client_.setFilesPriority(torrentId_, indices, next);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::setAllWanted(bool wanted) {
@@ -333,6 +349,7 @@ void TorrentFilesWindow::setAllWanted(bool wanted) {
     for (int i = 0; i < (int)files_.size(); i++) allIndices.push_back(i);
     client_.setFilesWanted(torrentId_, allIndices, wanted);
     refresh();
+    refreshFilesPanelForTorrent(torrentId_);
 }
 
 void TorrentFilesWindow::renameFocused() {

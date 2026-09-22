@@ -8,7 +8,6 @@
 #include "ConnectionDialog.h"
 #include "ServerSettingsDialog.h"
 #include "SessionStatsDialog.h"
-#include "FilterDialog.h"
 #include "../tvision-ext/TGridColumnManagerDialog.h"
 #include "WindowListDialog.h"
 #include "AboutDialog.h"
@@ -47,6 +46,10 @@ namespace {
 // mutable global specifically because exactly one App instance ever
 // exists in this process.
 TMenu* g_connectionsMenu = nullptr;
+// Same reasoning as g_connectionsMenu above: initMenuBar() is static
+// (TProgInit's own requirement), so this is how the later
+// rebuildPanelsMenu() call finds the same "Panels" submenu again.
+TMenu* g_panelsMenu = nullptr;
 }
 
 App::App(const AppSettings& initialSettings)
@@ -88,6 +91,7 @@ App::App(const AppSettings& initialSettings)
     // placeholder initMenuBar() set up (a disabled "Empty") is what
     // shows until this first real rebuild.
     rebuildConnectionsMenu();
+    rebuildPanelsMenu();
     if (TorrentListWindow* focused = focusedListWindow()) {
         lastConnectionsFocusedServer_ = focused->serverName();
     }
@@ -158,6 +162,16 @@ TMenuBar* App::initMenuBar(TRect r) {
     connectionsSubMenu->subMenu->items->disabled = True;
     g_connectionsMenu = connectionsSubMenu->subMenu;
 
+    // Same placeholder-then-rebuild reasoning as connectionsSubMenu
+    // above — rebuildPanelsMenu() (called once at startup, same as
+    // rebuildConnectionsMenu()) replaces this with the real "Status"
+    // item, bulleted or not depending on whether the window that ends
+    // up focused first has its own panel open.
+    TSubMenu* panelsSubMenu = new TSubMenu(tr(Str::MenuPanelsMenu), kbNoKey);
+    *panelsSubMenu + *new TMenuItem(tr(Str::MenuPanelStatus), cmToggleStatusPanel, kbNoKey)
+                   + *new TMenuItem(tr(Str::MenuPanelFiles), cmToggleFilesPanel, kbNoKey);
+    g_panelsMenu = panelsSubMenu->subMenu;
+
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
@@ -180,7 +194,6 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
         *connectionsSubMenu +
         *new TSubMenu(tr(Str::MenuColumnsMenu), kbNoKey) +
-            *new TMenuItem(tr(Str::MenuFilters), cmFilters, kbNoKey) +
             // Rationalized from what used to be three separate entry
             // points here (a "Resize columns" submenu, an "Order
             // columns" submenu, and a standalone "Columns..." dialog —
@@ -207,6 +220,21 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
             newLine() +
             *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
+            newLine() +
+            // Nested WITHIN this Window submenu's own item chain, not a
+            // new top-level menu-bar column of its own — needs the
+            // explicit (TMenuItem&) cast, not just *panelsSubMenu, or
+            // C++ overload resolution prefers TSubMenu&'s own operator+
+            // (menus.h's own "chain two top-level submenus together"
+            // overload) over TMenuItem&'s (menus.h's own "one more item
+            // in the CURRENT chain" overload, which TSubMenu also
+            // satisfies via its own TMenuItem base, just less directly)
+            // — found by testing this live: without the cast, "Panels"
+            // rendered as its own extra menu-bar entry next to "Window"
+            // instead of inside it. Same idiom this project's own
+            // comment on cmManageColumns above already named (for two
+            // now-removed submenus that used to need it here too).
+            (TMenuItem&)*panelsSubMenu +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9) +
             *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbNoKey) +
@@ -240,6 +268,19 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     for (TorrentListWindow* w : allListWindows()) {
         if (w->serverName() == name) {
             w->select();
+            // Same reasoning as the brand-new-window call further down
+            // in this same function (see relayoutPanels()'s own
+            // comment, TorrentListWindow.h) — found directly still
+            // needed here too, separately: a window created once at
+            // startup, covered by whichever other one was focused at
+            // the time, then brought to the front later by picking it
+            // from the Connections menu (this exact branch) rather
+            // than being freshly created, was found with neither its
+            // own open- nor closed-state collapse arrow ever actually
+            // showing, on either side — select() alone (bringing a
+            // window forward) doesn't ask it to redraw itself the way
+            // an explicit call here does.
+            w->relayoutPanels();
             return w;
         }
     }
@@ -278,9 +319,40 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
             settings_.sortAscending = asc;
             saveSettings(settings_);
         },
+        // `filter` is global (see AppSettings::filter's own comment) —
+        // applied to every currently open window, not just whichever
+        // one's own Status panel this change actually came from, the
+        // same "one setting, every window" behavior the old modal
+        // Filters dialog this panel replaced already had (see "Fixed
+        // bugs" in README.md).
+        [this](const TorrentFilter& f) {
+            settings_.filter = f;
+            saveSettings(settings_);
+            for (TorrentListWindow* w : allListWindows()) w->setFilter(f);
+        },
         settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible,
         settings_.peerColumnWidths, settings_.peerColumnOrder, settings_.peerColumnVisible);
     deskTop->insert(win); // TorrentListWindow's own constructor already calls refresh() at the end — nothing more needed here
+    // Unconditional — not gated on whether a saved PanelLayout below
+    // actually opens a panel. See relayoutPanels()'s own comment
+    // (TorrentListWindow.h) for why this specific spot (after
+    // insert(), not inside the constructor) is what makes this work at
+    // all — reported directly, with neither of this window's own
+    // collapse/expand arrows showing at all for a server whose panels
+    // had never been toggled.
+    win->relayoutPanels();
+
+    // This server's own saved panel state, if it's ever had one opened
+    // (a default-constructed PanelLayout — every panel closed — falls
+    // out of find() failing, same "never customized yet" fallback
+    // columnLayout above uses).
+    auto panelIt = settings_.panelLayouts.find(name);
+    if (panelIt != settings_.panelLayouts.end() && panelIt->second.statusOpen) {
+        win->setStatusPanelOpen(true, panelIt->second.statusWidth);
+    }
+    if (panelIt != settings_.panelLayouts.end() && panelIt->second.filesOpen) {
+        win->setFilesPanelOpen(true, panelIt->second.filesWidth);
+    }
     return win;
 }
 
@@ -572,22 +644,55 @@ void App::showSessionStatsDialog() {
     }
 }
 
-void App::showFilterDialog() {
-    // Shared across every open window (see AppSettings::filter's own
-    // comment — the same "one setting, every window" choice as column
-    // widths/order), so confirming this applies it everywhere at once
-    // rather than only to whichever window has focus.
-    FilterDialogFields fields;
-    if (auto* dlg = createFilterDialog(settings_.filter, fields)) {
-        if (execView(dlg) == cmOK) {
-            settings_.filter = filterDialogResult(fields);
-            saveSettings(settings_); // persisted right away, same as everything else in Config.h
-            for (TorrentListWindow* w : allListWindows()) {
-                w->setFilter(settings_.filter); // applied to already-fetched data, no re-fetch
-            }
-        }
-        destroy(dlg);
-    }
+void App::toggleStatusPanelForFocused() {
+    TorrentListWindow* target = focusedListWindow();
+    if (!target) return;
+    bool nowOpen = !target->isStatusPanelOpen();
+    // The width to open at: whatever this SAME server's own panel was
+    // last dragged to (see AppSettings::PanelLayout), not always the
+    // built-in default — closing it doesn't forget that, only whether
+    // it's shown.
+    auto& layout = settings_.panelLayouts[target->serverName()]; // creates a default entry if none yet
+    int width = layout.statusWidth;
+    target->setStatusPanelOpen(nowOpen, width);
+    layout.statusOpen = nowOpen;
+    if (!nowOpen) layout.statusWidth = target->statusPanelWidth(); // remembers a resize even while now closed
+    saveSettings(settings_);
+    rebuildPanelsMenu();
+}
+
+void App::toggleFilesPanelForFocused() {
+    TorrentListWindow* target = focusedListWindow();
+    if (!target) return;
+    bool nowOpen = !target->isFilesPanelOpen();
+    auto& layout = settings_.panelLayouts[target->serverName()];
+    int width = layout.filesWidth;
+    target->setFilesPanelOpen(nowOpen, width);
+    layout.filesOpen = nowOpen;
+    if (!nowOpen) layout.filesWidth = target->filesPanelWidth();
+    saveSettings(settings_);
+    rebuildPanelsMenu();
+}
+
+void App::resizeStatusPanelForFocused() {
+    TorrentListWindow* target = focusedListWindow();
+    if (!target || !target->isStatusPanelOpen()) return;
+    target->keyboardResizeStatusPanel();
+    // Same persistence as a mouse drag — the keyboard mode itself
+    // doesn't know about settings_/serverName() at all (a
+    // TorrentListWindow concern only), so the width is read back and
+    // saved here once the mode returns, exactly as it would be after
+    // a drag confirms.
+    settings_.panelLayouts[target->serverName()].statusWidth = target->statusPanelWidth();
+    saveSettings(settings_);
+}
+
+void App::resizeFilesPanelForFocused() {
+    TorrentListWindow* target = focusedListWindow();
+    if (!target || !target->isFilesPanelOpen()) return;
+    target->keyboardResizeFilesPanel();
+    settings_.panelLayouts[target->serverName()].filesWidth = target->filesPanelWidth();
+    saveSettings(settings_);
 }
 
 void App::showColumnManagerDialog() {
@@ -814,6 +919,59 @@ void App::rebuildConnectionsMenu() {
     g_connectionsMenu->deflt = head;
 }
 
+void App::rebuildPanelsMenu() {
+    if (!g_panelsMenu) return; // shouldn't happen — initMenuBar() always sets it — stays defensive
+
+    TMenuItem* p = g_panelsMenu->items;
+    while (p != nullptr) {
+        TMenuItem* next = p->next;
+        delete p;
+        p = next;
+    }
+
+    // Same "no per-item bold/font-weight, so a bullet + ~...~ wrapping
+    // the whole label is the closest substitute" reasoning as
+    // rebuildConnectionsMenu() above — a focused window with no panel
+    // open at all (or no window focused yet, e.g. before any server's
+    // configured) shows the plain, unbulleted label, same as any
+    // server that isn't the focused one over there.
+    TorrentListWindow* focused = focusedListWindow();
+    bool statusOpen = focused && focused->isStatusPanelOpen();
+    bool filesOpen = focused && focused->isFilesPanelOpen();
+
+    // Shared by both items below: tr()'s own hotkey markup ("~S~tatus")
+    // underlines just one letter, which the bulleted case replaces with
+    // wrapping the WHOLE label instead — the two styles can't just be
+    // nested, so every "~" is stripped first either way.
+    auto buildLabel = [](Str id, bool open) {
+        std::string plain = tr(id);
+        std::string noMarkup;
+        for (char c : plain) if (c != '~') noMarkup += c;
+        return open ? ("\xE2\x97\x8F ~" + noMarkup + "~") : plain;
+    };
+
+    TMenuItem* statusItem = new TMenuItem(buildLabel(Str::MenuPanelStatus, statusOpen).c_str(),
+                                           cmToggleStatusPanel, kbNoKey);
+    TMenuItem* filesItem = new TMenuItem(buildLabel(Str::MenuPanelFiles, filesOpen).c_str(),
+                                          cmToggleFilesPanel, kbNoKey);
+    TMenuItem* tail = filesItem;
+    // "Resize ...": only present once the matching panel is actually
+    // open — resizing a closed panel isn't a meaningful action, so
+    // there's nothing useful to show for it rather than a disabled
+    // item explaining why.
+    if (statusOpen) {
+        tail->next = new TMenuItem(tr(Str::MenuPanelResizeStatus), cmResizeStatusPanel, kbNoKey);
+        tail = tail->next;
+    }
+    if (filesOpen) {
+        tail->next = new TMenuItem(tr(Str::MenuPanelResizeFiles), cmResizeFilesPanel, kbNoKey);
+        tail = tail->next;
+    }
+    statusItem->next = filesItem;
+    g_panelsMenu->items = statusItem;
+    g_panelsMenu->deflt = statusItem;
+}
+
 void App::closeWindowsForClient(TransmissionClient* client) const {
     // Collected first, closed after: TWindow::close() calls destroy(this),
     // which would mutate deskTop's own child chain out from under this
@@ -950,8 +1108,20 @@ void App::handleEvent(TEvent& event) {
             showSessionStatsDialog();
             clearEvent(event);
             break;
-        case cmFilters:
-            showFilterDialog();
+        case cmToggleStatusPanel:
+            toggleStatusPanelForFocused();
+            clearEvent(event);
+            break;
+        case cmToggleFilesPanel:
+            toggleFilesPanelForFocused();
+            clearEvent(event);
+            break;
+        case cmResizeStatusPanel:
+            resizeStatusPanelForFocused();
+            clearEvent(event);
+            break;
+        case cmResizeFilesPanel:
+            resizeFilesPanelForFocused();
             clearEvent(event);
             break;
         case cmManageColumns:
@@ -993,6 +1163,22 @@ void App::shutDown() {
         layout.order = w->columnOrder();
         layout.visible = w->columnVisibility();
         settings_.columnLayouts[w->serverName()] = layout;
+    }
+
+    // Same "rebuilt from scratch, not just updated in place" reasoning
+    // as columnLayouts just above — every currently open window's own
+    // CURRENT panel state, not just whatever toggleStatusPanelForFocused()
+    // last explicitly saved: a panel dragged wider/narrower without
+    // ever being closed again before exit still needs its own latest
+    // width persisted here, not just its open/closed flag.
+    settings_.panelLayouts.clear();
+    for (TorrentListWindow* w : windows) {
+        AppSettings::PanelLayout layout;
+        layout.statusOpen = w->isStatusPanelOpen();
+        layout.statusWidth = w->statusPanelWidth();
+        layout.filesOpen = w->isFilesPanelOpen();
+        layout.filesWidth = w->filesPanelWidth();
+        settings_.panelLayouts[w->serverName()] = layout;
     }
 
     // Whichever window has focus right now is the one brought back to
@@ -1135,5 +1321,6 @@ void App::idle() {
     if (currentFocusedServer != lastConnectionsFocusedServer_) {
         lastConnectionsFocusedServer_ = currentFocusedServer;
         rebuildConnectionsMenu();
+        rebuildPanelsMenu();
     }
 }
