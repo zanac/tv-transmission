@@ -848,6 +848,35 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Mouse wheel always scrolled the Files panel specifically, no matter
+where the cursor actually was** — reported directly, clarifying an
+earlier, less specific report about scrolling with large datasets:
+this turned out to be a real, distinct bug, not the "focus moves
+within the visible page before scrolling" behavior confirmed normal
+for keyboard navigation in that earlier investigation. Traced to
+tvision's own event routing (`TGroup::handleEvent()`, `tgroup.cpp`):
+`positionalEvents` (routed to whichever child the cursor is actually
+over) is explicitly defined as `evMouse & ~evMouseWheel` — the wheel
+bit carved back out — and it isn't in `focusedEvents` either, so it
+falls through to the one remaining branch, which broadcasts it to
+every child in turn regardless of cursor position; whichever child
+happens to handle it first (insertion order) ends up "owning" the
+wheel unconditionally. Fixed by routing `evMouseWheel` explicitly in
+`TorrentListWindow::handleEvent()`, before calling the base class:
+checks each of `statusPanel_`/`filesPanel_`/the main grid in turn via
+`containsMouse()` (tvision's own cursor-hit-test) and hands the event
+to whichever one the cursor is actually over, then stops it from
+propagating any further.
+
+Verified live, in both directions, with enough torrents and enough
+files in one of them to make the wheel's own effect on each
+unambiguous: wheeling over the Files panel changed only what it
+showed, leaving the main grid completely untouched; wheeling over the
+main grid changed which torrent was focused there (the Files panel
+updating to match, the same way clicking a different row already
+does) while never touching the Files panel's own scroll position
+directly.
+
 **A second (or later) connection's own window showed neither
 collapse/expand arrow at all, on either side, whether its own panels
 were open or closed — reported directly.** Traced to two separate

@@ -685,6 +685,37 @@ void TorrentListWindow::changeBounds(const TRect& bounds) {
 }
 
 void TorrentListWindow::handleEvent(TEvent& event) {
+    // evMouseWheel: routed explicitly here, by where the cursor
+    // actually is, before calling the base class below — tvision's own
+    // TGroup::handleEvent() (tgroup.cpp) doesn't treat this the way it
+    // treats an ordinary mouse click: `positionalEvents` (routed to
+    // whichever child the cursor is actually over) is explicitly
+    // `evMouse & ~evMouseWheel` — this one bit carved back out — and
+    // it isn't in `focusedEvents` either, so it falls through to the
+    // one remaining branch, which broadcasts it to every child in
+    // turn regardless of where the cursor is. Reported directly: the
+    // wheel always scrolled the Files panel specifically, no matter
+    // where the cursor actually was — matching this exactly, since
+    // whichever child gets asked first (insertion order) ends up
+    // "owning" the wheel unconditionally once it handles the event at
+    // all, cursor position never entering into it.
+    if (event.what == evMouseWheel) {
+        if (statusPanel_ && statusPanel_->containsMouse(event)) {
+            statusPanel_->handleEvent(event);
+            clearEvent(event);
+            return;
+        }
+        if (filesPanel_ && filesPanel_->containsMouse(event)) {
+            filesPanel_->handleEvent(event);
+            clearEvent(event);
+            return;
+        }
+        if (grid()->containsMouse(event)) {
+            grid()->handleEvent(event);
+            clearEvent(event);
+            return;
+        }
+    }
     // Ctrl+Left/Right: keyboard-driven resize, contextual on whichever
     // panel currently has keyboard focus (`current`, TGroup's own
     // direct-child focus tracking) — the same two entry points the
