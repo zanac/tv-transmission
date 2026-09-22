@@ -111,6 +111,30 @@ public:
     FilesPanel* filesPanel() const { return filesPanel_; }
     int filesPanelWidth() const { return filesPanelWidth_; }
 
+    // Recomputes grid_'s own bounds (and statusPanel_'s/filesPanel_'s,
+    // if open) from this window's own CURRENT extent and
+    // statusPanelWidth_/filesPanelWidth_ — called after every change to
+    // any of those, rather than each of those updating bounds
+    // independently and risking drifting out of sync with each other.
+    // Also public for App's own openServerWindow() to call once,
+    // right after inserting a brand-new window into the desktop —
+    // unconditionally, not just when a saved PanelLayout says a panel
+    // should open: found directly (switching to a second connection's
+    // own window, one whose panels had never been toggled, showed
+    // neither this window's own open- nor closed-state collapse arrow,
+    // on either side, at all) that without an explicit call here, a
+    // window whose panels stay closed the whole time never gets a
+    // single full draw() — this method's own explicit drawView() at
+    // the end included — until something else happens to trigger one.
+    // Calling it from inside this class's own constructor instead was
+    // tried first and didn't help: this window isn't inserted into the
+    // desktop yet at that point, so exposed() (drawView()'s own guard)
+    // isn't true yet either, the same underlying reason a much
+    // earlier fix needed TGridView's own scrollBar_->show() rather
+    // than relying on construction-time state (see "Fixed bugs" in
+    // README.md).
+    void relayoutPanels();
+
     // Keyboard-driven equivalent of dragResizeStatusPanel()/
     // dragResizeFilesPanel() (private, below — reached only via an
     // in-progress mouse drag already being handled in handleEvent()):
@@ -247,14 +271,6 @@ private:
     // added here rather than separately in each one.
     std::vector<const Torrent*> targetTorrents() const;
     void showContextMenuFor(int row, TPoint screenPos);
-    // Recomputes grid_'s own bounds (and statusPanel_'s, if open) from
-    // this window's own CURRENT extent and statusPanelWidth_ — called
-    // after every change to any of those three things (panel opened/
-    // closed, its own width dragged, or this window itself resized —
-    // see changeBounds() above), rather than each of those updating
-    // bounds independently and risking drifting out of sync with each
-    // other.
-    void relayoutPanels();
     // kBorderX is the boundary's OWN X, in this window's local
     // coordinates — recomputed by relayoutPanels() and cached here
     // rather than re-derived on every mouse event, since handleEvent()

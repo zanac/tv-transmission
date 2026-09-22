@@ -268,6 +268,19 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     for (TorrentListWindow* w : allListWindows()) {
         if (w->serverName() == name) {
             w->select();
+            // Same reasoning as the brand-new-window call further down
+            // in this same function (see relayoutPanels()'s own
+            // comment, TorrentListWindow.h) — found directly still
+            // needed here too, separately: a window created once at
+            // startup, covered by whichever other one was focused at
+            // the time, then brought to the front later by picking it
+            // from the Connections menu (this exact branch) rather
+            // than being freshly created, was found with neither its
+            // own open- nor closed-state collapse arrow ever actually
+            // showing, on either side — select() alone (bringing a
+            // window forward) doesn't ask it to redraw itself the way
+            // an explicit call here does.
+            w->relayoutPanels();
             return w;
         }
     }
@@ -320,6 +333,14 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
         settings_.trackerColumnWidths, settings_.trackerColumnOrder, settings_.trackerColumnVisible,
         settings_.peerColumnWidths, settings_.peerColumnOrder, settings_.peerColumnVisible);
     deskTop->insert(win); // TorrentListWindow's own constructor already calls refresh() at the end — nothing more needed here
+    // Unconditional — not gated on whether a saved PanelLayout below
+    // actually opens a panel. See relayoutPanels()'s own comment
+    // (TorrentListWindow.h) for why this specific spot (after
+    // insert(), not inside the constructor) is what makes this work at
+    // all — reported directly, with neither of this window's own
+    // collapse/expand arrows showing at all for a server whose panels
+    // had never been toggled.
+    win->relayoutPanels();
 
     // This server's own saved panel state, if it's ever had one opened
     // (a default-constructed PanelLayout — every panel closed — falls

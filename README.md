@@ -6,6 +6,8 @@
 
 **Version 1.7.1** — stable release.
 
+![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
+
 A terminal UI (and CLI) client for Transmission (`transmission-daemon`),
 built on [Turbo Vision (magiblot/tvision)](https://github.com/magiblot/tvision),
 written in C++17.
@@ -845,6 +847,44 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**A second (or later) connection's own window showed neither
+collapse/expand arrow at all, on either side, whether its own panels
+were open or closed — reported directly.** Traced to two separate
+spots, both eventually needing the same fix (`relayoutPanels()`,
+called explicitly, ending in `drawView()`) for the same underlying
+reason: a window only ever gets that call today from
+`setStatusPanelOpen()`/`setFilesPanelOpen()`, which
+`App::openServerWindow()` only calls when this server's own saved
+`PanelLayout` says a panel should actually be open — a server whose
+panels stay closed the whole time calls neither, so this window's own
+full `draw()` (including its own frame arrows, painted outside any
+child's own bounds entirely) never runs at all until something else
+happens to trigger one:
+
+1. **First encountered while a window is still being freshly built** —
+   tried calling `relayoutPanels()` unconditionally at the end of
+   `TorrentListWindow`'s own constructor first; confirmed directly
+   (a temporary diagnostic print, removed again once done) that this
+   didn't help, since this window isn't inserted into the desktop yet
+   at that point, so `exposed()` (`drawView()`'s own guard) isn't true
+   yet either. Moved the call to `App::openServerWindow()` instead,
+   right after `deskTop->insert(win)` — confirmed `exposed()` was true
+   there.
+2. **Second, separately, when bringing an *already-open* window back
+   to the front** — `openServerWindow()`'s own "already open, just
+   bring it forward" branch (picking a connection from its own menu
+   that isn't the currently-focused one) only ever called `select()`,
+   never `relayoutPanels()` — needed here too, on its own, since
+   `select()` alone doesn't ask a window to redraw itself the way an
+   explicit call does.
+
+Verified live: two servers configured, one with a saved panel layout,
+one never opened before — switching to the second's own window (via
+the Connections menu, exactly how this was reported) now shows the
+correct closed-state arrow on both sides, matching a fresh instance
+this whole session was checked against at every step rather than
+assumed fixed from the code alone.
 
 **Clicking a torrent row stopped updating the Files panel's own
 content — reported directly.** `grid()->setRowFocusCallback()` was
