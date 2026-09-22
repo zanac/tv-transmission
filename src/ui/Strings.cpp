@@ -539,12 +539,12 @@ const char* tr(Str id) {
             return pick("Queued for check", "In attesa di verifica", "En attente de vérification",
                         "Wartet auf Prüfung", "En espera de verificación", "Na fila para verificação", "В очереди на проверку", "Na fila para verificação");
         case Str::TorrentStatusChecking:
-            return pick("Checking", "Verifica in corso", "Vérification en cours", "Wird geprüft", "Verificando", "Verificando", "Проверка", "A verificar");
+            return pick("Checking", "Verifica", "Vérification en cours", "Wird geprüft", "Verificando", "Verificando", "Проверка", "A verificar");
         case Str::TorrentStatusDownloadWait:
             return pick("Queued for download", "In attesa di download", "En attente de téléchargement",
                         "Wartet auf Download", "En espera de descarga", "Na fila para download", "В очереди на скачивание", "Na fila para transferência");
         case Str::TorrentStatusDownloading:
-            return pick("Downloading", "Download in corso", "Téléchargement en cours", "Wird heruntergeladen", "Descargando", "Baixando", "Скачивание", "A transferir");
+            return pick("Downloading", "Download", "Téléchargement en cours", "Wird heruntergeladen", "Descargando", "Baixando", "Скачивание", "A transferir");
         case Str::TorrentStatusSeedWait:
             return pick("Queued for seeding", "In attesa di seeding", "En attente de partage",
                         "Wartet auf Seeding", "En espera de compartir", "Na fila para semear", "В очереди на раздачу", "Na fila para semear");

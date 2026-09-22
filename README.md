@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.1** — stable release.
+**Version 1.7.2** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -847,6 +847,14 @@ actions above:
 ## Fixed bugs
 
 Kept here for context, in case similar patterns come up again.
+
+**v1.7.2**: Status filter's own Italian labels shortened — "Verifica
+in corso" → "Verifica", "Download in corso" → "Download" (asked for
+directly: drop "in corso" so the labels read shorter, matching the
+panel's own four-checkbox compacting from the previous version).
+Italian only; the other seven languages' own strings for these two
+untouched. "Fermo" (Stopped) and "Seeding" already had no "in corso"
+to drop.
 
 **Status panel's own status filter compacted from seven checkboxes to
 four** — asked for directly, with a specific mapping: "Checking" now
