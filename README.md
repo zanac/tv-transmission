@@ -848,6 +848,30 @@ actions above:
 
 Kept here for context, in case similar patterns come up again.
 
+**Status panel's own status filter compacted from seven checkboxes to
+four** — asked for directly, with a specific mapping: "Checking" now
+covers both Transmission's own "queued to check" and "checking"
+states together, "Downloading" both "queued to download" and
+"downloading", "Seeding" both "queued to seed" and "seeding" ("Stopped"
+stays on its own, unchanged). One checkbox now sets both of
+`TorrentFilter`'s own underlying fields in each pair at once
+(`StatusPanel::readFilter()`/`setFilter()`), rather than exposing each
+half separately. `TorrentListWindow`'s own filter matching needed no
+change at all — it already checks all seven fields individually; they
+just always move in these three pairs now. `AppSettings.h` and
+`Config.cpp` keep all seven fields exactly as they were, so an
+existing `settings.json` full of the old, separate values still loads
+correctly — a saved pair that happened to differ (only possible from
+before this change) reads as checked if either half was true, rather
+than silently dropping one half's own saved state.
+
+Verified live: confirmed only four boxes show, then unchecked
+"Downloading" and confirmed both torrents actually in that state
+(Transmission's own plain "downloading") disappeared from the list
+immediately, and that both of its own underlying fields
+(`showDownloadWait`/`showDownloading`) were written `false` together
+in the saved settings file, the other two pairs untouched.
+
 **Mouse wheel always scrolled the Files panel specifically, no matter
 where the cursor actually was** — reported directly, clarifying an
 earlier, less specific report about scrolling with large datasets:
