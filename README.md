@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.2** — stable release.
+**Version 1.7.3** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -4872,3 +4872,22 @@ originally printed "No torrents." with exit code 0 in both cases,
 making failures undetectable in scripts. Fixed by checking
 `lastError()` when the result is empty, printing it to stderr and
 exiting non-zero only when an actual error occurred.
+
+**Torrent priority still had its own menu entry, in two places.**
+Changing a torrent's bandwidth priority used to require a "Priority"
+submenu — present both in the menu bar (Torrent menu) and in the main
+grid's own right-click context menu — in addition to the existing
+double-click-to-cycle on the grid's Priority column. Consolidated into
+a single place: a new `PriorityComboBox` (built the same way as the
+existing `LanguageComboBox`, on this project's own vendored
+`TComboBox` — see `src/tvision-ext/TComboBox.h`) now sits in the
+Torrent details window, right below the torrent's own summary
+information, and applies the change immediately via
+`TransmissionClient::setPriority()` on selection — no separate confirm
+step, matching how the removed menu commands always behaved. Both
+"Priority" submenus (menu bar and context menu) were removed entirely,
+along with the `cmSetPriorityLow/Normal/High` command constants and
+the `MenuPriority*` strings, which are no longer used anywhere. The
+double-click-to-cycle behavior on the grid's own Priority column is
+unchanged — a second, faster way to do the same thing, now alongside
+the combo box rather than alongside a menu.
