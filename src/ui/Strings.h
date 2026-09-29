@@ -20,7 +20,14 @@ enum class Str {
     MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
     MenuSelectMultiple, MenuCancelSelection,
     MenuQueue, MenuQueueMoveTop, MenuQueueMoveUp, MenuQueueMoveDown, MenuQueueMoveBottom,
-    MenuPriority, MenuPriorityLow, MenuPriorityNormal, MenuPriorityHigh,
+    // No MenuPriority*: priority used to have its own submenu here (menu
+    // bar and, separately, the grid's right-click context menu) — both
+    // were removed in favor of a single place to change it, the
+    // PriorityComboBox in the torrent details window (see LabelPriority
+    // below and TorrentDetailsWindow.cpp), alongside the pre-existing
+    // double-click-to-cycle on the main grid's own Priority column
+    // (TorrentListWindow::cyclePriorityForRow), which was kept as a
+    // second, faster way to do the same thing.
     MenuDeleteWithData,
     ConfirmRemoveTorrent, ConfirmDeleteTorrentWithData,
     ConfirmRemoveTorrentsMulti, ConfirmDeleteTorrentsWithDataMulti,
@@ -61,6 +68,7 @@ enum class Str {
     LabelAverageSpeed,
     LabelLastActivity,
     LabelTimeDownloading, LabelTimeSeeding,
+    LabelPriority,
     LabelSpeedLimitSection, CheckLimitDownload, CheckLimitUpload, UnitKBs,
     LabelSeedRatioSection, RadioSeedRatioGlobal, RadioSeedRatioCustom, RadioSeedRatioUnlimited,
     CheckHonorGlobalLimits,

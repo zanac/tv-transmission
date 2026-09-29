@@ -139,14 +139,6 @@ TMenuBar* App::initMenuBar(TRect r) {
         *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
 
-    // Same nested-submenu construction as queueMenu just above — see
-    // its own comment for why the (TMenuItem&) cast below is needed.
-    TSubMenu* priorityMenu = new TSubMenu(tr(Str::MenuPriority), kbNoKey);
-    *priorityMenu +
-        *new TMenuItem(tr(Str::MenuPriorityLow), cmSetPriorityLow, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuPriorityNormal), cmSetPriorityNormal, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuPriorityHigh), cmSetPriorityHigh, kbNoKey);
-
     // A single disabled placeholder to start — this runs before App's
     // own constructor has settings_ populated at all (see TProgInit's
     // own ordering, in the comment on this class in App.h), so the
@@ -187,7 +179,6 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
             newLine() +
             static_cast<TMenuItem&>(*queueMenu) +
-            static_cast<TMenuItem&>(*priorityMenu) +
             newLine() +
             *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
             newLine() +
@@ -1082,18 +1073,6 @@ void App::handleEvent(TEvent& event) {
             break;
         case cmQueueMoveBottom:
             if (auto* w = focusedListWindow()) w->queueMoveBottomForSelected();
-            clearEvent(event);
-            break;
-        case cmSetPriorityLow:
-            if (auto* w = focusedListWindow()) w->setPriorityForSelected(-1);
-            clearEvent(event);
-            break;
-        case cmSetPriorityNormal:
-            if (auto* w = focusedListWindow()) w->setPriorityForSelected(0);
-            clearEvent(event);
-            break;
-        case cmSetPriorityHigh:
-            if (auto* w = focusedListWindow()) w->setPriorityForSelected(1);
             clearEvent(event);
             break;
         case cmSettings:

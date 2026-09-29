@@ -1182,11 +1182,11 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuQueueMoveUp), cmQueueMoveUp, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveDown), cmQueueMoveDown, kbNoKey) +
         *new TMenuItem(tr(Str::MenuQueueMoveBottom), cmQueueMoveBottom, kbNoKey);
-    TSubMenu* priorityMenu = new TSubMenu(tr(Str::MenuPriority), kbNoKey);
-    *priorityMenu +
-        *new TMenuItem(tr(Str::MenuPriorityLow), cmSetPriorityLow, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuPriorityNormal), cmSetPriorityNormal, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuPriorityHigh), cmSetPriorityHigh, kbNoKey);
+    // No priorityMenu here anymore — see App.h's own comment by
+    // cmSetPriorityLow/Normal/High for where priority is set now
+    // (PriorityComboBox in the torrent details window, plus the
+    // pre-existing double-click-to-cycle on this grid's own Priority
+    // column).
     // operator+(TMenuItem&, TMenuItem&) walks to the end of the first
     // item's existing chain and appends the second one there (see
     // menu.cpp), mutating that chain in place — so `items` (bound to
@@ -1202,8 +1202,7 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
-        static_cast<TMenuItem&>(*queueMenu) +
-        static_cast<TMenuItem&>(*priorityMenu);
+        static_cast<TMenuItem&>(*queueMenu);
     // Only meaningful — and only shown — while there's a selection to
     // cancel. Reuses cmSelectMultiple itself rather than a separate
     // command: its own handler (see App.cpp) already does exactly

@@ -9,6 +9,7 @@
 #include <vector>
 #include "../rpc/Torrent.h"
 #include "../rpc/TransmissionClient.h"
+#include "PriorityComboBox.h"
 
 // TDialog rather than TWindow — not a cosmetic choice: TWindow and
 // TDialog each have their OWN default getPalette() (cpBlueWindow/
@@ -75,6 +76,13 @@ public:
     // is a three-way exclusive choice, not independent flags.
     TRadioButtons* seedRatioRadio = nullptr;
     TInputLine* seedRatioField = nullptr;
+    // The single place to change a torrent's priority now — see
+    // PriorityComboBox.h. Unlike the speed-limit/seed-ratio controls
+    // above (which wait for the "Apply" button), a change here is sent
+    // immediately in handleEvent() below, matching how the removed
+    // Priority menu always worked: picking a priority took effect right
+    // away, with no separate confirm step.
+    PriorityComboBox* priorityCombo = nullptr;
 
 private:
     // Applies BOTH the speed limit controls and the seed ratio choice

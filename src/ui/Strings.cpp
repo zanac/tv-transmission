@@ -135,14 +135,6 @@ const char* tr(Str id) {
         case Str::MenuQueueMoveBottom:
             return pick("Move to ~B~ottom", "Porta in ~f~ondo", "Déplacer tout en ~b~as",
                         "Ganz nach u~n~ten", "Mover al ~f~inal", "Mover para o ~f~im", "Переместить в конец", "Mover para o ~f~undo");
-        case Str::MenuPriority:
-            return pick("Priorit~y~", "Priorit~à~", "Priorit~é~", "P~r~iorität", "Prioridad", "Priorida~d~e", "П~р~иоритет", "Priorida~d~e");
-        case Str::MenuPriorityLow:
-            return pick("~L~ow", "~B~assa", "~B~asse", "~N~iedrig", "~B~aja", "~B~aixa", "~Н~изкий", "~B~aixa");
-        case Str::MenuPriorityNormal:
-            return pick("~N~ormal", "~N~ormale", "~N~ormale", "~N~ormal", "~N~ormal", "~N~ormal", "~О~бычный", "~N~ormal");
-        case Str::MenuPriorityHigh:
-            return pick("~H~igh", "~A~lta", "~H~aute", "~H~och", "~A~lta", "~A~lta", "~В~ысокий", "~A~lta");
         case Str::MenuDeleteWithData:
             return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
                         "~L~öschen (mit Dateien)", "~B~orrar (con archivos)", "Excluir (com ~a~rquivos)", "Удалить (с ~ф~айлами)", "Eliminar (com ~f~icheiros)");
@@ -367,6 +359,9 @@ const char* tr(Str id) {
             return pick("Downloading: %s", "In download: %s", "Téléchargement : %s", "Herunterladen: %s", "Descargando: %s", "Baixando: %s", "Скачивание: %s", "A transferir: %s");
         case Str::LabelTimeSeeding:
             return pick("Seeding: %s", "In seeding: %s", "Partage : %s", "Seeding: %s", "Compartiendo: %s", "Semeando: %s", "Раздача: %s", "A semear: %s");
+
+        case Str::LabelPriority:
+            return pick("Priority:", "Priorità:", "Priorité :", "Priorität:", "Prioridad:", "Prioridade:", "Приоритет:", "Prioridade:");
 
         case Str::LabelSpeedLimitSection:
             return pick("Speed limit for this torrent:", "Limite di velocità per questo torrent:",

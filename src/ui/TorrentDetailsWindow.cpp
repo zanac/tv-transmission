@@ -177,6 +177,11 @@ void TorrentDetailsWindow::handleEvent(TEvent& event) {
     } else if (event.what == evCommand && event.message.command == cmShowTrackers) {
         showTrackers();
         clearEvent(event);
+    } else if (event.what == evBroadcast &&
+               event.message.command == cmComboBoxSelectionChanged &&
+               event.message.infoPtr == priorityCombo) {
+        client_.setPriority(torrentId_, priorityCombo->priority());
+        clearEvent(event);
     }
 }
 
@@ -300,6 +305,13 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         queueLine(y++, left);
     }
 
+    // --- Torrent-level priority — the single place to change it now
+    // that the Priority menu (menu bar and context menu alike) has been
+    // removed; a plain label + PriorityComboBox rather than a queued
+    // line, since a combo box is a widget, not TStaticText.
+    y++; // blank separator
+    int priorityY = y++;
+
     // --- Per-torrent speed limit override ---
     y++; // blank separator
     int speedLimitLabelY = y++;
@@ -354,6 +366,10 @@ TWindow* createTorrentDetailsWindow(const Torrent& t, TransmissionClient& client
         if (line.isPair) addLineLR(win, line.y, line.left, line.right);
         else addLine(win, line.y, line.left);
     }
+
+    win->insert(new TStaticText(TRect(2, priorityY, 14, priorityY + 1), tr(Str::LabelPriority)));
+    win->priorityCombo = new PriorityComboBox(TRect(14, priorityY, 30, priorityY + 1), t.bandwidthPriority);
+    win->insert(win->priorityCombo);
 
     addLine(win, speedLimitLabelY, tr(Str::LabelSpeedLimitSection));
 

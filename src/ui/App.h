@@ -181,9 +181,16 @@ const ushort cmQueueMoveUp      = 118;
 const ushort cmQueueMoveDown    = 119;
 const ushort cmQueueMoveBottom  = 120;
 const ushort cmServerSettings   = 121;
-const ushort cmSetPriorityLow    = 122;
-const ushort cmSetPriorityNormal = 123;
-const ushort cmSetPriorityHigh   = 124;
+// 122-124 used to be cmSetPriorityLow/Normal/High, for a "Priority"
+// submenu that lived both here (the menu bar's Torrent menu) and in
+// TorrentListWindow's own right-click context menu. Both were removed
+// in favor of a single place to change a torrent's priority — a
+// PriorityComboBox in the torrent details window (see
+// TorrentDetailsWindow.cpp) — alongside the pre-existing double-click-
+// to-cycle on the main grid's own Priority column
+// (TorrentListWindow::cyclePriorityForRow), which was kept as a
+// second, faster way to do the same thing. Left unrenumbered, as
+// always, so nothing below has to shift.
 const ushort cmSessionStats     = 125;
 const ushort cmToggleStatusPanel = 126;
 const ushort cmToggleFilesPanel = 127;
