@@ -135,6 +135,15 @@ public:
     // README.md).
     void relayoutPanels();
 
+    // Gives keyboard focus to the torrent grid itself. Opening a side
+    // panel inserts it into this window, and the newly inserted view
+    // (the Status panel's name field, say) ends up as the window's
+    // current one — so without this, starting the app with a saved open
+    // Status panel left the keyboard in that panel and Tab was needed to
+    // reach the list. Called once by App::openServerWindow() after the
+    // saved panel layout has been applied.
+    void focusGrid();
+
     // Keyboard-driven equivalent of dragResizeStatusPanel()/
     // dragResizeFilesPanel() (private, below — reached only via an
     // in-progress mouse drag already being handled in handleEvent()):

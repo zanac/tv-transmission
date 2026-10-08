@@ -344,6 +344,11 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     if (panelIt != settings_.panelLayouts.end() && panelIt->second.filesOpen) {
         win->setFilesPanelOpen(true, panelIt->second.filesWidth);
     }
+    // Opening a panel above leaves it (e.g. the Status panel's name
+    // field) as the window's focused view — the torrent list is what
+    // should have the keyboard on startup, not a panel that needs Tab
+    // to get out of.
+    win->focusGrid();
     return win;
 }
 

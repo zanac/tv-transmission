@@ -4906,3 +4906,13 @@ instead — same look, "No" focused and bound to Enter, Esc cancels.
 Verified end-to-end against a mock RPC server: Enter on either popup
 sent nothing; Tab + Enter (explicit "Yes") sent a single
 `torrent-remove` with `delete-local-data: true`.
+
+**Keyboard focus started on the Status panel instead of the torrent list.**
+With the Status panel saved as open, starting the app left the keyboard
+in its name field (inserting a panel makes it the window's current
+view), so Tab was needed before the arrow keys could move through the
+list. `App::openServerWindow()` now calls the new
+`TorrentListWindow::focusGrid()` once the saved panel layout has been
+applied, so the torrent list has the keyboard from the first frame.
+Verified on a real instance with both panels open: with no click and no
+Tab, Down-Down moved the list's focus and the Files panel followed.
