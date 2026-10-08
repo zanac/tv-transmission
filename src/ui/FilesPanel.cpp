@@ -163,11 +163,17 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     });
     grid_->setHeaderColorCallback([]() -> TColorAttr { return TColorAttr(0x30); });
     grid_->setCellActivateCallback([this](int, int col) -> bool {
-        if (col == 1) toggleWantedForFocused();
-        return true; // col 2: handled on single click (see below)
+        (void)col;
+        return true; // cols 1/2 are handled on single click (see below)
     });
     // Single click on one of the "- = +" marks sets that priority.
     grid_->setCellClickCallback([this](int row, int col, int x) -> bool {
+        // Enable column: a click anywhere on "[X]" (brackets included).
+        if (col == 1) {
+            if (x < 0 || x > 2) return false;
+            toggleWantedForFocused();
+            return true;
+        }
         if (col != 2 || x < 0 || x > 4) return false;
         setPriorityForRow(row, x <= 1 ? -1 : (x <= 3 ? 0 : 1));
         return true;
