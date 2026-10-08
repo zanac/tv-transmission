@@ -147,7 +147,7 @@ HTTP and nlohmann/json for parsing.
   "Cancel selection" in the right-click context menu, which only shows
   up there while there's a selection to cancel
 - Once at least one row is checked, every Torrent-menu action (Start,
-  Stop, Remove, Delete with files, Start Now, Verify, Reannounce,
+  Stop, Remove, Delete, Start Now, Verify, Reannounce,
   Details, Files) applies to every checked torrent instead of just the
   focused one — Remove and Delete ask for confirmation once, naming how
   many torrents rather than listing each one; Details and Files open
@@ -307,15 +307,17 @@ HTTP and nlohmann/json for parsing.
   error if it couldn't even connect
 - Start / stop the selected torrent (F5 / F6)
 - Remove the selected torrent (F8) — keeps its files on disk
-- Delete the selected torrent **and its files on disk** — a separate,
-  clearly distinct action from Remove, reachable from the Torrent menu
-  and the right-click context menu (no default keyboard shortcut, given
-  how destructive it is)
-- Both Remove and Delete-with-files ask for confirmation first
-  (`messageBox`, showing the torrent's name) before doing anything —
-  Delete's confirmation spells out that the operation can't be undone
+- Delete the selected torrent **and its files on disk** (Shift+F8) — a
+  separate, clearly distinct action from Remove, labelled just "Delete"
+  in the Torrent menu and the right-click context menu
+- Both Remove and Delete ask for confirmation first (showing the
+  torrent's name) before doing anything — Delete's confirmation spells
+  out that the operation can't be undone. **"No" is the default button**
+  in both popups (Enter or Esc cancels; "Yes" has to be picked
+  explicitly, with Tab/arrows or its hotkey), so an accidental Enter
+  never destroys anything
 - Right-click a row for a context menu: Start, Start Now, Stop, Verify,
-  Reannounce, Remove, Delete (with files), Details, Files — right-clicking
+  Reannounce, Remove, Delete, Details, Files — right-clicking
   also selects that row first, even if it wasn't already focused
 - Middle-click a row to jump straight to its files window — a one-click
   shortcut for the single most common reason to right-click and pick
@@ -4891,3 +4893,16 @@ the `MenuPriority*` strings, which are no longer used anywhere. The
 double-click-to-cycle behavior on the grid's own Priority column is
 unchanged — a second, faster way to do the same thing, now alongside
 the combo box rather than alongside a menu.
+
+**Delete had no shortcut, a wordy label, and "Yes" as the default
+confirmation.** The "delete with files" action is now bound to Shift+F8
+(Remove keeps F8), and its menu/context-menu label is simply "Delete"
+(it used to read "Delete (with files)"; the confirmation popup still
+says explicitly that files on disk go too). Both confirmation popups
+(Remove and Delete) now default to "No": tvision's `messageBox()` always
+focuses its first button and offers no way to change that, so they use a
+small dedicated `confirmDefaultNo()` dialog (`ConfirmDialog.h/.cpp`)
+instead — same look, "No" focused and bound to Enter, Esc cancels.
+Verified end-to-end against a mock RPC server: Enter on either popup
+sent nothing; Tab + Enter (explicit "Yes") sent a single
+`torrent-remove` with `delete-local-data: true`.

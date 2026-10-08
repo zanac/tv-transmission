@@ -18,6 +18,7 @@ add_executable(tv-transmission
     tvision-ext/TFolderBrowserDialog.cpp
     ui/LanguageComboBox.cpp
     ui/PriorityComboBox.cpp
+    ui/ConfirmDialog.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
     ui/BandwidthStatusLine.cpp

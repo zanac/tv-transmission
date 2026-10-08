@@ -170,7 +170,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
             *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
-            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8) +
             newLine() +
             *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +

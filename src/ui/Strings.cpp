@@ -136,8 +136,8 @@ const char* tr(Str id) {
             return pick("Move to ~B~ottom", "Porta in ~f~ondo", "Déplacer tout en ~b~as",
                         "Ganz nach u~n~ten", "Mover al ~f~inal", "Mover para o ~f~im", "Переместить в конец", "Mover para o ~f~undo");
         case Str::MenuDeleteWithData:
-            return pick("Delete (~w~ith files)", "Elimina (con ~f~ile)", "~E~ffacer (avec fichiers)",
-                        "~L~öschen (mit Dateien)", "~B~orrar (con archivos)", "Excluir (com ~a~rquivos)", "Удалить (с ~ф~айлами)", "Eliminar (com ~f~icheiros)");
+            return pick("De~l~ete", "~E~limina", "~E~ffacer",
+                        "~L~öschen", "~B~orrar", "E~x~cluir", "~С~тереть", "Elimina~r~");
         case Str::ConfirmRemoveTorrent:
             return pick("Remove '%s' from the list? Files on disk will be kept.",
                         "Rimuovere '%s' dalla lista? I file su disco resteranno.",

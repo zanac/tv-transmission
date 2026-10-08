@@ -2,6 +2,7 @@
 #include "TorrentDetailsWindow.h"
 #include "TorrentFilesWindow.h"
 #include "Strings.h"
+#include "ConfirmDialog.h"
 #include "../TextUtil.h"
 #include <algorithm>
 #include <cctype>
@@ -1199,7 +1200,7 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8) +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
         static_cast<TMenuItem&>(*queueMenu);
@@ -1341,7 +1342,7 @@ void TorrentListWindow::removeSelected() {
     std::string msg = (targets.size() == 1)
         ? formatMessage(tr(Str::ConfirmRemoveTorrent), targets[0]->name)
         : formatMessage(tr(Str::ConfirmRemoveTorrentsMulti), std::to_string(targets.size()));
-    if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
+    if (!confirmDefaultNo(msg)) return;
     for (const Torrent* t : targets) client_.removeTorrent(t->id, /*deleteLocalData=*/false);
     grid()->exitSelectionMode();
     refresh();
@@ -1353,7 +1354,7 @@ void TorrentListWindow::deleteWithDataSelected() {
     std::string msg = (targets.size() == 1)
         ? formatMessage(tr(Str::ConfirmDeleteTorrentWithData), targets[0]->name)
         : formatMessage(tr(Str::ConfirmDeleteTorrentsWithDataMulti), std::to_string(targets.size()));
-    if (messageBox(msg, mfConfirmation | mfYesButton | mfNoButton) != cmYes) return;
+    if (!confirmDefaultNo(msg)) return;
     for (const Torrent* t : targets) client_.removeTorrent(t->id, /*deleteLocalData=*/true);
     grid()->exitSelectionMode();
     refresh();
