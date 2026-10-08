@@ -21,6 +21,20 @@ public:
         TCheckBoxes::press(item);
         if (onChanged) onChanged();
     }
+    // TCluster paints its current item highlighted whenever sfSelected
+    // is set, and inside this panel the cluster stays "selected" within
+    // its group after keyboard focus has moved elsewhere. Only show the
+    // highlight while the cluster really holds focus.
+    void draw() override {
+        bool hide = (state & sfSelected) && !(state & sfFocused);
+        if (hide) state &= ~sfSelected;
+        TCheckBoxes::draw();
+        if (hide) state |= sfSelected;
+    }
+    void setState(ushort aState, Boolean enable) override {
+        TCheckBoxes::setState(aState, enable);
+        if (aState & (sfFocused | sfActive)) drawView();
+    }
 };
 
 // A dedicated, separate child view — not just a fill painted from the

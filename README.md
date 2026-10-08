@@ -4956,3 +4956,8 @@ Shift+Tab.
 moves from the name field to the status checkboxes before leaving the
 panel for the torrent list (Shift+Tab goes back the same way). Cycle:
 torrent list → Files → Status name → Status checkboxes → list.
+
+**Status checkboxes kept a white highlight after losing focus.** The
+last-selected checkbox stayed drawn in the focused color when focus moved
+to the torrent list or the name field. It is now highlighted only while
+the checkboxes really hold keyboard focus.
