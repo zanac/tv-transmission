@@ -622,6 +622,10 @@ void TorrentListWindow::setFilesPanelOpen(bool open, int width) {
     relayoutPanels();
 }
 
+void TorrentListWindow::focusGrid() {
+    if (grid()) grid()->select();
+}
+
 void TorrentListWindow::relayoutPanels() {
     TRect r = getExtent();
     r.grow(-1, -1); // interior, same as TGridWindow's own constructor
