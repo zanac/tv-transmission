@@ -1231,13 +1231,13 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // the very first item) already reflects anything appended to it
     // afterward below, without needing to be reassigned.
     TMenuItem& items =
-        *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey, hcNoContext, "F5") +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey, hcNoContext, "F6") +
         *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8) +
+        *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey, hcNoContext, "F8") +
+        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
         static_cast<TMenuItem&>(*queueMenu);

@@ -4961,3 +4961,9 @@ torrent list → Files → Status name → Status checkboxes → list.
 last-selected checkbox stayed drawn in the focused color when focus moved
 to the torrent list or the name field. It is now highlighted only while
 the checkboxes really hold keyboard focus.
+
+**Menus now show their keyboard shortcuts.** Every menu item that has a
+key is labelled with it, right-aligned (Add F2, Start F5, Stop F6,
+Remove F8, Delete Shift+F8, Quit Alt-X, Zoom Ctrl+F5, Next Ctrl+F6,
+Close Alt-F3, Window list Alt-0, Connection F9). The right-click menu on
+a torrent shows F5/F6/F8/Shift+F8 as well.
