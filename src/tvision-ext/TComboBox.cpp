@@ -210,8 +210,14 @@ void TComboBox::draw() {
             std::string shown = editBuf_.substr(0, (size_t)bl.textWidth);
             b.moveStr(1, shown.c_str(), color, bl.textWidth);
         }
-        if (bl.plusX >= 0) b.moveStr(bl.plusX, "[+]", mapColor(3));
-        if (bl.minusX >= 0) b.moveStr(bl.minusX, "[-]", mapColor(3));
+        bool hasFocus = (state & sfFocused) != 0;
+        // The button holding the keyboard is drawn in the "focused"
+        // color (same one the text uses while focused) so it's visible
+        // which one Space/Enter will press.
+        TColorAttr plusColor = (hasFocus && focusZone_ == 1) ? mapColor(2) : mapColor(3);
+        TColorAttr minusColor = (hasFocus && focusZone_ == 2) ? mapColor(2) : mapColor(3);
+        if (bl.plusX >= 0) b.moveStr(bl.plusX, "[+]", plusColor);
+        if (bl.minusX >= 0) b.moveStr(bl.minusX, "[-]", minusColor);
         if (bl.arrowX >= 0) b.moveChar(bl.arrowX, '\x1F', mapColor(3), 1);
     } else {
         if (text != 0 && size.x > 3) b.moveStr(1, text, color, size.x - 3);
@@ -220,7 +226,7 @@ void TComboBox::draw() {
 
     writeLine(0, 0, size.x, 1, b);
 
-    if (editable_ && (state & sfFocused) != 0) {
+    if (editable_ && (state & sfFocused) != 0 && focusZone_ == 0) {
         ButtonLayout bl = computeButtonLayout();
         int cx = 1 + cursorPos_;
         if (cx > bl.textWidth) cx = bl.textWidth; // clamp: cursor past the clipped edge stays visible at the edge
@@ -300,6 +306,7 @@ TComboWindow* TComboBox::initComboWindow(const TRect& bounds) {
 
 void TComboBox::setState(ushort aState, Boolean enable) {
     TView::setState(aState, enable);
+    if ((aState & sfFocused) && enable) focusZone_ = 0;
     // TView::setState() does not repaint on sfFocused/sfSelected changes
     // by itself (same reason TCluster and TButton override this too) —
     // without this, the box would keep showing whichever color it was
@@ -457,6 +464,52 @@ void TComboBox::handleEvent(TEvent& event) {
 
         if (event.what == evKeyDown) {
             ushort key = event.keyDown.keyCode;
+
+            // Tab / Shift+Tab walk text -> [+] -> [-] before leaving
+            // the box; past either end they're left uncleared so the
+            // dialog moves to its next/previous control as usual.
+            if (key == kbTab && focusZone_ < 2) {
+                focusZone_++;
+                drawView();
+                clearEvent(event);
+                return;
+            }
+            if (key == kbShiftTab && focusZone_ > 0) {
+                focusZone_--;
+                drawView();
+                clearEvent(event);
+                return;
+            }
+
+            if (focusZone_ != 0) {
+                // A button has the keyboard: Space/Enter presses it,
+                // Left/Right move between text and buttons, Down still
+                // opens the dropdown; every other key does nothing
+                // here (printable ones are swallowed so they can't
+                // silently type into the hidden text, everything else
+                // like Esc or F-keys passes through to the dialog).
+                if (key == kbLeft) {
+                    focusZone_--;
+                    drawView();
+                    clearEvent(event);
+                } else if (key == kbRight) {
+                    if (focusZone_ < 2) { focusZone_++; drawView(); }
+                    clearEvent(event);
+                } else if (event.keyDown.charScan.charCode == ' ' || key == kbEnter) {
+                    if (focusZone_ == 1) addCurrentValue();
+                    else removeCurrentValue();
+                    drawView();
+                    clearEvent(event);
+                } else if (numItems > 0 && ctrlToArrow(key) == kbDown) {
+                    openDropdown();
+                    clearEvent(event);
+                } else {
+                    char c = event.keyDown.charScan.charCode;
+                    if (c >= 32 && c < 127) clearEvent(event);
+                }
+                return;
+            }
+
             if (numItems > 0 && ctrlToArrow(key) == kbDown) {
                 openDropdown();
                 clearEvent(event);

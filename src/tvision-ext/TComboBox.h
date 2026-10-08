@@ -220,6 +220,14 @@ protected:
 
 private:
     bool editable_ = false;
+    // Editable mode only: which part of the box has the keyboard.
+    // 0 = the text, 1 = the "[+]" button, 2 = the "[-]" button. Tab
+    // and Shift+Tab step through these before moving on to the next/
+    // previous control of the owning dialog; Left/Right step between
+    // them too. Space/Enter on a button presses it (Enter on the text
+    // still reaches the dialog's default button, as before). Reset to
+    // the text every time the box gains focus.
+    int focusZone_ = 0;
     std::string editBuf_;
     int cursorPos_ = 0;
     std::string lastChangedValue_;

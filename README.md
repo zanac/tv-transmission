@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.4** — stable release.
+**Version 1.7.5** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -4916,3 +4916,14 @@ list. `App::openServerWindow()` now calls the new
 applied, so the torrent list has the keyboard from the first frame.
 Verified on a real instance with both panels open: with no click and no
 Tab, Down-Down moved the list's focus and the Files panel followed.
+
+**The editable combo's "[+]" and "[-]" buttons were mouse-only.** In the
+Connection dialog's server combo they could only be pressed by clicking.
+Inside an editable `TComboBox` the keyboard now has three stops — the
+text, "[+]", "[-]" — stepped through with Tab / Shift+Tab (Left/Right
+work too) before focus moves on to the dialog's next/previous control.
+The button holding the keyboard is drawn in the focused color, and
+Space or Enter presses it (Enter on the text still reaches the dialog's
+default button as before). Verified in a real Connection dialog: Tab
+went text → [+] → [-] → next field, Shift+Tab walked back, and Space on
+"[+]" added the typed server name ("Server 'homex2' added").
