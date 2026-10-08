@@ -565,6 +565,28 @@ public:
             }
         }
 
+        if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0 &&
+            !(event.mouse.eventFlags & meDoubleClick) && !owner_->isInSelectionMode() &&
+            owner_->onCellClick_) {
+            TPoint local = makeLocal(event.mouse.where);
+            short row = topItem + local.y;
+            if (row >= 0 && row < range) {
+                int contentX = local.x + owner_->horizontalScrollOffset();
+                auto vis = owner_->visibleDisplayOrder();
+                int visualPos = owner_->columnAtX(contentX, vis);
+                if (visualPos >= 0) {
+                    int start = 0;
+                    for (int i = 0; i < visualPos; i++)
+                        start += owner_->column(vis[i]).width + kSeparatorWidth;
+                    focusItemNum(row);
+                    if (owner_->onCellClick_(row, vis[visualPos], contentX - start)) {
+                        clearEvent(event);
+                        return;
+                    }
+                }
+            }
+        }
+
         if (event.what == evMouseDown && (event.mouse.buttons & mbLeftButton) != 0) {
             TPoint local = makeLocal(event.mouse.where);
             short row = topItem + local.y;
@@ -854,6 +876,7 @@ void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std:
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }
 void TGridView::setRowMiddleClickCallback(RowMiddleClickFn fn) { onRowMiddleClick_ = std::move(fn); }
 void TGridView::setCellActivateCallback(CellActivateFn fn) { onCellActivate_ = std::move(fn); }
+void TGridView::setCellClickCallback(CellClickFn fn) { onCellClick_ = std::move(fn); }
 
 int TGridView::columnAtX(int x, const std::vector<int>& vis) const {
     int pos = 0;

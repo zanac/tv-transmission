@@ -219,6 +219,12 @@ public:
     // callback doesn't specifically care about.
     using CellActivateFn = std::function<bool(int row, int col)>;
 
+    // Single left click on a cell: `xInCell` is the click's offset from
+    // the cell's left edge. Return true to consume the click (the row
+    // is focused first), false to let normal row handling continue.
+    using CellClickFn = std::function<bool(int row, int col, int xInCell)>;
+    void setCellClickCallback(CellClickFn fn);
+
     // Clicking a sortable column's header (see TGridColumn::sortable)
     // toggles ascending/descending if it's already the active sort
     // column, or switches to it ascending otherwise — handled entirely
@@ -443,6 +449,7 @@ private:
     RowContextFn onRowContext_;
     RowMiddleClickFn onRowMiddleClick_;
     CellActivateFn onCellActivate_;
+    CellClickFn onCellClick_;
     RowFocusFn onRowFocus_;
     SortChangedFn onSortChanged_;
     ColumnOrderChangedFn onColumnOrderChanged_;

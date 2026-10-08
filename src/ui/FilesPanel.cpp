@@ -164,7 +164,12 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     grid_->setHeaderColorCallback([]() -> TColorAttr { return TColorAttr(0x30); });
     grid_->setCellActivateCallback([this](int, int col) -> bool {
         if (col == 1) toggleWantedForFocused();
-        else if (col == 2) cyclePriorityForFocused(+1);
+        return true; // col 2: handled on single click (see below)
+    });
+    // Single click on one of the "- = +" marks sets that priority.
+    grid_->setCellClickCallback([this](int row, int col, int x) -> bool {
+        if (col != 2 || x < 0 || x > 4) return false;
+        setPriorityForRow(row, x <= 1 ? -1 : (x <= 3 ? 0 : 1));
         return true;
     });
     insert(grid_);
@@ -257,7 +262,14 @@ void FilesPanel::cyclePriorityForFocused(int direction) {
     } else {
         next = direction > 0 ? -1 : 1;
     }
-    client_.setFilesPriority(torrentId_, indices, next);
+    setPriorityForRow(row, next);
+}
+
+void FilesPanel::setPriorityForRow(int row, int priority) {
+    if (torrentId_ < 0 || row < 0 || row >= (int)rows_.size()) return;
+    const std::vector<int>& indices = rows_[row].fileIndices;
+    if (indices.empty()) return;
+    client_.setFilesPriority(torrentId_, indices, priority);
     refresh();
     refreshTorrentFilesWindowForTorrent(torrentId_);
 }

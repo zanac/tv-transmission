@@ -68,6 +68,7 @@ private:
     // +1 lands on Low, -1 on High — the same "ambiguous state resolves
     // to the conservative option" convention TorrentFilesWindow uses.
     void cyclePriorityForFocused(int direction);
+    void setPriorityForRow(int row, int priority);
     // Common priority of every file under `row`, or false (and
     // `priority` untouched) if they disagree / there are none.
     bool uniformPriority(int row, int& priority) const;

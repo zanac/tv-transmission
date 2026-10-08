@@ -4935,8 +4935,8 @@ high). The mark matching the file's current priority is lit in white
 With keyboard focus in the panel (Tab twice from the torrent list, or a
 click), the focused row is drawn in white like the torrent list, Space
 toggles the file's X (download / skip), and `+` / `-` rotate the
-priority (low → normal → high and back). Double-clicking the column
-cycles it too. Folders apply the change to every file below them. The
+priority (low → normal → high and back). A single click on
+the `-`, `=` or `+` mark sets that priority directly. Folders apply the change to every file below them. The
 default Files panel width grew from 30 to 40 columns to fit the column.
 Verified against a mock RPC server: `+`/`-` sent
 `priority-low/normal/high` for the right file indexes, Space sent
