@@ -276,7 +276,10 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
     });
 
     grid()->setRowColorCallback([this](int row, bool focused) -> TColorAttr {
-        if (focused) return TColorAttr(0xF0); // current row: black on white, regardless of status
+        // Current row: black on white, regardless of status — but only
+        // while the list itself holds keyboard focus; when focus is in
+        // the Files/Status panel the white bar lives there instead.
+        if (focused && (grid()->state & sfFocused)) return TColorAttr(0xF0);
         if (row < 0 || row >= (int)visible_.size()) return TColorAttr(0x1F);
         return statusRowColor(visible_[row]);
     });
@@ -814,6 +817,36 @@ void TorrentListWindow::handleEvent(TEvent& event) {
             }
         }
     }
+    // Tab / Shift+Tab: torrent list -> Files panel -> Status panel ->
+    // back to the list (Shift+Tab walks it backwards), instead of the
+    // children's insertion order.
+    if (event.what == evKeyDown &&
+        (event.keyDown.keyCode == kbTab || event.keyDown.keyCode == kbShiftTab)) {
+        std::vector<TView*> order;
+        order.push_back(grid());
+        if (filesPanel_) order.push_back(filesPanel_);
+        if (statusPanel_) order.push_back(statusPanel_);
+        int cur = -1;
+        for (size_t i = 0; i < order.size(); ++i)
+            if (order[i]->state & sfFocused) cur = (int)i;
+        bool fwd = event.keyDown.keyCode == kbTab;
+        // Inside the Status panel Tab first walks its own controls
+        // (name field -> checkboxes) before leaving it.
+        if (cur >= 0 && statusPanel_ && order[cur] == statusPanel_ &&
+            statusPanel_->focusStep(fwd)) {
+            clearEvent(event);
+            return;
+        }
+        if (cur >= 0 && order.size() > 1) {
+            int n = (int)order.size();
+            int step = fwd ? 1 : n - 1;
+            TView* target = order[(cur + step) % n];
+            target->select();
+            if (target == statusPanel_) statusPanel_->focusEdge(fwd);
+            clearEvent(event);
+            return;
+        }
+    }
     TGridWindow::handleEvent(event);
     if (event.what == evMouseDown && statusPanelBorderX_ >= 0) {
         TPoint local = makeLocal(event.mouse.where);
@@ -1198,13 +1231,13 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // the very first item) already reflects anything appended to it
     // afterward below, without needing to be reassigned.
     TMenuItem& items =
-        *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey, hcNoContext, "F5") +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey, hcNoContext, "F6") +
         *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8) +
+        *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey, hcNoContext, "F8") +
+        *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
         *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
         *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
         static_cast<TMenuItem&>(*queueMenu);

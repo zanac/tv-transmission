@@ -45,6 +45,13 @@ public:
     // than showing stale values after an external change).
     void setFilter(const TorrentFilter& filter);
 
+    // Moves keyboard focus between the name field and the checkboxes.
+    // Returns false when already at the last (forward) / first (backward)
+    // control, i.e. focus should leave the panel.
+    bool focusStep(bool forward);
+    // Puts focus on the first (forward) or last (backward) control.
+    void focusEdge(bool forward);
+
 private:
     TorrentFilter readFilter() const;
     void notifyChanged();

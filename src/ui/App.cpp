@@ -166,11 +166,11 @@ TMenuBar* App::initMenuBar(TRect r) {
 
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
-            *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2) +
-            *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5) +
-            *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6) +
-            *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8) +
-            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8) +
+            *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2, hcNoContext, "F2") +
+            *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5, hcNoContext, "F5") +
+            *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6, hcNoContext, "F6") +
+            *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8, hcNoContext, "F8") +
+            *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
             newLine() +
             *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
@@ -182,7 +182,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             newLine() +
             *new TMenuItem(tr(Str::MenuSelectMultiple), cmSelectMultiple, kbNoKey) +
             newLine() +
-            *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX) +
+            *new TMenuItem(tr(Str::MenuQuit), cmQuit, kbAltX, hcNoContext, "Alt-X") +
         *connectionsSubMenu +
         *new TSubMenu(tr(Str::MenuColumnsMenu), kbNoKey) +
             // Rationalized from what used to be three separate entry
@@ -203,14 +203,14 @@ TMenuBar* App::initMenuBar(TRect r) {
             // sized and positioned MDI windows. Bringing a specific
             // server's own window to the front is what the
             // "Connections" menu (above) is for instead.
-            *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5) +
-            *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6) +
-            *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3) +
+            *new TMenuItem(tr(Str::MenuWindowZoom), cmZoom, kbCtrlF5, hcNoContext, "Ctrl+F5") +
+            *new TMenuItem(tr(Str::MenuWindowNext), cmNext, kbCtrlF6, hcNoContext, "Ctrl+F6") +
+            *new TMenuItem(tr(Str::MenuWindowClose), cmClose, kbAltF3, hcNoContext, "Alt-F3") +
             newLine() +
             *new TMenuItem(tr(Str::MenuWindowTile), cmTile, kbNoKey) +
             *new TMenuItem(tr(Str::MenuWindowCascade), cmCascade, kbNoKey) +
             newLine() +
-            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0) +
+            *new TMenuItem(tr(Str::MenuWindowList), cmShowWindowList, kbAlt0, hcNoContext, "Alt-0") +
             newLine() +
             // Nested WITHIN this Window submenu's own item chain, not a
             // new top-level menu-bar column of its own — needs the
@@ -227,7 +227,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             // now-removed submenus that used to need it here too).
             (TMenuItem&)*panelsSubMenu +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
-            *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9) +
+            *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9, hcNoContext, "F9") +
             *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbNoKey) +
             *new TMenuItem(tr(Str::MenuSessionStats), cmSessionStats, kbNoKey) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +

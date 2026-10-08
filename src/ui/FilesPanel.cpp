@@ -82,7 +82,10 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     grid_->growMode = gfGrowHiX | gfGrowHiY;
     TGridColumn nameCol;
     nameCol.header = tr(Str::HeaderFileName);
-    nameCol.width = size.x - 8;
+    // Panel width minus the two fixed 8-wide columns after it, their
+    // two 1-column separators and the scrollbar.
+    nameCol.width = size.x - 8 - 11 - 2 - 1;
+    if (nameCol.width < 8) nameCol.width = 8;
     nameCol.minWidth = 8;
     grid_->addColumn(nameCol);
     TGridColumn wantedCol;
@@ -99,6 +102,15 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
                                   // "Done" column (progress bar, also fixed
                                   // width) — see TorrentListWindow::setupColumns().
     grid_->addColumn(wantedCol);
+    // Priority: three marks side by side, "- = +" (low, normal, high),
+    // with only the current one lit white — see the char-color callback
+    // below. 11 wide (header + sort glyph) so the full "Priority" header fits.
+    TGridColumn priorityCol;
+    priorityCol.header = tr(Str::HeaderPriority);
+    priorityCol.width = 11;
+    priorityCol.minWidth = 11;
+    priorityCol.resizable = false;
+    grid_->addColumn(priorityCol);
 
     grid_->setCellTextCallback([this](int row, int col) -> std::string {
         if (row < 0 || row >= (int)rows_.size()) return "";
@@ -107,6 +119,7 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
             std::string indent(fr.depth * 2, ' ');
             return indent + fr.name + (fr.isFolder ? "/" : "");
         }
+        if (col == 2) return "- = +";
         // col == 1: same tri-state convention as TorrentFilesWindow's
         // own wanted column ("[-]" for a folder whose own descendants
         // disagree) — see that window's own comment on why, reused
@@ -123,12 +136,40 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     // check box"), over the gray/black uniform look a previous request
     // asked for instead: same cyan the Status panel's own checkboxes
     // use, both normal and focused rows, plus the header.
-    grid_->setRowColorCallback([](int, bool) -> TColorAttr {
-        return TColorAttr(0x30);
+    // Focused row: black on bright white (0xF0), the same highlight the
+    // main torrent list uses — shown only while this panel's grid has
+    // the keyboard (see rowIsHighlighted()).
+    grid_->setRowColorCallback([this](int row, bool) -> TColorAttr {
+        return TColorAttr(rowIsHighlighted(row) ? 0xF0 : 0x30);
+    });
+    // Priority marks: the one matching the row's current priority is
+    // lit (bright white on the panel's cyan, or white on black inside
+    // the white highlighted row so it still stands out there); the
+    // others keep the row's normal color. A folder whose files disagree
+    // lights none of them.
+    grid_->setCellCharColorCallback([this](int row, int col, int idx, TColorAttr base) -> TColorAttr {
+        if (col != 2 || (idx != 0 && idx != 2 && idx != 4)) return base;
+        int prio = 0;
+        if (!uniformPriority(row, prio)) return base;
+        int mark = (idx == 0) ? -1 : (idx == 2) ? 0 : 1;
+        if (mark != prio) return base;
+        return TColorAttr(rowIsHighlighted(row) ? 0x0F : 0x3F);
+    });
+    grid_->setKeyCallback([this](int, ushort, char ch) -> bool {
+        if (ch == ' ') { toggleWantedForFocused(); return true; }
+        if (ch == '+') { cyclePriorityForFocused(+1); return true; }
+        if (ch == '-') { cyclePriorityForFocused(-1); return true; }
+        return false;
     });
     grid_->setHeaderColorCallback([]() -> TColorAttr { return TColorAttr(0x30); });
     grid_->setCellActivateCallback([this](int, int col) -> bool {
         if (col == 1) toggleWantedForFocused();
+        return true; // col 2: handled on single click (see below)
+    });
+    // Single click on one of the "- = +" marks sets that priority.
+    grid_->setCellClickCallback([this](int row, int col, int x) -> bool {
+        if (col != 2 || x < 0 || x > 4) return false;
+        setPriorityForRow(row, x <= 1 ? -1 : (x <= 3 ? 0 : 1));
         return true;
     });
     insert(grid_);
@@ -189,5 +230,46 @@ void FilesPanel::toggleWantedForFocused() {
     // now, its own copy of this same data just went stale — reported
     // directly ("changing enable from the panel doesn't update the
     // check on the dialog, and vice versa, when both are open").
+    refreshTorrentFilesWindowForTorrent(torrentId_);
+}
+
+bool FilesPanel::rowIsHighlighted(int row) const {
+    return grid_ && row == grid_->focusedRow() && (grid_->state & sfFocused) != 0;
+}
+
+bool FilesPanel::uniformPriority(int row, int& priority) const {
+    if (row < 0 || row >= (int)rows_.size()) return false;
+    const std::vector<int>& indices = rows_[row].fileIndices;
+    if (indices.empty()) return false;
+    int first = files_[indices[0]].priority;
+    for (int idx : indices) if (files_[idx].priority != first) return false;
+    priority = first;
+    return true;
+}
+
+void FilesPanel::cyclePriorityForFocused(int direction) {
+    if (!grid_ || torrentId_ < 0) return;
+    int row = grid_->focusedRow();
+    if (row < 0 || row >= (int)rows_.size()) return;
+    const std::vector<int>& indices = rows_[row].fileIndices;
+    if (indices.empty()) return;
+    int cur = 0;
+    int next;
+    if (uniformPriority(row, cur)) {
+        next = cur + direction;
+        if (next > 1) next = -1;
+        if (next < -1) next = 1;
+    } else {
+        next = direction > 0 ? -1 : 1;
+    }
+    setPriorityForRow(row, next);
+}
+
+void FilesPanel::setPriorityForRow(int row, int priority) {
+    if (torrentId_ < 0 || row < 0 || row >= (int)rows_.size()) return;
+    const std::vector<int>& indices = rows_[row].fileIndices;
+    if (indices.empty()) return;
+    client_.setFilesPriority(torrentId_, indices, priority);
+    refresh();
     refreshTorrentFilesWindowForTorrent(torrentId_);
 }

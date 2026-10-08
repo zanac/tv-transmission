@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.5** — stable release.
+**Version 1.7.6** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -4927,3 +4927,43 @@ Space or Enter presses it (Enter on the text still reaches the dialog's
 default button as before). Verified in a real Connection dialog: Tab
 went text → [+] → [-] → next field, Shift+Tab walked back, and Space on
 "[+]" added the typed server name ("Server 'homex2' added").
+
+**The Files panel had no way to set a per-file download priority.** It
+now has a third column, "Priority", showing `- = +` (low / normal /
+high). The mark matching the file's current priority is lit in white
+(normal "=" by default; folders with mixed contents light none).
+With keyboard focus in the panel (Tab twice from the torrent list, or a
+click), the focused row is drawn in white like the torrent list, Space
+toggles the file's X (download / skip), and `+` / `-` rotate the
+priority (low → normal → high and back). A single click on
+the `-`, `=` or `+` mark sets that priority directly. Folders apply the change to every file below them. The
+default Files panel width grew from 30 to 40 columns to fit the column.
+Verified against a mock RPC server: `+`/`-` sent
+`priority-low/normal/high` for the right file indexes, Space sent
+`files-unwanted`.
+
+**Tab order and the white row follow the keyboard focus.** Tab now goes
+torrent list → Files panel → Status panel → back to the list
+(Shift+Tab walks it backwards). The white highlight bar is drawn only in
+the pane that holds keyboard focus: with focus on the Files panel the
+torrent list's selected row loses its white bar and the Files panel shows
+one, and vice versa; with focus on the Status panel neither shows it.
+Grids now repaint their rows whenever focus changes. Verified by driving
+a real terminal session and checking cell backgrounds after each Tab /
+Shift+Tab.
+
+**Tab inside the Status panel.** With focus on the Status panel, Tab now
+moves from the name field to the status checkboxes before leaving the
+panel for the torrent list (Shift+Tab goes back the same way). Cycle:
+torrent list → Files → Status name → Status checkboxes → list.
+
+**Status checkboxes kept a white highlight after losing focus.** The
+last-selected checkbox stayed drawn in the focused color when focus moved
+to the torrent list or the name field. It is now highlighted only while
+the checkboxes really hold keyboard focus.
+
+**Menus now show their keyboard shortcuts.** Every menu item that has a
+key is labelled with it, right-aligned (Add F2, Start F5, Stop F6,
+Remove F8, Delete Shift+F8, Quit Alt-X, Zoom Ctrl+F5, Next Ctrl+F6,
+Close Alt-F3, Window list Alt-0, Connection F9). The right-click menu on
+a torrent shows F5/F6/F8/Shift+F8 as well.
