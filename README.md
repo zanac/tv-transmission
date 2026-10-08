@@ -4941,3 +4941,13 @@ default Files panel width grew from 30 to 40 columns to fit the column.
 Verified against a mock RPC server: `+`/`-` sent
 `priority-low/normal/high` for the right file indexes, Space sent
 `files-unwanted`.
+
+**Tab order and the white row follow the keyboard focus.** Tab now goes
+torrent list → Files panel → Status panel → back to the list
+(Shift+Tab walks it backwards). The white highlight bar is drawn only in
+the pane that holds keyboard focus: with focus on the Files panel the
+torrent list's selected row loses its white bar and the Files panel shows
+one, and vice versa; with focus on the Status panel neither shows it.
+Grids now repaint their rows whenever focus changes. Verified by driving
+a real terminal session and checking cell backgrounds after each Tab /
+Shift+Tab.

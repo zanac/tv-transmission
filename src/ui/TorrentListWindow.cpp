@@ -276,7 +276,10 @@ TorrentListWindow::TorrentListWindow(const TRect& bounds, const std::string& ser
     });
 
     grid()->setRowColorCallback([this](int row, bool focused) -> TColorAttr {
-        if (focused) return TColorAttr(0xF0); // current row: black on white, regardless of status
+        // Current row: black on white, regardless of status — but only
+        // while the list itself holds keyboard focus; when focus is in
+        // the Files/Status panel the white bar lives there instead.
+        if (focused && (grid()->state & sfFocused)) return TColorAttr(0xF0);
         if (row < 0 || row >= (int)visible_.size()) return TColorAttr(0x1F);
         return statusRowColor(visible_[row]);
     });
@@ -812,6 +815,26 @@ void TorrentListWindow::handleEvent(TEvent& event) {
                 clearEvent(event);
                 return;
             }
+        }
+    }
+    // Tab / Shift+Tab: torrent list -> Files panel -> Status panel ->
+    // back to the list (Shift+Tab walks it backwards), instead of the
+    // children's insertion order.
+    if (event.what == evKeyDown &&
+        (event.keyDown.keyCode == kbTab || event.keyDown.keyCode == kbShiftTab)) {
+        std::vector<TView*> order;
+        order.push_back(grid());
+        if (filesPanel_) order.push_back(filesPanel_);
+        if (statusPanel_) order.push_back(statusPanel_);
+        int cur = -1;
+        for (size_t i = 0; i < order.size(); ++i)
+            if (order[i]->state & sfFocused) cur = (int)i;
+        if (cur >= 0 && order.size() > 1) {
+            int n = (int)order.size();
+            int step = event.keyDown.keyCode == kbTab ? 1 : n - 1;
+            order[(cur + step) % n]->select();
+            clearEvent(event);
+            return;
         }
     }
     TGridWindow::handleEvent(event);

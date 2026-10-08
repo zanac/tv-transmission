@@ -100,6 +100,9 @@ public:
     // owner's own resize reaches here, mid-way through that owner's own
     // TGroup::insertBefore() sequence.
     void changeBounds(const TRect& bounds) override;
+    // Repaints the rows when focus/activation changes: row colors may
+    // depend on whether the grid holds keyboard focus.
+    void setState(ushort aState, Boolean enable) override;
 
     // --- Column management — fully dynamic, at any time ---
     // Returns the new column's index.

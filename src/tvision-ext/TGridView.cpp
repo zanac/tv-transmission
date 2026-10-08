@@ -691,6 +691,11 @@ TGridView::TGridView(const TRect& bounds, ushort options)
     insert(header_);
 }
 
+void TGridView::setState(ushort aState, Boolean enable) {
+    TGroup::setState(aState, enable);
+    if ((aState & (sfFocused | sfActive | sfSelected)) && rows_) rows_->drawView();
+}
+
 void TGridView::changeBounds(const TRect& bounds) {
     TGroup::changeBounds(bounds);
     // Same rects as the constructor above, recomputed against this
