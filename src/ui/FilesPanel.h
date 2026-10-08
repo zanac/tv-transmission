@@ -62,6 +62,19 @@ public:
 
 private:
     void toggleWantedForFocused();
+    // Rotates the focused row's priority (every file under it, for a
+    // folder): direction +1 = Low -> Normal -> High -> Low, -1 the
+    // reverse. A folder whose files disagree starts from "none lit":
+    // +1 lands on Low, -1 on High — the same "ambiguous state resolves
+    // to the conservative option" convention TorrentFilesWindow uses.
+    void cyclePriorityForFocused(int direction);
+    // Common priority of every file under `row`, or false (and
+    // `priority` untouched) if they disagree / there are none.
+    bool uniformPriority(int row, int& priority) const;
+    // Whether `row` is the one drawn as the highlighted/current row —
+    // only while this panel's own grid actually has the keyboard, so an
+    // unfocused panel doesn't show a stale white bar.
+    bool rowIsHighlighted(int row) const;
 
     TransmissionClient& client_;
     TGridView* grid_ = nullptr;

@@ -4927,3 +4927,17 @@ Space or Enter presses it (Enter on the text still reaches the dialog's
 default button as before). Verified in a real Connection dialog: Tab
 went text → [+] → [-] → next field, Shift+Tab walked back, and Space on
 "[+]" added the typed server name ("Server 'homex2' added").
+
+**The Files panel had no way to set a per-file download priority.** It
+now has a third column, "Priority", showing `- = +` (low / normal /
+high). The mark matching the file's current priority is lit in white
+(normal "=" by default; folders with mixed contents light none).
+With keyboard focus in the panel (Tab twice from the torrent list, or a
+click), the focused row is drawn in white like the torrent list, Space
+toggles the file's X (download / skip), and `+` / `-` rotate the
+priority (low → normal → high and back). Double-clicking the column
+cycles it too. Folders apply the change to every file below them. The
+default Files panel width grew from 30 to 40 columns to fit the column.
+Verified against a mock RPC server: `+`/`-` sent
+`priority-low/normal/high` for the right file indexes, Space sent
+`files-unwanted`.

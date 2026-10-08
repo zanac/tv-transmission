@@ -167,6 +167,21 @@ public:
     // necessarily resolved through the same mechanism.
     using HeaderColorFn = std::function<TColorAttr()>; // optional
     using CellBoldFn      = std::function<bool(int row, int col)>;             // optional
+    // Per-CHARACTER color inside a cell: called for every character
+    // position of a drawn cell (index counted in bytes of the already
+    // width-fitted text, so only meaningful for ASCII cells) with the
+    // color the cell would otherwise get; returns the color to use for
+    // that one character. For a cell that shows several independently
+    // highlighted marks at once (e.g. a "- = +" priority selector with
+    // only the chosen mark lit). Optional — when unset cells are drawn
+    // in one color, exactly as before.
+    using CellCharColorFn = std::function<TColorAttr(int row, int col, int charIndex, TColorAttr base)>;
+    // Key pressed while this grid's own rows have the keyboard: return
+    // true to consume it (so TListViewer's own handling never sees it),
+    // false to let it through as usual. `row` is the focused row.
+    // Optional; not consulted while in multi-selection mode (Space and
+    // friends already mean something there).
+    using KeyFn = std::function<bool(int row, ushort keyCode, char charCode)>;
     using RowActivateFn  = std::function<void(int row)>;               // double-click / Enter
     using RowContextFn   = std::function<void(int row, TPoint screenPos)>; // right-click
     // Middle mouse button click on a row — a second, independent
@@ -218,6 +233,8 @@ public:
     void setRowColorCallback(RowColorFn fn);
     void setHeaderColorCallback(HeaderColorFn fn);
     void setCellBoldCallback(CellBoldFn fn);
+    void setCellCharColorCallback(CellCharColorFn fn);
+    void setKeyCallback(KeyFn fn);
     void setRowActivateCallback(RowActivateFn fn);
     void setRowContextCallback(RowContextFn fn);
     void setRowMiddleClickCallback(RowMiddleClickFn fn);
@@ -417,6 +434,8 @@ private:
     RowColorFn rowColor_;
     HeaderColorFn headerColor_;
     CellBoldFn cellBold_;
+    CellCharColorFn cellCharColor_;
+    KeyFn onKey_;
     RowActivateFn onRowActivate_;
     RowContextFn onRowContext_;
     RowMiddleClickFn onRowMiddleClick_;

@@ -220,7 +220,7 @@ struct AppSettings {
         bool statusOpen = false;
         int statusWidth = 24; // columns; the panel's own default width
         bool filesOpen = false;
-        int filesWidth = 30;
+        int filesWidth = 40;
     };
     std::map<std::string, PanelLayout> panelLayouts;
 

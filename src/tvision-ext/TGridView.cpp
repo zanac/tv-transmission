@@ -442,7 +442,20 @@ public:
                         cellColor = TColorAttr(cellColor.getForeground(), cellColor.getBackground(),
                                                 cellColor.getStyle() | slBold);
                     }
-                    drawScrolled(b, x, col.width, fitted, offset, cellColor, prefixWidth);
+                    bool asciiOnly = true;
+                    for (unsigned char ch : fitted) if (ch >= 0x80) { asciiOnly = false; break; }
+                    if (owner_->cellCharColor_ && asciiOnly) {
+                        // One character at a time, each with its own
+                        // color — see CellCharColorFn's doc comment
+                        // (ASCII-only cells; anything with multi-byte
+                        // UTF-8 falls through to the normal path).
+                        for (size_t k = 0; k < fitted.size(); k++) {
+                            TColorAttr cc = owner_->cellCharColor_(item, logicalCol, (int)k, cellColor);
+                            drawScrolled(b, x + (int)k, 1, std::string(1, fitted[k]), offset, cc, prefixWidth);
+                        }
+                    } else {
+                        drawScrolled(b, x, col.width, fitted, offset, cellColor, prefixWidth);
+                    }
                     x += col.width;
                     if (visualPos < n - 1) {
                         drawScrolled(b, x, kSeparatorWidth, " ", offset, rowColor, prefixWidth);
@@ -600,6 +613,11 @@ public:
             // toggles the focused row on the way out (Space already
             // covers "toggle", these two are specifically "I'm done").
             owner_->exitSelectionMode();
+            clearEvent(event);
+            return;
+        } else if (event.what == evKeyDown && !owner_->isInSelectionMode() && owner_->onKey_ &&
+                   focused >= 0 && focused < range &&
+                   owner_->onKey_(focused, event.keyDown.keyCode, event.keyDown.charScan.charCode)) {
             clearEvent(event);
             return;
         }
@@ -825,6 +843,8 @@ void TGridView::setCellTextCallback(CellTextFn fn) { cellText_ = std::move(fn); 
 void TGridView::setRowColorCallback(RowColorFn fn) { rowColor_ = std::move(fn); }
 void TGridView::setHeaderColorCallback(HeaderColorFn fn) { headerColor_ = std::move(fn); }
 void TGridView::setCellBoldCallback(CellBoldFn fn) { cellBold_ = std::move(fn); }
+void TGridView::setCellCharColorCallback(CellCharColorFn fn) { cellCharColor_ = std::move(fn); }
+void TGridView::setKeyCallback(KeyFn fn) { onKey_ = std::move(fn); }
 void TGridView::setRowActivateCallback(RowActivateFn fn) { onRowActivate_ = std::move(fn); }
 void TGridView::setRowContextCallback(RowContextFn fn) { onRowContext_ = std::move(fn); }
 void TGridView::setRowMiddleClickCallback(RowMiddleClickFn fn) { onRowMiddleClick_ = std::move(fn); }
