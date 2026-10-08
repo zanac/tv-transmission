@@ -153,6 +153,16 @@ TColorAttr StatusPanel::mapColor(uchar color) {
     }
 }
 
+bool StatusPanel::focusStep(bool forward) {
+    if (forward && (nameField_->state & sfFocused)) { statusBoxes_->select(); return true; }
+    if (!forward && (statusBoxes_->state & sfFocused)) { nameField_->select(); return true; }
+    return false;
+}
+
+void StatusPanel::focusEdge(bool forward) {
+    if (forward) nameField_->select(); else statusBoxes_->select();
+}
+
 void StatusPanel::handleEvent(TEvent& event) {
     // Same reasoning as ConnectionDialogImpl::handleEvent() (see its
     // own comment on this exact pattern): the focused child (nameField_,

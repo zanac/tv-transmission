@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.7.5** — stable release.
+**Version 1.7.6** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -4951,3 +4951,8 @@ one, and vice versa; with focus on the Status panel neither shows it.
 Grids now repaint their rows whenever focus changes. Verified by driving
 a real terminal session and checking cell backgrounds after each Tab /
 Shift+Tab.
+
+**Tab inside the Status panel.** With focus on the Status panel, Tab now
+moves from the name field to the status checkboxes before leaving the
+panel for the torrent list (Shift+Tab goes back the same way). Cycle:
+torrent list → Files → Status name → Status checkboxes → list.

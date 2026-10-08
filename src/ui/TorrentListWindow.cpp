@@ -829,10 +829,20 @@ void TorrentListWindow::handleEvent(TEvent& event) {
         int cur = -1;
         for (size_t i = 0; i < order.size(); ++i)
             if (order[i]->state & sfFocused) cur = (int)i;
+        bool fwd = event.keyDown.keyCode == kbTab;
+        // Inside the Status panel Tab first walks its own controls
+        // (name field -> checkboxes) before leaving it.
+        if (cur >= 0 && statusPanel_ && order[cur] == statusPanel_ &&
+            statusPanel_->focusStep(fwd)) {
+            clearEvent(event);
+            return;
+        }
         if (cur >= 0 && order.size() > 1) {
             int n = (int)order.size();
-            int step = event.keyDown.keyCode == kbTab ? 1 : n - 1;
-            order[(cur + step) % n]->select();
+            int step = fwd ? 1 : n - 1;
+            TView* target = order[(cur + step) % n];
+            target->select();
+            if (target == statusPanel_) statusPanel_->focusEdge(fwd);
             clearEvent(event);
             return;
         }
