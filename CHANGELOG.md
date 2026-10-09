@@ -4177,3 +4177,5 @@ Select multiple: Shift+Down / Shift+Up in the torrent list starts
 selection mode with the current row checked and extends it one row per
 press (Space toggles, Esc/Enter leaves) — the menu item itself shows no
 shortcut for this one. The right-click menu shows Shift+F5 for Start Now.
+
+Version 1.8.0.
