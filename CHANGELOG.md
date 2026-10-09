@@ -4148,3 +4148,14 @@ by the `gvReorderableColumns` option, but only the torrent list and the
 tracker/peer window had it switched on. The Files side panel and the
 torrent Files window now have it too; the Files panel's column order is
 also saved on exit.
+
+**Horizontal scrollbar did nothing when the window/panels were resized.**
+The scrollbar's range (content width minus visible width) was only
+recomputed when columns were added/removed/hidden — not when the grid
+itself was resized (opening the Status/Files panels, resizing the
+window) or when a column width was set (restoring a saved layout). The
+bar was then drawn but inactive (range 0) while columns were clipped and
+unreachable. `TGridView` now recomputes the range on every resize and
+every `setColumnWidth()`, which fixes the torrent list, the Files panel
+and every other grid at once. Verified at 110/150/200 terminal columns:
+the thumb is active and scrolling reaches the last column completely.
