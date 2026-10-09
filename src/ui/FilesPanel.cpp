@@ -163,11 +163,17 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     });
     grid_->setHeaderColorCallback([]() -> TColorAttr { return TColorAttr(0x30); });
     grid_->setCellActivateCallback([this](int, int col) -> bool {
-        if (col == 1) toggleWantedForFocused();
-        return true; // col 2: handled on single click (see below)
+        (void)col;
+        return true; // cols 1/2 are handled on single click (see below)
     });
     // Single click on one of the "- = +" marks sets that priority.
     grid_->setCellClickCallback([this](int row, int col, int x) -> bool {
+        // Enable column: a click anywhere on "[X]" (brackets included).
+        if (col == 1) {
+            if (x < 0 || x > 2) return false;
+            toggleWantedForFocused();
+            return true;
+        }
         if (col != 2 || x < 0 || x > 4) return false;
         setPriorityForRow(row, x <= 1 ? -1 : (x <= 3 ? 0 : 1));
         return true;
@@ -214,6 +220,30 @@ void FilesPanel::refresh() {
         grid_->setRowCount((int)rows_.size());
         grid_->refresh();
     }
+}
+
+void FilesPanel::applyColumnLayout(const std::vector<int>& widths, const std::vector<int>& order,
+                                   const std::vector<bool>& visible) {
+    if (!grid_) return;
+    if (widths.size() == (size_t)grid_->columnCount())
+        for (int i = 0; i < grid_->columnCount(); i++) grid_->setColumnWidth(i, widths[i]);
+    if (!order.empty()) grid_->setColumnOrder(order); // no-op unless a valid permutation
+    for (int i = 0; i < grid_->columnCount(); i++)
+        grid_->setColumnVisible(i, i < (int)visible.size() ? visible[i] : true);
+}
+
+std::vector<int> FilesPanel::columnWidths() const {
+    std::vector<int> w(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) w[i] = grid_->column(i).width;
+    return w;
+}
+
+std::vector<int> FilesPanel::columnOrder() const { return grid_->columnOrder(); }
+
+std::vector<bool> FilesPanel::columnVisibility() const {
+    std::vector<bool> v(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) v[i] = grid_->isColumnVisible(i);
+    return v;
 }
 
 void FilesPanel::toggleWantedForFocused() {

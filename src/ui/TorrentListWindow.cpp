@@ -612,6 +612,7 @@ void TorrentListWindow::setFilesPanelOpen(bool open, int width) {
         // itself) rather than guessed at from this file's own side.
         filesPanel_ = new FilesPanel(TRect(0, 0, filesPanelWidth_, 10), client_);
         insert(filesPanel_);
+        filesPanel_->applyColumnLayout(filesColW_, filesColO_, filesColV_);
         relayoutPanels();
         int row = grid()->focusedRow();
         if (row >= 0 && row < (int)visible_.size()) {
@@ -623,6 +624,12 @@ void TorrentListWindow::setFilesPanelOpen(bool open, int width) {
         filesPanel_ = nullptr;
     }
     relayoutPanels();
+}
+
+void TorrentListWindow::setFilesColumnLayout(const std::vector<int>& w, const std::vector<int>& o,
+                                             const std::vector<bool>& v) {
+    filesColW_ = w; filesColO_ = o; filesColV_ = v;
+    if (filesPanel_) filesPanel_->applyColumnLayout(w, o, v);
 }
 
 void TorrentListWindow::focusGrid() {

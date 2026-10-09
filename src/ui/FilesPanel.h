@@ -60,6 +60,16 @@ public:
     // panel's own file data).
     void refresh();
 
+    // The panel's grid, and its column layout (widths/order/visibility,
+    // same triple the Manage columns dialog edits and settings.json
+    // stores). applyColumnLayout() ignores sizes that don't match.
+    TGridView* grid() const { return grid_; }
+    void applyColumnLayout(const std::vector<int>& widths, const std::vector<int>& order,
+                           const std::vector<bool>& visible);
+    std::vector<int> columnWidths() const;
+    std::vector<int> columnOrder() const;
+    std::vector<bool> columnVisibility() const;
+
 private:
     void toggleWantedForFocused();
     // Rotates the focused row's priority (every file under it, for a
