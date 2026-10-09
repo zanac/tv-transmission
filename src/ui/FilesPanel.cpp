@@ -222,6 +222,30 @@ void FilesPanel::refresh() {
     }
 }
 
+void FilesPanel::applyColumnLayout(const std::vector<int>& widths, const std::vector<int>& order,
+                                   const std::vector<bool>& visible) {
+    if (!grid_) return;
+    if (widths.size() == (size_t)grid_->columnCount())
+        for (int i = 0; i < grid_->columnCount(); i++) grid_->setColumnWidth(i, widths[i]);
+    if (!order.empty()) grid_->setColumnOrder(order); // no-op unless a valid permutation
+    for (int i = 0; i < grid_->columnCount(); i++)
+        grid_->setColumnVisible(i, i < (int)visible.size() ? visible[i] : true);
+}
+
+std::vector<int> FilesPanel::columnWidths() const {
+    std::vector<int> w(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) w[i] = grid_->column(i).width;
+    return w;
+}
+
+std::vector<int> FilesPanel::columnOrder() const { return grid_->columnOrder(); }
+
+std::vector<bool> FilesPanel::columnVisibility() const {
+    std::vector<bool> v(grid_->columnCount());
+    for (int i = 0; i < grid_->columnCount(); i++) v[i] = grid_->isColumnVisible(i);
+    return v;
+}
+
 void FilesPanel::toggleWantedForFocused() {
     if (!grid_ || torrentId_ < 0) return;
     int row = grid_->focusedRow();

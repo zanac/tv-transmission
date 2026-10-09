@@ -110,6 +110,10 @@ public:
     // in this class itself needed it before.
     FilesPanel* filesPanel() const { return filesPanel_; }
     int filesPanelWidth() const { return filesPanelWidth_; }
+    // Column layout of the Files panel: applied whenever the panel is
+    // (re)opened; setFilesColumnLayout() also applies it to an open one.
+    void setFilesColumnLayout(const std::vector<int>& w, const std::vector<int>& o,
+                              const std::vector<bool>& v);
 
     // Recomputes grid_'s own bounds (and statusPanel_'s/filesPanel_'s,
     // if open) from this window's own CURRENT extent and
@@ -342,4 +346,6 @@ private:
     int statusPanelWidth_ = kStatusPanelDefaultWidth;
     FilesPanel* filesPanel_ = nullptr;
     int filesPanelWidth_ = kFilesPanelDefaultWidth;
+    std::vector<int> filesColW_, filesColO_;
+    std::vector<bool> filesColV_;
 };

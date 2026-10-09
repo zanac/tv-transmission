@@ -204,6 +204,13 @@ struct AppSettings {
     std::vector<int> peerColumnOrder;
     std::vector<bool> peerColumnVisible;
 
+    // Column layout of the Files side panel (shared by every server's
+    // panel, like the tracker/peer layouts above): same widths/order/
+    // visibility triple, empty = defaults.
+    std::vector<int> filesPanelColumnWidths;
+    std::vector<int> filesPanelColumnOrder;
+    std::vector<bool> filesPanelColumnVisible;
+
     // Every configured server's own side-panel state (Window → Panels)
     // — open/closed and width, per panel, per server — keyed the same
     // way columnLayouts above is (a server with no entry here yet, or

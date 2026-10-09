@@ -4133,3 +4133,10 @@ double-click action is gone (Space still toggles from the keyboard).
 **Documentation:** the "Fixed bugs" section moved out of the README into
 this CHANGELOG.md; README references now point here. Version 1.7.7.
 
+
+**"Manage columns" now follows the Files panel.** With keyboard focus in
+the Files side panel, Columns → Manage columns… edits that panel's
+columns (File / Enable / Priority: width, order, visibility) instead of
+the torrent list's. The layout is saved in settings.json
+(`filesPanelColumnWidths/Order/Visible`, shared by all servers) and
+applied whenever a Files panel opens.

@@ -341,6 +341,8 @@ TorrentListWindow* App::openServerWindow(const std::string& name) {
     if (panelIt != settings_.panelLayouts.end() && panelIt->second.statusOpen) {
         win->setStatusPanelOpen(true, panelIt->second.statusWidth);
     }
+    win->setFilesColumnLayout(settings_.filesPanelColumnWidths, settings_.filesPanelColumnOrder,
+                              settings_.filesPanelColumnVisible);
     if (panelIt != settings_.panelLayouts.end() && panelIt->second.filesOpen) {
         win->setFilesPanelOpen(true, panelIt->second.filesWidth);
     }
@@ -745,7 +747,19 @@ void App::showColumnManagerDialog() {
         // per-server, not shared, now that each server has its own
         // independently-managed MDI window), the tracker list under
         // its own separate, still-shared layout.
-        if (auto* listWin = dynamic_cast<TorrentListWindow*>(TProgram::deskTop->current)) {
+        auto* curListWin = dynamic_cast<TorrentListWindow*>(TProgram::deskTop->current);
+        if (curListWin && curListWin->filesPanel() && grid == curListWin->filesPanel()->grid()) {
+            FilesPanel* fp = curListWin->filesPanel();
+            settings_.filesPanelColumnWidths = fp->columnWidths();
+            settings_.filesPanelColumnOrder = fp->columnOrder();
+            settings_.filesPanelColumnVisible = fp->columnVisibility();
+            // Other servers' windows pick the new layout up too.
+            for (auto* w : allListWindows())
+                w->setFilesColumnLayout(settings_.filesPanelColumnWidths,
+                                        settings_.filesPanelColumnOrder,
+                                        settings_.filesPanelColumnVisible);
+            saveSettings(settings_);
+        } else if (auto* listWin = curListWin) {
             AppSettings::ColumnLayout layout;
             layout.widths = listWin->columnWidths();
             layout.order = listWin->columnOrder();
@@ -835,6 +849,12 @@ TGridView* App::focusedGrid() const {
     // it is.
     TView* focused = TProgram::deskTop->current;
     if (!focused) return nullptr;
+    // The torrent window's Files side panel has its own grid: when the
+    // panel holds the keyboard, "Manage columns" acts on it.
+    if (auto* lw = dynamic_cast<TorrentListWindow*>(focused)) {
+        if (lw->filesPanel() && (lw->filesPanel()->state & sfFocused) && lw->filesPanel()->grid())
+            return lw->filesPanel()->grid();
+    }
     auto* group = dynamic_cast<TGroup*>(focused);
     if (!group) return nullptr;
     TGridView* grid = nullptr;
