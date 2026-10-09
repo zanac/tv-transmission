@@ -799,6 +799,11 @@ void TGridView::changeBounds(const TRect& bounds) {
     scrollBar_->show();
     scrollBar_->setState(sfExposed, exposedNow);
     hScrollBar_->setState(sfExposed, exposedNow);
+
+    // The viewport width just changed: the horizontal scrollbar's range
+    // (content width minus viewport) must follow, or it stays at its old
+    // value — e.g. 0, leaving clipped columns unreachable.
+    relayout();
 }
 
 int TGridView::addColumn(const TGridColumn& col) {
@@ -835,6 +840,8 @@ void TGridView::clearColumns() {
 void TGridView::setColumnWidth(int index, int width) {
     if (index < 0 || index >= (int)columns_.size()) return;
     columns_[index].width = std::max(width, columns_[index].minWidth);
+    // The horizontal scrollbar's range depends on the total width.
+    relayout();
 }
 
 void TGridView::setColumnVisible(int index, bool visible) {
