@@ -158,7 +158,7 @@ TorrentFilesWindow::TorrentFilesWindow(const TRect& bounds, TStringView title,
                 // setRowContextCallback() below), so only "Select all"/
                 // "Select none"/"Close" need a row
 
-    grid_ = new TGridView(r, gvResizableColumns);
+    grid_ = new TGridView(r, gvResizableColumns | gvReorderableColumns);
     insert(grid_);
 
     TGridColumn nameCol;

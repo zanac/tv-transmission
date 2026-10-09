@@ -68,7 +68,7 @@ FilesPanel::FilesPanel(const TRect& bounds, TransmissionClient& client)
     // what reveals more of it, past that width, via the same
     // horizontal scroll if "Name" and "Wanted" together end up wider
     // than this panel's own viewport.
-    grid_ = new TGridView(TRect(0, 0, size.x, size.y), gvResizableColumns);
+    grid_ = new TGridView(TRect(0, 0, size.x, size.y), gvResizableColumns | gvReorderableColumns);
     // Missing until now — grid_ never had its own growMode set at all,
     // meaning it stayed fixed at whatever size it happened to be
     // constructed with (this panel's own placeholder size, before ever

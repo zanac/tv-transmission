@@ -4140,3 +4140,11 @@ columns (File / Enable / Priority: width, order, visibility) instead of
 the torrent list's. The layout is saved in settings.json
 (`filesPanelColumnWidths/Order/Visible`, shared by all servers) and
 applied whenever a Files panel opens.
+
+**Column move mode in every grid.** Double-clicking a column header to
+enter the move mode (`<`/`>` markers, Left/Right or clicks to move,
+Enter to confirm, Esc to cancel) is a generic TGridView feature enabled
+by the `gvReorderableColumns` option, but only the torrent list and the
+tracker/peer window had it switched on. The Files side panel and the
+torrent Files window now have it too; the Files panel's column order is
+also saved on exit.

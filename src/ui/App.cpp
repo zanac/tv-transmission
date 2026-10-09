@@ -1160,6 +1160,17 @@ void App::shutDown() {
     // and a server removed via the Connection dialog during this
     // session doesn't leave a stale entry behind either.
     std::vector<TorrentListWindow*> windows = allListWindows();
+    // Files panel column layout (shared across servers): taken from any
+    // window whose panel is currently open, so a drag-reorder/resize
+    // done without ever opening Manage columns is still persisted.
+    for (TorrentListWindow* w : windows) {
+        if (FilesPanel* fp = w->filesPanel()) {
+            settings_.filesPanelColumnWidths = fp->columnWidths();
+            settings_.filesPanelColumnOrder = fp->columnOrder();
+            settings_.filesPanelColumnVisible = fp->columnVisibility();
+            break;
+        }
+    }
     settings_.columnLayouts.clear();
     for (TorrentListWindow* w : windows) {
         AppSettings::ColumnLayout layout;
