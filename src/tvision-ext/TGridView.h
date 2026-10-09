@@ -353,6 +353,9 @@ public:
     // for a row index outside [0, rowCount()) — callers don't need to
     // range-check first.
     void toggleRowSelected(int row);
+    bool isRowSelected(int row) const {
+        return row >= 0 && row < (int)selectedRows_.size() && selectedRows_[row];
+    }
     // Every currently-checked row's index, in ascending order. Empty
     // outside selection mode, or if nothing's been checked yet.
     std::vector<int> selectedRows() const;

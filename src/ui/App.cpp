@@ -172,7 +172,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8, hcNoContext, "F8") +
             *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
             newLine() +
-            *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbShiftF5, hcNoContext, "Shift+F5") +
             *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
             *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
@@ -228,7 +228,7 @@ TMenuBar* App::initMenuBar(TRect r) {
             (TMenuItem&)*panelsSubMenu +
         *new TSubMenu(tr(Str::MenuSettingsMenu), kbNoKey) +
             *new TMenuItem(tr(Str::MenuConnection), cmSettings, kbF9, hcNoContext, "F9") +
-            *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuServerSettings), cmServerSettings, kbF10, hcNoContext, "F10") +
             *new TMenuItem(tr(Str::MenuSessionStats), cmSessionStats, kbNoKey) +
         *new TSubMenu(tr(Str::MenuHelp), kbNoKey) +
             *new TMenuItem(tr(Str::MenuAbout), cmAbout, kbNoKey)

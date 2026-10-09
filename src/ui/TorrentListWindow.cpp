@@ -1243,7 +1243,7 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // afterward below, without needing to be reassigned.
     TMenuItem& items =
         *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey, hcNoContext, "F5") +
-        *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey, hcNoContext, "Shift+F5") +
         *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey, hcNoContext, "F6") +
         *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
         *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
