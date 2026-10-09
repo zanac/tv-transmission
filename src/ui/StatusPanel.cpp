@@ -214,6 +214,18 @@ void StatusPanel::notifyChanged() {
     if (onFilterChanged_) onFilterChanged_(readFilter());
 }
 
+void StatusPanel::syncFilter(const TorrentFilter& filter) {
+    TorrentFilter cur = readFilter();
+    // The panel groups Check/Download/Seed with their "wait" states, so
+    // compare the way readFilter() reports them.
+    bool same = cur.nameContains == filter.nameContains &&
+                cur.showStopped == filter.showStopped &&
+                cur.showChecking == (filter.showCheckWait || filter.showChecking) &&
+                cur.showDownloading == (filter.showDownloadWait || filter.showDownloading) &&
+                cur.showSeeding == (filter.showSeedWait || filter.showSeeding);
+    if (!same) setFilter(filter);
+}
+
 void StatusPanel::setFilter(const TorrentFilter& filter) {
     if (nameField_) {
         std::vector<char> buf(129, 0);

@@ -44,6 +44,10 @@ public:
     // would need this to keep the panel's own fields in sync rather
     // than showing stale values after an external change).
     void setFilter(const TorrentFilter& filter);
+    // Like setFilter(), but leaves the widgets alone when they already
+    // show exactly this filter — so the panel the change came from isn't
+    // rewritten (and its text cursor reset) mid-typing.
+    void syncFilter(const TorrentFilter& filter);
 
     // Moves keyboard focus between the name field and the checkboxes.
     // Returns false when already at the last (forward) / first (backward)
