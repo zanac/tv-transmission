@@ -625,6 +625,23 @@ public:
                     return;
                 }
             }
+        } else if (event.what == evKeyDown && owner_->multiSelectCapable() &&
+                   (event.keyDown.keyCode == kbDown || event.keyDown.keyCode == kbUp) &&
+                   (event.keyDown.controlKeyState & kbShift) &&
+                   focused >= 0 && focused < range) {
+            // Shift+Down / Shift+Up: starts selection mode (with the
+            // current row checked) if it isn't active yet, then moves
+            // one row and checks that one too — extends the selection
+            // the way Shift+arrow does elsewhere. Deliberately not shown
+            // in any menu.
+            if (!owner_->isInSelectionMode()) owner_->enterSelectionMode(focused);
+            short next = focused + (event.keyDown.keyCode == kbDown ? 1 : -1);
+            if (next >= 0 && next < range) {
+                focusItemNum(next);
+                if (!owner_->isRowSelected(next)) owner_->toggleRowSelected(next);
+            }
+            clearEvent(event);
+            return;
         } else if (event.what == evKeyDown && owner_->isInSelectionMode() &&
                    event.keyDown.charScan.charCode == ' ') {
             owner_->toggleRowSelected(focused);

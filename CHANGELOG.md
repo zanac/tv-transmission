@@ -4171,3 +4171,9 @@ two servers: typing "deb" in one window shows "deb" in the other
 window's panel, matching its filtered list.
 
 Version 1.7.8.
+
+**New shortcuts.** Start Now: Shift+F5. Settings → Server…: F10.
+Select multiple: Shift+Down / Shift+Up in the torrent list starts
+selection mode with the current row checked and extends it one row per
+press (Space toggles, Esc/Enter leaves) — the menu item itself shows no
+shortcut for this one. The right-click menu shows Shift+F5 for Start Now.
