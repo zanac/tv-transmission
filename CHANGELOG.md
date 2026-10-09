@@ -4169,3 +4169,5 @@ refreshes its panel when the global filter changes (the panel being
 typed in is left untouched, so its cursor doesn't jump). Verified with
 two servers: typing "deb" in one window shows "deb" in the other
 window's panel, matching its filtered list.
+
+Version 1.7.8.
