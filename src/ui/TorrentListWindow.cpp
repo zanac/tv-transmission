@@ -547,6 +547,10 @@ void TorrentListWindow::updateTitleForConnectionState(bool lost) {
 
 void TorrentListWindow::setFilter(TorrentFilter filter) {
     filter_ = std::move(filter);
+    // The filter is global: this window's own Status panel (if open) must
+    // show it too, not keep displaying whatever was set before another
+    // server's window changed it.
+    if (statusPanel_) statusPanel_->syncFilter(filter_);
     applyFilterAndSort();
 }
 

@@ -4159,3 +4159,13 @@ unreachable. `TGridView` now recomputes the range on every resize and
 every `setColumnWidth()`, which fixes the torrent list, the Files panel
 and every other grid at once. Verified at 110/150/200 terminal columns:
 the thumb is active and scrolling reaches the last column completely.
+
+**Status panel out of sync with the filter after switching servers.**
+The name/status filter is one global setting applied to every server's
+window, but only the window where it was edited updated its own Status
+panel: the other windows filtered their lists correctly while their
+panels still showed the previous text and checkboxes. Every window now
+refreshes its panel when the global filter changes (the panel being
+typed in is left untouched, so its cursor doesn't jump). Verified with
+two servers: typing "deb" in one window shows "deb" in the other
+window's panel, matching its filtered list.
