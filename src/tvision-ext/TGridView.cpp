@@ -5,6 +5,7 @@
 #define Uses_TScrollBar
 #define Uses_TEvent
 #define Uses_TKeys
+#define Uses_TDialog
 #include <tvision/tv.h>
 
 #include <algorithm>
@@ -625,6 +626,15 @@ public:
                     return;
                 }
             }
+        } else if (event.what == evKeyDown && event.keyDown.keyCode == kbEnter &&
+                   !owner_->isInSelectionMode() && focused >= 0 && focused < range &&
+                   !dynamic_cast<TDialog*>(owner_->owner)) {
+            // Not inside a dialog, where Enter belongs to its default button.
+            // TListViewer only activates on Space; Enter should open the
+            // row too (same path as a double-click: cmListItemSelected).
+            selectItem(focused);
+            clearEvent(event);
+            return;
         } else if (event.what == evKeyDown && owner_->multiSelectCapable() &&
                    (event.keyDown.keyCode == kbDown || event.keyDown.keyCode == kbUp) &&
                    (event.keyDown.controlKeyState & kbShift) &&

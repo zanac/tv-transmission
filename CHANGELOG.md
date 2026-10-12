@@ -4193,3 +4193,21 @@ that lives on the server). Verified against a mock daemon: the .torrent
 bytes arrive as `metainfo`, magnet links as `filename`.
 
 Version 1.8.1.
+
+**More shortcuts, and Enter opens Details.** F3 Details, F4 Files, F7
+Verify, Shift+F7 Reannounce (shown in the Torrent menu and the right-click
+menu). Enter on a torrent now opens its Details window (a
+double-click is unchanged: it starts multi-selection mode, not Details). Enter is left alone
+inside dialogs, where it still belongs to the default button.
+
+Note for PuTTY/`TERM=linux` users: set the terminal type to
+`xterm-256color` (PuTTY: Connection → Data), otherwise F1–F4 (which PuTTY
+sends in xterm style) aren't recognized.
+
+**Documentation:** README gained a "Keyboard shortcuts" table (including
+Shift+Down/Up multi-selection, which is deliberately absent from the
+menus) and a "Terminal settings (PuTTY and similar)" section recommending
+`TERM=xterm-256color LC_ALL=C.UTF-8 LANG=C.UTF-8`.
+
+
+Version 1.8.2.
