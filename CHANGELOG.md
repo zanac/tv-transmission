@@ -4191,3 +4191,5 @@ Magnet links and http(s)/ftp URLs are still sent as `filename`; a path
 that doesn't exist locally is still passed through unchanged (for a file
 that lives on the server). Verified against a mock daemon: the .torrent
 bytes arrive as `metainfo`, magnet links as `filename`.
+
+Version 1.8.1.
