@@ -640,6 +640,28 @@ void TorrentListWindow::focusGrid() {
     if (grid()) grid()->select();
 }
 
+namespace {
+// The one-column divider between a side panel and the torrent grid: the
+// "│" line plus the two-row collapse arrow at the vertical center.
+class TPanelDivider : public TView {
+public:
+    // arrow: UTF-8 glyph drawn on the two middle rows.
+    TPanelDivider(const TRect& bounds, const char* arrow) : TView(bounds), arrow_(arrow) {
+        growMode = 0;
+    }
+    void draw() override {
+        TDrawBuffer line, arrowBuf;
+        line.moveStr(0, "\xE2\x94\x82", TColorAttr(0x1F)); // │
+        arrowBuf.moveStr(0, arrow_, TColorAttr(0x1F));
+        int midY = size.y / 2;
+        for (int y = 0; y < size.y; y++)
+            writeLine(0, y, 1, 1, (y == midY || y == midY + 1) ? arrowBuf : line);
+    }
+private:
+    const char* arrow_;
+};
+} // namespace
+
 void TorrentListWindow::relayoutPanels() {
     TRect r = getExtent();
     r.grow(-1, -1); // interior, same as TGridWindow's own constructor
@@ -683,6 +705,18 @@ void TorrentListWindow::relayoutPanels() {
         filesPanelBorderX_ = -1;
     }
     grid()->locate(gridRect);
+    // Divider views: created/placed/removed to match the panels.
+    auto syncDivider = [&](TView*& view, int borderX, const char* arrow) {
+        if (borderX < 0) {
+            if (view) { destroy(view); view = nullptr; }
+            return;
+        }
+        TRect dr(borderX, r.a.y, borderX + 1, r.b.y);
+        if (!view) { view = new TPanelDivider(dr, arrow); insert(view); }
+        else view->locate(dr);
+    };
+    syncDivider(statusDivider_, statusPanelBorderX_, "\xE2\x97\x84"); // ◄ closes the left panel
+    syncDivider(filesDivider_, filesPanelBorderX_, "\xE2\x96\xBA");   // ► closes the right panel
     // Explicit — this window's own draw() (not any child's) is what
     // paints the collapse/expand arrows, including the ones on this
     // window's own frame when a panel is closed (column 0 or
@@ -897,19 +931,7 @@ void TorrentListWindow::draw() {
     // included.
     TRect r = getExtent();
     r.grow(-1, -1);
-    TDrawBuffer b;
-    b.moveStr(0, "\xE2\x94\x82", TColorAttr(0x1F)); // │ (U+2502, UTF-8) —
-        // moveStr, not moveChar: moveChar only takes a single raw
-        // byte, which can't hold a multi-byte UTF-8 sequence (found
-        // before this ever ran — moveChar's own signature takes `char`,
-        // not a string). Standard app blue, matching everything else
-        // here.
-    if (statusPanelBorderX_ >= 0) {
-        for (int y = r.a.y; y < r.b.y; y++) writeLine(statusPanelBorderX_, y, 1, 1, b);
-    }
-    if (filesPanelBorderX_ >= 0) {
-        for (int y = r.a.y; y < r.b.y; y++) writeLine(filesPanelBorderX_, y, 1, 1, b);
-    }
+    // (open-panel divider lines/arrows are TPanelDivider child views now)
 
     // Collapse/expand handles — two rows at vertical center (not one:
     // asked for directly, wider and easier to hit than a single cell),
@@ -921,16 +943,7 @@ void TorrentListWindow::draw() {
     // recognized and acted on.
     int midY = r.a.y + (r.b.y - r.a.y) / 2;
     TDrawBuffer arrow;
-    if (statusPanelBorderX_ >= 0) {
-        // Open: left-pointing arrow on the divider itself — closes it.
-        // (Originally drawn right-pointing here — reported directly as
-        // visually backwards from what it should mean, with the fix
-        // described as simply swapping left/right throughout, which is
-        // exactly what this and the other three below do.)
-        arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x1F)); // ◄
-        writeLine(statusPanelBorderX_, midY, 1, 1, arrow);
-        writeLine(statusPanelBorderX_, midY + 1, 1, 1, arrow);
-    } else {
+    if (statusPanelBorderX_ < 0) {
         // Closed: right-pointing arrow on the window's own left frame —
         // reopens it. Same color as the frame itself would otherwise
         // show there, so it reads as part of the frame rather than a
@@ -939,11 +952,7 @@ void TorrentListWindow::draw() {
         writeLine(0, midY, 1, 1, arrow);
         writeLine(0, midY + 1, 1, 1, arrow);
     }
-    if (filesPanelBorderX_ >= 0) {
-        arrow.moveStr(0, "\xE2\x96\xBA", TColorAttr(0x1F)); // ►
-        writeLine(filesPanelBorderX_, midY, 1, 1, arrow);
-        writeLine(filesPanelBorderX_, midY + 1, 1, 1, arrow);
-    } else {
+    if (filesPanelBorderX_ < 0) {
         arrow.moveStr(0, "\xE2\x97\x84", TColorAttr(0x71)); // ◄
         writeLine(size.x - 1, midY, 1, 1, arrow);
         writeLine(size.x - 1, midY + 1, 1, 1, arrow);
@@ -1214,6 +1223,9 @@ void TorrentListWindow::setState(ushort aState, Boolean enable) {
     if ((aState & sfActive) != 0 && enable) {
         updateCommandStates();
     }
+    // Activation redraws the frame alone, which would wipe the reopen
+    // arrows drawn on it by draw(): repaint the whole window.
+    if (aState & (sfActive | sfSelected)) drawView();
 }
 
 void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {

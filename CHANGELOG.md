@@ -4211,3 +4211,14 @@ menus) and a "Terminal settings (PuTTY and similar)" section recommending
 
 
 Version 1.8.2.
+
+### Side panel dividers and collapse arrows vanishing
+
+After opening the Files window, Details or other popups, the `│`
+dividers and the ◄/► arrows used to collapse/expand the side panels
+disappeared until the next full redraw. They were painted as an overlay
+on top of the window; they are now a real child view (`TPanelDivider`)
+that is repainted together with the window, and the window also redraws
+when it is activated/selected.
+
+Version 1.8.3.

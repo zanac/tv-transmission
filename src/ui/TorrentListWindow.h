@@ -291,6 +291,12 @@ private:
     // the boundary at all.
     int statusPanelBorderX_ = -1; // -1: no panel open, no boundary to hit-test
     int filesPanelBorderX_ = -1;  // same idea, mirrored on the right
+    // The divider columns are real child views (see TPanelDivider in the
+    // .cpp), so they get repainted whenever the window is redrawn — a
+    // plain overlay in draw() was lost when the window was covered and
+    // uncovered, or its panels repainted themselves.
+    TView* statusDivider_ = nullptr;
+    TView* filesDivider_ = nullptr;
     static constexpr int kStatusPanelMinWidth = 12;
     static constexpr int kStatusPanelMaxWidth = 60;
     static constexpr int kStatusPanelDefaultWidth = 24;
