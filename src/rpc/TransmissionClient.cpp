@@ -1,3 +1,6 @@
+#include <cstdlib>
+#include <iterator>
+#include <fstream>
 #include "TransmissionClient.h"
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -452,7 +455,42 @@ bool TransmissionClient::renamePath(int torrentId, const std::string& path, cons
 
 TransmissionClient::AddTorrentResult TransmissionClient::addTorrent(const std::string& urlOrPath,
                                                                      const std::string& downloadDir) {
-    json args = {{"filename", urlOrPath}};
+    json args;
+    // A .torrent file on THIS machine must be sent as its contents
+    // (base64 "metainfo"): "filename" is resolved by the daemon, so with
+    // a remote server it would look for the path on the server's disk
+    // and fail ("unrecognized info"). Magnet links / URLs go as-is.
+    std::string localPath = urlOrPath;
+    if (localPath.rfind("file://", 0) == 0) localPath = localPath.substr(7);
+    if (localPath.size() >= 2 && localPath[0] == '~' && localPath[1] == '/') {
+        if (const char* home = std::getenv("HOME")) localPath = std::string(home) + localPath.substr(1);
+    }
+    bool isUrl = urlOrPath.rfind("magnet:", 0) == 0 || urlOrPath.rfind("http://", 0) == 0 ||
+                 urlOrPath.rfind("https://", 0) == 0 || urlOrPath.rfind("ftp://", 0) == 0;
+    std::ifstream in;
+    if (!isUrl) in.open(localPath, std::ios::binary);
+    if (in.is_open()) {
+        std::string data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (data.empty()) {
+            lastError_ = "Torrent file is empty or unreadable: " + localPath;
+            return AddTorrentResult::Failed;
+        }
+        static const char* tbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string b64;
+        b64.reserve((data.size() + 2) / 3 * 4);
+        for (size_t i = 0; i < data.size(); i += 3) {
+            unsigned v = (unsigned char)data[i] << 16;
+            if (i + 1 < data.size()) v |= (unsigned char)data[i + 1] << 8;
+            if (i + 2 < data.size()) v |= (unsigned char)data[i + 2];
+            b64 += tbl[(v >> 18) & 63];
+            b64 += tbl[(v >> 12) & 63];
+            b64 += i + 1 < data.size() ? tbl[(v >> 6) & 63] : '=';
+            b64 += i + 2 < data.size() ? tbl[v & 63] : '=';
+        }
+        args["metainfo"] = b64;
+    } else {
+        args["filename"] = urlOrPath;
+    }
     if (!downloadDir.empty()) args["download-dir"] = downloadDir;
     std::string body = call("torrent-add", args.dump());
     // If body is empty, call() has already set lastError_ (curl/network

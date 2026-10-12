@@ -4179,3 +4179,17 @@ press (Space toggles, Esc/Enter leaves) — the menu item itself shows no
 shortcut for this one. The right-click menu shows Shift+F5 for Start Now.
 
 Version 1.8.0.
+
+**Adding a local .torrent file to a remote server failed ("unrecognized
+info").** The path typed/browsed in the Add dialog (or given to the CLI
+`add` command) was sent as `filename`, which the daemon resolves on ITS
+own disk — so a file that only exists on the machine running the client
+could only work with a server on that same machine. A path that points to
+an existing local file (also `file://…` and `~/…`) is now read and sent as
+base64 `metainfo`, so it works with local and remote servers alike.
+Magnet links and http(s)/ftp URLs are still sent as `filename`; a path
+that doesn't exist locally is still passed through unchanged (for a file
+that lives on the server). Verified against a mock daemon: the .torrent
+bytes arrive as `metainfo`, magnet links as `filename`.
+
+Version 1.8.1.
