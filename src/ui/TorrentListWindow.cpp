@@ -1245,12 +1245,12 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
         *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey, hcNoContext, "F5") +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey, hcNoContext, "Shift+F5") +
         *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey, hcNoContext, "F6") +
-        *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbF7, hcNoContext, "F7") +
+        *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbShiftF7, hcNoContext, "Shift+F7") +
         *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbNoKey, hcNoContext, "F8") +
         *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
-        *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
-        *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
+        *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbF3, hcNoContext, "F3") +
+        *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbF4, hcNoContext, "F4") +
         static_cast<TMenuItem&>(*queueMenu);
     // Only meaningful — and only shown — while there's a selection to
     // cancel. Reuses cmSelectMultiple itself rather than a separate

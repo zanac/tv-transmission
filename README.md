@@ -4,7 +4,7 @@
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/zanac/tv-transmission?style=for-the-badge)
 
-**Version 1.8.1** — stable release.
+**Version 1.8.2** — stable release.
 
 ![TV Transmission — main window with the Status and Files side panels open](docs/screenshot.png)
 
@@ -583,6 +583,56 @@ tv-transmission --host seedbox.example.org --port 9091 \
 
 Run `tv-transmission --help` (or `-h`, or with no arguments at all for
 the interactive TUI) for the full command reference.
+
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| F2 | Add a torrent (magnet, URL or a `.torrent` file path) |
+| F3 / Enter | Details of the selected torrent |
+| F4 | Files window of the selected torrent |
+| F5 | Start |
+| Shift+F5 | Start Now (bypass the queue) |
+| F6 | Stop |
+| F7 | Verify local data |
+| Shift+F7 | Reannounce to trackers |
+| F8 | Remove from the list (files kept) — asks first, default "No" |
+| Shift+F8 | Delete torrent **and files** — asks first, default "No" |
+| F9 | Connection dialog (servers) |
+| F10 | Server settings |
+| Alt-X | Quit |
+| Ctrl+F5 / Ctrl+F6 / Alt-F3 | Window zoom / next window / close |
+| Alt-0 | Window list |
+| Tab / Shift+Tab | Move focus: torrent list → Files panel → Status panel (name, then checkboxes) → list (Shift+Tab goes back) |
+| Shift+Down / Shift+Up | Multi-selection: starts it with the current row checked, then checks one more row per press. Not shown in any menu. Space toggles a row, Esc / Enter leaves |
+| Space, `+`, `-` | In the Files panel: toggle the file's download, raise / lower its priority (Low → Normal → High) |
+| Ctrl+Left / Ctrl+Right | Resize the focused side panel |
+
+Every shortcut that has a menu entry is also shown next to it in the menu.
+The mouse works everywhere too (a double-click on a torrent starts
+multi-selection; in the Files panel a single click on `[X]` or on one of
+the `- = +` marks changes the file's download flag / priority).
+
+### Terminal settings (PuTTY and similar)
+
+The keyboard reading depends on what the terminal sends and on `TERM`. If
+some keys don't work (typically F1–F4, or Shift+arrows), use a modern
+xterm-style setup and a UTF-8 locale:
+
+```
+TERM=xterm-256color LC_ALL=C.UTF-8 LANG=C.UTF-8 tv-transmission
+```
+
+- **PuTTY**: set *Connection → Data → Terminal-type string* to
+  `xterm-256color`, and *Window → Translation → Remote character set* to
+  UTF-8; on the server side export the variables above (for instance in
+  `~/.profile`) so they are set for every session. With the default
+  `TERM=linux`, PuTTY's F1–F4 (`ESC O P…S`) are not recognized.
+- PuTTY does not distinguish Shift+Up/Down from plain Up/Down in every
+  configuration; if Shift+arrows still don't extend the selection, use
+  the *Select multiple* menu item (or a double-click) and Space instead.
+- The `LC_ALL`/`LANG` UTF-8 settings keep the progress bars (`█`/`░`) and
+  the box-drawing characters from being drawn as garbage.
 
 ## How the connection works
 

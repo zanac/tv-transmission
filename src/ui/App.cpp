@@ -173,10 +173,10 @@ TMenuBar* App::initMenuBar(TRect r) {
             *new TMenuItem(tr(Str::MenuDeleteWithData), cmDeleteTorrentWithData, kbShiftF8, hcNoContext, "Shift+F8") +
             newLine() +
             *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbShiftF5, hcNoContext, "Shift+F5") +
-            *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbNoKey) +
-            *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbNoKey) +
-            *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbNoKey) +
-            *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbNoKey) +
+            *new TMenuItem(tr(Str::MenuVerify), cmVerifyTorrent, kbF7, hcNoContext, "F7") +
+            *new TMenuItem(tr(Str::MenuReannounce), cmReannounceTorrent, kbShiftF7, hcNoContext, "Shift+F7") +
+            *new TMenuItem(tr(Str::MenuShowDetails), cmShowDetails, kbF3, hcNoContext, "F3") +
+            *new TMenuItem(tr(Str::MenuShowFiles), cmShowFiles, kbF4, hcNoContext, "F4") +
             newLine() +
             static_cast<TMenuItem&>(*queueMenu) +
             newLine() +
