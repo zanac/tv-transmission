@@ -4222,3 +4222,13 @@ that is repainted together with the window, and the window also redraws
 when it is activated/selected.
 
 Version 1.8.3.
+
+### Files panel kept showing a removed torrent
+
+Removing a torrent (or applying a filter / re-sorting) left the Files panel
+showing the data of the torrent that had been focused before. The panel was
+only updated when the user moved the row focus; it is now re-synced every
+time the torrent list is rebuilt, following the newly focused torrent or
+emptying itself when the list is empty.
+
+Version 1.8.4.
