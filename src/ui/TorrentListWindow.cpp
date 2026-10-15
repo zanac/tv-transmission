@@ -1144,6 +1144,19 @@ void TorrentListWindow::applyFilterAndSort() {
 
     grid()->setRowCount((int)visible_.size());
     grid()->refresh();
+    // The row-focus callback only fires on user navigation, not when the
+    // list itself changes underneath the focused row (torrent removed,
+    // filter applied, re-sort): keep the Files panel in step with
+    // whichever torrent is focused now, or empty it if there is none.
+    if (filesPanel_) {
+        int row = grid()->focusedRow();
+        if (row >= 0 && row < (int)visible_.size()) {
+            if (visible_[row].id != filesPanel_->torrentId())
+                filesPanel_->showTorrent(visible_[row].id, visible_[row].name);
+        } else if (filesPanel_->torrentId() != -1) {
+            filesPanel_->showTorrent(-1, std::string());
+        }
+    }
     updateCommandStates();
 }
 
