@@ -1326,6 +1326,14 @@ void App::shutDown() {
 
 void App::idle() {
     TApplication::idle();
+    // Keeps "Add to another server" greyed out while there's nothing to
+    // add to (a single configured server) — pushed to every window so
+    // the state is right whichever one gets focus next.
+    {
+        bool multi = clients_.size() > 1;
+        for (TorrentListWindow* w : allListWindows())
+            if (w->multiServer() != multi) w->setMultiServer(multi);
+    }
     // Refresh on a real interval (settings_.refreshIntervalSeconds),
     // no longer on every single event-loop tick — applied to EVERY open
     // torrent-list window on the same shared timer (there's one

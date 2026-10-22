@@ -4248,3 +4248,9 @@ configured a message explains that another one is needed.
 Note: the magnet link carries the trackers the source server knows, so
 private torrents work only if the tracker lets the new server fetch the
 metadata.
+
+The "Add to another server..." entry (menu and context menu) is greyed out
+while only one server is configured, and enables itself as soon as a second
+one is added.
+
+Version 1.9.0.

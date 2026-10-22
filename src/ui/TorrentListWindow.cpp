@@ -1224,7 +1224,7 @@ void TorrentListWindow::updateCommandStates() {
     setCmd(this, cmReannounceTorrent, active);         // only meaningful while talking to trackers
     setCmd(this, cmStartNowTorrent, stopped || queued); // only useful if not already transferring
     setCmd(this, cmShowDetails, true);                 // always possible
-    setCmd(this, cmCopyToServer, true);                // App checks there is another server
+    setCmd(this, cmCopyToServer, multiServer_);        // needs another configured server
     setCmd(this, cmShowFiles, true);                   // always possible
 }
 
