@@ -4,6 +4,7 @@
 #include "TorrentFilesWindow.h"
 #include "TrackerPeerWindow.h"
 #include "AddTorrentDialog.h"
+#include "CopyToServerDialog.h"
 #include "../tvision-ext/TFolderBrowserDialog.h"
 #include "ConnectionDialog.h"
 #include "ServerSettingsDialog.h"
@@ -167,6 +168,7 @@ TMenuBar* App::initMenuBar(TRect r) {
     return new TMenuBar(r,
         *new TSubMenu(tr(Str::MenuTorrent), kbAltT) +
             *new TMenuItem(tr(Str::MenuAdd), cmAddTorrent, kbF2, hcNoContext, "F2") +
+            *new TMenuItem(tr(Str::MenuCopyToServer), cmCopyToServer, kbShiftF2, hcNoContext, "Shift+F2") +
             *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbF5, hcNoContext, "F5") +
             *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbF6, hcNoContext, "F6") +
             *new TMenuItem(tr(Str::MenuRemove), cmRemoveTorrent, kbF8, hcNoContext, "F8") +
@@ -464,6 +466,81 @@ void App::showAddTorrentDialog(const std::string& initialValue, const std::strin
         // only ever affects the destination.
         showAddTorrentDialog(url, chosenFolder);
     }
+}
+
+void App::copySelectedToOtherServer() {
+    TorrentListWindow* source = focusedListWindow();
+    if (!source) return;
+    auto srcIt = clients_.find(source->serverName());
+    if (srcIt == clients_.end()) return;
+
+    std::vector<std::string> others;
+    for (const auto& kv : settings_.servers)
+        if (kv.first != source->serverName() && clients_.count(kv.first)) others.push_back(kv.first);
+    if (others.empty()) {
+        messageBox(tr(Str::MsgCopyNeedsTwoServers), mfInformation | mfOKButton);
+        return;
+    }
+
+    // Copies, not pointers: the dialog below runs its own event loop,
+    // during which the window's list can be rebuilt.
+    std::vector<Torrent> selected = source->torrentsForAction();
+    if (selected.empty()) return;
+
+    std::string subject;
+    if (selected.size() == 1) {
+        subject = selected[0].name;
+    } else {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%d torrents", (int)selected.size());
+        subject = buf;
+    }
+    std::string target = chooseTargetServer(others, subject);
+    if (target.empty()) return;
+    TransmissionClient& dest = *clients_.at(target);
+
+    int added = 0, duplicate = 0, failed = 0;
+    std::string lastFailure;
+    bool noMagnet = false;
+    for (const Torrent& t : selected) {
+        // magnetLink isn't part of the periodic list refresh — fetched
+        // on demand from the source server (and carries its trackers).
+        Torrent details = srcIt->second->getTorrentDetails(t.id);
+        if (details.magnetLink.empty()) {
+            failed++;
+            noMagnet = true;
+            continue;
+        }
+        auto res = dest.addTorrent(details.magnetLink);
+        if (res == TransmissionClient::AddTorrentResult::Duplicate) {
+            duplicate++;
+        } else if (res == TransmissionClient::AddTorrentResult::Failed) {
+            failed++;
+            lastFailure = dest.lastError();
+        } else {
+            added++;
+        }
+    }
+
+    if (selected.size() == 1) {
+        if (duplicate) {
+            messageBox(tr(Str::MsgTorrentDuplicate), mfInformation | mfOKButton);
+        } else if (noMagnet) {
+            messageBox(tr(Str::MsgCopyNoMagnet), mfError | mfOKButton);
+        } else if (failed) {
+            char buf[512];
+            std::snprintf(buf, sizeof(buf), tr(Str::MsgTorrentAddFailed), lastFailure.c_str());
+            messageBox(buf, mfError | mfOKButton);
+        }
+    } else if (duplicate || failed) {
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), tr(Str::MsgCopySummary), added, duplicate, failed);
+        messageBox(buf, mfInformation | mfOKButton);
+    }
+
+    // Show the new torrent right away instead of at the next tick.
+    for (auto* w : allListWindows())
+        if (w->serverName() == target) w->refresh();
 }
 
 void App::showConnectionDialog() {
@@ -1033,6 +1110,10 @@ void App::handleEvent(TEvent& event) {
     switch (event.message.command) {
         case cmAddTorrent:
             showAddTorrentDialog();
+            clearEvent(event);
+            break;
+        case cmCopyToServer:
+            copySelectedToOtherServer();
             clearEvent(event);
             break;
         case cmStartTorrent:

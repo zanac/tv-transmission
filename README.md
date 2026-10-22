@@ -286,6 +286,7 @@ HTTP and nlohmann/json for parsing.
 
 **Managing torrents**
 - Add a torrent from a magnet link, `.torrent` URL, or local path (F2)
+- Add the selected torrent(s) to another configured server (Shift+F2)
   — typed directly, or via "Browse...", which opens tvision's own file
   dialog (filtered to `*.torrent`) and fills the field in with whatever
   gets picked; see CHANGELOG.md for why Browse closes this dialog
@@ -589,6 +590,7 @@ the interactive TUI) for the full command reference.
 | Key | Action |
 |---|---|
 | F2 | Add a torrent (magnet, URL or a `.torrent` file path) |
+| Shift+F2 | Add the selected torrent(s) to another configured server (asks which one) |
 | F3 / Enter | Details of the selected torrent |
 | F4 | Files window of the selected torrent |
 | F5 | Start |

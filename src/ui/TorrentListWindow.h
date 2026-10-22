@@ -82,6 +82,14 @@ public:
                        const std::vector<bool>& initialPeerColumnVisible = {});
 
     const std::string& serverName() const { return serverName_; }
+    // Copies of the torrent(s) an action would target right now (the
+    // multi-selection, or the focused row) — for callers that must keep
+    // them across a nested event loop.
+    std::vector<Torrent> torrentsForAction() const {
+        std::vector<Torrent> out;
+        for (const Torrent* t : targetTorrents()) out.push_back(*t);
+        return out;
+    }
 
     // Window -> Panels -> Status: opens/closes the live filter panel on
     // the left, resizing the grid to make room (or give the space

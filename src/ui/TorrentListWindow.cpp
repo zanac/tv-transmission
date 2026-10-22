@@ -1207,6 +1207,7 @@ void TorrentListWindow::updateCommandStates() {
         setCmd(this, cmVerifyTorrent, false);
         setCmd(this, cmReannounceTorrent, false);
         setCmd(this, cmStartNowTorrent, false);
+        setCmd(this, cmCopyToServer, false);
         setCmd(this, cmShowDetails, false);
         setCmd(this, cmShowFiles, false);
         return;
@@ -1223,6 +1224,7 @@ void TorrentListWindow::updateCommandStates() {
     setCmd(this, cmReannounceTorrent, active);         // only meaningful while talking to trackers
     setCmd(this, cmStartNowTorrent, stopped || queued); // only useful if not already transferring
     setCmd(this, cmShowDetails, true);                 // always possible
+    setCmd(this, cmCopyToServer, true);                // App checks there is another server
     setCmd(this, cmShowFiles, true);                   // always possible
 }
 
@@ -1267,6 +1269,7 @@ void TorrentListWindow::showContextMenuFor(int /*row*/, TPoint screenPos) {
     // the very first item) already reflects anything appended to it
     // afterward below, without needing to be reassigned.
     TMenuItem& items =
+        *new TMenuItem(tr(Str::MenuCopyToServer), cmCopyToServer, kbShiftF2, hcNoContext, "Shift+F2") +
         *new TMenuItem(tr(Str::MenuStart), cmStartTorrent, kbNoKey, hcNoContext, "F5") +
         *new TMenuItem(tr(Str::MenuStartNow), cmStartNowTorrent, kbNoKey, hcNoContext, "Shift+F5") +
         *new TMenuItem(tr(Str::MenuStop), cmStopTorrent, kbNoKey, hcNoContext, "F6") +
