@@ -4232,3 +4232,25 @@ time the torrent list is rebuilt, following the newly focused torrent or
 emptying itself when the list is empty.
 
 Version 1.8.4.
+
+### Add a torrent to another server (Shift+F2)
+
+New Torrent menu entry (also in the right-click menu): **Add to another
+server...**, Shift+F2. When more than one server is configured it opens a
+small dialog with a drop-down of the other servers and **Add** / **Cancel**
+buttons (Enter adds to the first one straight away, Shift+Tab moves to the
+list). The torrent is sent to the chosen server as its magnet link, read
+from the source server on demand, so it works for torrents that came from a
+local file too. With a multi-selection every selected torrent is sent and a
+summary is shown if some were duplicates or failed. With a single server
+configured a message explains that another one is needed.
+
+Note: the magnet link carries the trackers the source server knows, so
+private torrents work only if the tracker lets the new server fetch the
+metadata.
+
+The "Add to another server..." entry (menu and context menu) is greyed out
+while only one server is configured, and enables itself as soon as a second
+one is added.
+
+Version 1.9.0.

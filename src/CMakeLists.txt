@@ -19,6 +19,7 @@ add_executable(tv-transmission
     ui/LanguageComboBox.cpp
     ui/PriorityComboBox.cpp
     ui/ConfirmDialog.cpp
+    ui/CopyToServerDialog.cpp
     ui/WindowListDialog.cpp
     ui/AboutDialog.cpp
     ui/BandwidthStatusLine.cpp

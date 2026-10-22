@@ -17,7 +17,7 @@ Language currentLanguage();
 enum class Str {
     MenuTorrent, MenuAdd, MenuStart, MenuStop, MenuRemove, MenuQuit,
     MenuConnection, MenuServerSettings, MenuSessionStats,
-    MenuVerify, MenuReannounce, MenuStartNow, MenuShowDetails, MenuShowFiles,
+    MenuVerify, MenuReannounce, MenuStartNow, MenuCopyToServer, MenuShowDetails, MenuShowFiles,
     MenuSelectMultiple, MenuCancelSelection,
     MenuQueue, MenuQueueMoveTop, MenuQueueMoveUp, MenuQueueMoveDown, MenuQueueMoveBottom,
     // No MenuPriority*: priority used to have its own submenu here (menu
@@ -53,6 +53,8 @@ enum class Str {
     LabelFolderPath, MsgFolderUnreadable,
     ButtonRename, DialogTitleRename, LabelRenameNewName, MsgRenameFailed,
     ButtonOK, ButtonCancel, ButtonSave, ButtonSelect,
+    ButtonAddShort, DialogTitleCopyToServer, LabelCopyToServer,
+    MsgCopyNeedsTwoServers, MsgCopyNoMagnet, MsgCopySummary,
 
     DialogTitleConnection, DialogTitleServerSettings, DialogTitleSessionStats, DialogTitleSelectFolder,
     LabelRefreshSeconds, LabelHost, LabelPort, LabelRpcPath, LabelUser, LabelPassword, LabelLanguage,

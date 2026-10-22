@@ -256,6 +256,47 @@ const char* tr(Str id) {
                         "Umbenennen fehlgeschlagen:\n%s",
                         "No se pudo renombrar:\n%s", "Falha ao renomear:\n%s", "Не удалось переименовать:\n%s", "Falha ao mudar o nome:\n%s");
 
+        case Str::MenuCopyToServer:
+            return pick("Add to ano~t~her server...", "Aggiungi a un al~t~ro server...", "Ajouter à un au~t~re serveur...",
+                        "Zu einem an~d~eren Server hinzufügen...", "Añadir a o~t~ro servidor...", "Adicionar a ou~t~ro servidor...",
+                        "Добавить на дру~г~ой сервер...", "Adicionar a ou~t~ro servidor...");
+        case Str::ButtonAddShort:
+            return pick("Add", "Aggiungi", "Ajouter", "Hinzufügen", "Añadir", "Adicionar", "Добавить", "Adicionar");
+        case Str::DialogTitleCopyToServer:
+            return pick("Add to another server", "Aggiungi a un altro server", "Ajouter à un autre serveur",
+                        "Zu anderem Server hinzufügen", "Añadir a otro servidor", "Adicionar a outro servidor",
+                        "Добавить на другой сервер", "Adicionar a outro servidor");
+        case Str::LabelCopyToServer:
+            return pick("Add '%s' to server:", "Aggiungi '%s' al server:", "Ajouter '%s' au serveur :",
+                        "'%s' zum Server hinzufügen:", "Añadir '%s' al servidor:", "Adicionar '%s' ao servidor:",
+                        "Добавить '%s' на сервер:", "Adicionar '%s' ao servidor:");
+        case Str::MsgCopyNeedsTwoServers:
+            return pick("Only one server is configured. Add another one in Connections -> Settings first.",
+                        "È configurato un solo server. Aggiungine un altro da Connessioni -> Impostazioni.",
+                        "Un seul serveur est configuré. Ajoutez-en un autre dans Connexions -> Paramètres.",
+                        "Es ist nur ein Server konfiguriert. Fügen Sie zuerst unter Verbindungen -> Einstellungen einen weiteren hinzu.",
+                        "Solo hay un servidor configurado. Añada otro en Conexiones -> Ajustes.",
+                        "Apenas um servidor está configurado. Adicione outro em Conexões -> Configurações.",
+                        "Настроен только один сервер. Сначала добавьте ещё один в Подключения -> Настройки.",
+                        "Apenas um servidor está configurado. Adicione outro em Ligações -> Definições.");
+        case Str::MsgCopyNoMagnet:
+            return pick("The server did not provide a magnet link for this torrent.",
+                        "Il server non ha fornito un magnet link per questo torrent.",
+                        "Le serveur n'a pas fourni de lien magnet pour ce torrent.",
+                        "Der Server hat keinen Magnet-Link für diesen Torrent geliefert.",
+                        "El servidor no proporcionó un enlace magnet para este torrent.",
+                        "O servidor não forneceu um link magnet para este torrent.",
+                        "Сервер не предоставил magnet-ссылку для этого торрента.",
+                        "O servidor não forneceu uma ligação magnet para este torrent.");
+        case Str::MsgCopySummary:
+            return pick("%d added, %d already present, %d failed.",
+                        "%d aggiunti, %d già presenti, %d falliti.",
+                        "%d ajoutés, %d déjà présents, %d échoués.",
+                        "%d hinzugefügt, %d bereits vorhanden, %d fehlgeschlagen.",
+                        "%d añadidos, %d ya presentes, %d fallidos.",
+                        "%d adicionados, %d já presentes, %d falharam.",
+                        "Добавлено: %d, уже были: %d, ошибок: %d.",
+                        "%d adicionados, %d já presentes, %d falharam.");
         case Str::ButtonOK:     return "OK"; // same word in all five languages
         case Str::ButtonCancel: return pick("Cancel", "Annulla", "Annuler", "Abbrechen", "Cancelar", "Cancelar", "Отмена", "Cancelar");
         case Str::ButtonSave: return pick("Save", "Salva", "Enregistrer", "Speichern", "Guardar", "Salvar", "Сохранить", "Guardar");

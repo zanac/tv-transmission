@@ -48,6 +48,7 @@ private:
     TorrentListWindow* openServerWindow(const std::string& name);
     void showAddTorrentDialog(const std::string& initialValue = "", const std::string& initialDestination = "");
     void showConnectionDialog();
+    void copySelectedToOtherServer();
     void showServerSettingsDialog();
     void showSessionStatsDialog();
     // Replaces what used to be showFilterDialog() (a modal dialog) —
@@ -195,6 +196,7 @@ const ushort cmSessionStats     = 125;
 const ushort cmToggleStatusPanel = 126;
 const ushort cmToggleFilesPanel = 127;
 const ushort cmResizeStatusPanel = 128; // menu-triggered keyboard resize
+const ushort cmCopyToServer    = 130; // Shift+F2 — add the selected torrent(s) to another server
 const ushort cmResizeFilesPanel = 129;  // mode — see TorrentListWindow's
                                           // own keyboardResizeStatusPanel()/
                                           // keyboardResizeFilesPanel().
