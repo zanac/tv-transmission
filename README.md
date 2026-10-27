@@ -16,6 +16,10 @@ It talks to `transmission-daemon` over its JSON RPC (HTTP, port 9091 by
 default), so no native Transmission library is needed — just libcurl for
 HTTP and nlohmann/json for parsing.
 
+## Support
+Hey dude! Help me out for a couple of :beers: or a :coffee:!<br/>
+[![coffee](https://www.buymeacoffee.com/assets/img/custom_images/black_img.png)](https://bmc.link/zanac)
+
 ## Features
 
 **Torrent list — one window per configured server**
